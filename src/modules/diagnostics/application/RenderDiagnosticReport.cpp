@@ -25,7 +25,7 @@ std::string entryLine(const DiagnosticEntry& entry)
 
 std::string renderDiagnosticReport(const DiagnosticReportInput& input)
 {
-    std::string text = "Relatório de diagnóstico do G HUB para Linux\n";
+    std::string text = "Relatório de diagnóstico do Hubless\n";
     text += "Gerado em: " + input.generatedAt + "\n";
     text += "Versão do app: " + input.appVersion + "\n";
     text += "Plataforma: " + input.platform + "\n";

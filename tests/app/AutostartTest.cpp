@@ -47,7 +47,7 @@ private slots:
         QVERIFY(text.startsWith(QStringLiteral("[Desktop Entry]\n")));
         QVERIFY(text.contains(QStringLiteral("Type=Application\n")));
         QVERIFY(text.contains(QStringLiteral("Version=1.0\n")));
-        QVERIFY(text.contains(QStringLiteral("Name=G HUB para Linux\n")));
+        QVERIFY(text.contains(QStringLiteral("Name=Hubless\n")));
         QVERIFY(text.contains(QStringLiteral("\nComment=") + entry.comment + QLatin1Char('\n')));
         QVERIFY(text.contains(QStringLiteral("Exec=ghub-linux --autostart\n")));
         QVERIFY(text.contains(QStringLiteral("Icon=ghub-linux\n")));
@@ -96,7 +96,7 @@ private slots:
         QVERIFY(text.contains(QStringLiteral("Icon=outro-icone\n")));
         // Os valores vêm da entrada recebida: o padrão do app não vaza no que foi pedido.
         QVERIFY(!text.contains(QStringLiteral("Exec=ghub-linux --autostart\n")));
-        QVERIFY(!text.contains(QStringLiteral("Name=G HUB para Linux\n")));
+        QVERIFY(!text.contains(QStringLiteral("Name=Hubless\n")));
     }
 
     void defaultDirectoryIsTheXdgAutostartDirectory()

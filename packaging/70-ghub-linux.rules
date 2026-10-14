@@ -1,0 +1,9 @@
+# Hubless (ghub-linux) — acesso do usuário da sessão ativa ao canal HID++ dos receptores Lightspeed.
+# Só a interface 2 (HID++/DJ): as interfaces 0/1 (teclas e movimentos crus) ficam de fora.
+# ID_* vêm do builtin usb_id importado por 60-persistent-hidraw.rules; o uaccess é aplicado por 73-seat-late.rules.
+# ATTRS{idProduct} e ATTRS{bInterfaceNumber} não podem ser combinados (cada ATTRS casa no mesmo pai; ver man udev).
+
+# G915 LIGHTSPEED — receptor 046d:c547 (iluminação por HID++, ADR-0013)
+SUBSYSTEM=="hidraw", ENV{ID_VENDOR_ID}=="046d", ENV{ID_MODEL_ID}=="c547", ENV{ID_USB_INTERFACE_NUM}=="02", TAG+="uaccess"
+# G703 LIGHTSPEED — receptor 046d:c539 (memória onboard por HID++, ADR-0017)
+SUBSYSTEM=="hidraw", ENV{ID_VENDOR_ID}=="046d", ENV{ID_MODEL_ID}=="c539", ENV{ID_USB_INTERFACE_NUM}=="02", TAG+="uaccess"

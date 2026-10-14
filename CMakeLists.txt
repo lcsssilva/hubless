@@ -13,11 +13,18 @@ set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
 
 option(GHUB_BUILD_APP "Compila o executável Qt Quick" ON)
 option(GHUB_BUILD_TESTS "Compila os testes" ON)
+option(GHUB_INSTALL_UDEV_RULES "Instala a regra udev em lib/udev/rules.d" ON)
+
+include(GNUInstallDirs)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 include(GhubWarnings)
 
 add_subdirectory(src)
+
+if(GHUB_BUILD_APP)
+    add_subdirectory(packaging)
+endif()
 
 if(GHUB_BUILD_TESTS)
     enable_testing()

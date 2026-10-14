@@ -62,6 +62,13 @@ TEST(RenderDiagnosticReport, IncludesGenerationInstantVersionAndPlatform)
     EXPECT_TRUE(contains(text, "linux"));
 }
 
+TEST(RenderDiagnosticReport, StartsWithTheProductName)
+{
+    const auto text = renderDiagnosticReport(reportInput());
+
+    EXPECT_TRUE(text.starts_with("Relatório de diagnóstico do Hubless\n"));
+}
+
 TEST(RenderDiagnosticReport, ListsEveryBackendWithAvailabilityAndDetail)
 {
     const auto text = renderDiagnosticReport(reportInput());

@@ -41,3 +41,5 @@ target_link_libraries(ghub-linux PRIVATE
     ghub_profiles_infrastructure ghub_profiles_presentation)
 ghub_set_warnings(ghub-linux)
 target_compile_definitions(ghub-linux PRIVATE GHUB_VERSION="${PROJECT_VERSION}")
+
+install(TARGETS ghub-linux RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})

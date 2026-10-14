@@ -1,0 +1,85 @@
+{
+  "_fonte": "udevadm info -q property -n /dev/hidrawN (systemd 262-1), CachyOS, 2026-10-14; somente leitura",
+  "nodes": {
+    "hidraw0": {
+      "hid_name": "Logitech USB Receiver",
+      "SUBSYSTEM": "hidraw",
+      "ID_BUS": "usb",
+      "ID_VENDOR_ID": "046d",
+      "ID_MODEL_ID": "c539",
+      "ID_USB_INTERFACE_NUM": "00"
+    },
+    "hidraw1": {
+      "hid_name": "Logitech USB Receiver",
+      "SUBSYSTEM": "hidraw",
+      "ID_BUS": "usb",
+      "ID_VENDOR_ID": "046d",
+      "ID_MODEL_ID": "c539",
+      "ID_USB_INTERFACE_NUM": "01"
+    },
+    "hidraw2": {
+      "hid_name": "Logitech USB Receiver",
+      "SUBSYSTEM": "hidraw",
+      "ID_BUS": "usb",
+      "ID_VENDOR_ID": "046d",
+      "ID_MODEL_ID": "c539",
+      "ID_USB_INTERFACE_NUM": "02"
+    },
+    "hidraw3": {
+      "hid_name": "Logitech G733 Gaming Headset",
+      "SUBSYSTEM": "hidraw",
+      "ID_BUS": "usb",
+      "ID_VENDOR_ID": "046d",
+      "ID_MODEL_ID": "0afe",
+      "ID_USB_INTERFACE_NUM": "03"
+    },
+    "hidraw4": {
+      "hid_name": "ITE Tech. Inc. ITE Device",
+      "SUBSYSTEM": "hidraw",
+      "ID_BUS": "usb",
+      "ID_VENDOR_ID": "048d",
+      "ID_MODEL_ID": "5702",
+      "ID_USB_INTERFACE_NUM": "00"
+    },
+    "hidraw5": {
+      "hid_name": "Logitech USB Receiver",
+      "SUBSYSTEM": "hidraw",
+      "ID_BUS": "usb",
+      "ID_VENDOR_ID": "046d",
+      "ID_MODEL_ID": "c547",
+      "ID_USB_INTERFACE_NUM": "00"
+    },
+    "hidraw6": {
+      "hid_name": "Logitech USB Receiver",
+      "SUBSYSTEM": "hidraw",
+      "ID_BUS": "usb",
+      "ID_VENDOR_ID": "046d",
+      "ID_MODEL_ID": "c547",
+      "ID_USB_INTERFACE_NUM": "01"
+    },
+    "hidraw7": {
+      "hid_name": "Logitech USB Receiver",
+      "SUBSYSTEM": "hidraw",
+      "ID_BUS": "usb",
+      "ID_VENDOR_ID": "046d",
+      "ID_MODEL_ID": "c547",
+      "ID_USB_INTERFACE_NUM": "02"
+    },
+    "hidraw8": {
+      "hid_name": "Logitech G703 LS",
+      "SUBSYSTEM": "hidraw",
+      "ID_BUS": "usb",
+      "ID_VENDOR_ID": "046d",
+      "ID_MODEL_ID": "c539",
+      "ID_USB_INTERFACE_NUM": "02"
+    },
+    "hidraw9": {
+      "hid_name": "Logitech G915 KEYBOARD",
+      "SUBSYSTEM": "hidraw",
+      "ID_BUS": "usb",
+      "ID_VENDOR_ID": "046d",
+      "ID_MODEL_ID": "c547",
+      "ID_USB_INTERFACE_NUM": "02"
+    }
+  }
+}

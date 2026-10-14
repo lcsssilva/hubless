@@ -94,6 +94,7 @@
 #include <QDBusConnectionInterface>
 #include <QFileInfo>
 #include <QGuiApplication>
+#include <QIcon>
 #include <QLoggingCategory>
 #include <QQmlApplicationEngine>
 #include <QStandardPaths>
@@ -148,6 +149,8 @@ int main(int argc, char* argv[])
     QApplication app(argc, argv);
     QCoreApplication::setApplicationName(QStringLiteral("ghub-linux"));
     QCoreApplication::setApplicationVersion(QStringLiteral(GHUB_VERSION));
+    QGuiApplication::setDesktopFileName(QStringLiteral("ghub-linux"));
+    QApplication::setWindowIcon(QIcon::fromTheme(QStringLiteral("ghub-linux")));
     // Diagnóstico (INC-013 R10–R15): buffer circular em memória das mensagens do Qt. Declarado cedo para
     // capturar os logs dos módulos e destruído por último; o tratador é global e nada toca o disco até exportar.
     ghub::diagnostics::DiagnosticLog diagnosticLog{500};

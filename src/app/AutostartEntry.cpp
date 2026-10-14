@@ -8,7 +8,7 @@ namespace ghub::app {
 AutostartEntry defaultAutostartEntry()
 {
     // Exec com --autostart: o app nasce do login e já vai direto para a bandeja (INC-013 R9).
-    return AutostartEntry{.name = QStringLiteral("G HUB para Linux"),
+    return AutostartEntry{.name = QStringLiteral("Hubless"),
                           .comment = QStringLiteral("Gerencia periféricos Logitech em segundo plano"),
                           .exec = QStringLiteral("ghub-linux --autostart"),
                           .icon = QStringLiteral("ghub-linux")};

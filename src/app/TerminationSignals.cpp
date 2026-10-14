@@ -23,7 +23,9 @@ extern "C" void forwardSignal(int signalNumber)
     const int fd = activeWriteFd.load(std::memory_order_relaxed);
     if (fd >= 0) {
         const auto byte = static_cast<unsigned char>(signalNumber);
-        (void)::write(fd, &byte, 1); // pipe cheio: o pedido anterior ainda não lido já encerra o app
+        // Pipe cheio: o pedido anterior ainda não lido já encerra o app. O resultado é descartado por variável, não por
+        // `(void)`: o GCC ignora o cast em funções `warn_unused_result` (glibc com _FORTIFY_SOURCE, flags do makepkg).
+        [[maybe_unused]] const ssize_t written = ::write(fd, &byte, 1);
     }
     errno = savedErrno;
 }

@@ -39,7 +39,7 @@ SystemTrayIcon::SystemTrayIcon(DesktopController& controller)
         icon = QApplication::style()->standardIcon(QStyle::SP_ComputerIcon);
     }
     tray_->setIcon(icon);
-    tray_->setToolTip(QStringLiteral("G HUB para Linux"));
+    tray_->setToolTip(QStringLiteral("Hubless"));
     tray_->setContextMenu(menu_.get());
     QObject::connect(tray_.get(), &QSystemTrayIcon::activated, &controller,
                      [&controller](QSystemTrayIcon::ActivationReason reason) {

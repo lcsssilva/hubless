@@ -29,9 +29,9 @@ Princípios de segurança:
 
 Dependências (pacotes do Arch Linux, instaláveis com `pacman`):
 
-- Execução: `qt6-base`, `qt6-declarative`
+- Execução: `qt6-base`, `qt6-declarative`, `libpipewire`
 - Build e testes: `cmake`, `ninja`, `gcc`, `gtest`, `python`
-- Opcionais: `headsetcontrol` (G733), `libratbag` (G703, ratbagd ativado sob demanda via D-Bus)
+- Opcionais: `headsetcontrol` (G733), `libratbag` (G703, ratbagd ativado sob demanda via D-Bus), `pipewire` (equalizador e redução de ruído), `noise-suppression-for-voice` (redução de ruído do microfone)
 
 ```sh
 cmake --preset dev            # Debug (GCC); presets: dev, asan (ASan+UBSan), tsan (sem app Qt), release
@@ -39,6 +39,41 @@ cmake --build --preset dev
 ctest --preset dev            # GoogleTest + teste de arquitetura + smoke do app (offscreen)
 ./build/dev/src/app/ghub-linux
 ```
+
+## Instalação local (forma atual)
+
+Instala só para o seu usuário, em `~/.local`, sem `sudo`:
+
+```sh
+cmake -S . -B build/local -G Ninja -DCMAKE_BUILD_TYPE=Release \
+      -DCMAKE_INSTALL_PREFIX=$HOME/.local -DGHUB_INSTALL_UDEV_RULES=OFF -DGHUB_BUILD_TESTS=OFF
+cmake --build build/local
+cmake --install build/local
+```
+
+Isso instala:
+
+- o binário em `~/.local/bin/ghub-linux` (o `~/.local/bin` precisa estar no `PATH`, por causa do autostart);
+- a entrada de menu “Hubless”;
+- o ícone.
+
+Para atualizar, rode os mesmos comandos de novo. Para remover: `xargs rm < build/local/install_manifest.txt`.
+
+### Regra udev
+
+O app abre a interface HID++ (interface 2) dos receptores LIGHTSPEED `046d:c547` (G915) e `046d:c539` (G703). Se outro pacote já dá esse acesso (por exemplo, o `openrgb`), nada precisa ser feito.
+
+Caso contrário, copie a regra do projeto uma vez:
+
+```sh
+sudo cp packaging/70-ghub-linux.rules /etc/udev/rules.d/
+```
+
+Depois, reconecte o receptor. A regra dá acesso só ao usuário da sessão ativa e só à interface 2; as interfaces de teclas e movimentos ficam de fora. O G733 usa a regra do pacote `headsetcontrol`.
+
+### Pacote (futuro)
+
+`packaging/arch/PKGBUILD` (`hubless-git`) já gera um pacote do `pacman` com os mesmos arquivos e a regra udev. Ele fica para quando houver outros usuários (AUR).
 
 Testes em hardware real são opcionais e precisam de `GHUB_HW_TESTS=1`. Os que escrevem no dispositivo exigem variáveis adicionais.
 

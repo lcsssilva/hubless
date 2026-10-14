@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Hubless
+GenericName=Configurador de periféricos
+Comment=Configura teclado, mouse, headset e webcam Logitech
+Exec=ghub-linux
+Icon=ghub-linux
+Terminal=false
+Categories=Settings;HardwareSettings;Qt;
+Keywords=Logitech;G915;G703;G733;Brio;RGB;DPI;
+StartupNotify=true
