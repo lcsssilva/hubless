@@ -10,7 +10,7 @@ O objetivo é substituir o Logitech G HUB **nas funcionalidades tecnicamente pos
 
 ## Estado
 
-Em desenvolvimento, sem versão publicada. Resumo do que já funciona no dispositivo real (detalhes e restrições em [`SUPPORT_MATRIX.md`](docs/device-support/SUPPORT_MATRIX.md)):
+Em desenvolvimento, sem versão publicada. Resumo do que já funciona no dispositivo real:
 
 | Dispositivo | O que funciona hoje |
 |---|---|
@@ -22,7 +22,7 @@ Em desenvolvimento, sem versão publicada. Resumo do que já funciona no disposi
 Princípios de segurança:
 
 - Nada é gravado em dispositivo ao abrir o app nem ao reconectar; toda escrita acontece por clique do usuário.
-- Comandos HID++ desconhecidos, firmware e perfis onboard não são gravados (ver [`DEVICE_ACCESS_POLICY.md`](docs/architecture/DEVICE_ACCESS_POLICY.md)).
+- Comandos HID++ desconhecidos, firmware e perfis onboard não são gravados.
 - O app não roda como root.
 
 ## Build e testes
@@ -40,27 +40,16 @@ ctest --preset dev            # GoogleTest + teste de arquitetura + smoke do app
 ./build/dev/src/app/ghub-linux
 ```
 
-Testes em hardware real são opcionais e precisam de `GHUB_HW_TESTS=1`. Os que escrevem no dispositivo exigem variáveis adicionais (ver [`TEST_STRATEGY.md`](docs/engineering/TEST_STRATEGY.md)).
+Testes em hardware real são opcionais e precisam de `GHUB_HW_TESTS=1`. Os que escrevem no dispositivo exigem variáveis adicionais.
 
 ## Arquitetura
 
 Monólito modular com DDD e Clean Architecture: cada módulo (`battery`, `camera`, `lighting`, `pointer`, `headset`, `device_inventory`, `device_access`) separa `domain`, `application`, `infrastructure` e `presentation`, e as dependências sempre apontam para dentro. O desenvolvimento é guiado por testes (TDD).
 
-| Tema | Documento |
-|---|---|
-| Arquitetura | [`docs/architecture/OVERVIEW.md`](docs/architecture/OVERVIEW.md) |
-| Módulos e ports | [`docs/architecture/COMPONENTS.md`](docs/architecture/COMPONENTS.md) |
-| Acesso exclusivo a dispositivos | [`docs/architecture/DEVICE_ACCESS_POLICY.md`](docs/architecture/DEVICE_ACCESS_POLICY.md) |
-| Matriz de suporte | [`docs/device-support/SUPPORT_MATRIX.md`](docs/device-support/SUPPORT_MATRIX.md) |
-| Integrações externas | [`docs/integrations/INTEGRATION_CATALOG.md`](docs/integrations/INTEGRATION_CATALOG.md) |
-| Engenharia, TDD, definição de pronto | [`docs/engineering/`](docs/engineering/) |
-| Decisões (ADRs) | [`docs/decisions/README.md`](docs/decisions/README.md) |
-| Roadmap | [`docs/planning/ROADMAP.md`](docs/planning/ROADMAP.md) |
-
 ## Créditos
 
-O protocolo de iluminação do G915 deriva do [OpenRGB](https://gitlab.com/CalcProgrammer1/OpenRGB) (GPL-2.0-or-later); ver [`THIRD_PARTY_CODE.md`](docs/integrations/THIRD_PARTY_CODE.md). Também usa ou consulta [HeadsetControl](https://github.com/Sapd/HeadsetControl), [libratbag](https://github.com/libratbag/libratbag) e [Solaar](https://github.com/pwr-Solaar/Solaar) (só como referência).
+O protocolo de iluminação do G915 deriva do [OpenRGB](https://gitlab.com/CalcProgrammer1/OpenRGB) (GPL-2.0-or-later, tag `release_1.0`): os arquivos `G915KeyCatalog.cpp`, `G915PerKeyFrames.cpp` e `G915EffectFrames.cpp`, em `src/modules/lighting/`, mantêm o cabeçalho original de autoria e licença e indicam a origem e o que foi alterado. Também usa ou consulta [HeadsetControl](https://github.com/Sapd/HeadsetControl), [libratbag](https://github.com/libratbag/libratbag) e [Solaar](https://github.com/pwr-Solaar/Solaar) (só como referência).
 
 ## Licença
 
-[GPL-3.0-or-later](LICENSE) — ver [ADR-0012](docs/decisions/ADR-0012-PROJECT-LICENSE-GPL3.md).
+[GPL-3.0-or-later](LICENSE).
