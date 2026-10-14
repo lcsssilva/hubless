@@ -1,0 +1,11 @@
+---
+InheritParentConfig: true
+# Em testes, variáveis locais não-const e indexação direta em vetores dimensionados
+# no próprio teste são idiomáticas; manter os demais checks.
+Checks: >
+  -misc-const-correctness,
+  -cppcoreguidelines-pro-bounds-avoid-unchecked-container-access,
+  -cppcoreguidelines-avoid-do-while,
+  -cppcoreguidelines-special-member-functions,
+  -cppcoreguidelines-non-private-member-variables-in-classes
+...

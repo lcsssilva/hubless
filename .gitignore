@@ -1,0 +1,4 @@
+/build/
+__pycache__/
+.claude/scheduled_tasks.lock
+.claude/settings.local.json

@@ -1,0 +1,23 @@
+find_package(GTest 1.18 REQUIRED)
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
+include(GoogleTest)
+
+add_library(ghub_test_fakes INTERFACE)
+target_include_directories(ghub_test_fakes INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}")
+target_link_libraries(ghub_test_fakes INTERFACE ghub_shared_kernel)
+
+add_subdirectory(architecture)
+add_subdirectory(shared_kernel)
+add_subdirectory(device_access)
+add_subdirectory(device_inventory)
+add_subdirectory(battery)
+add_subdirectory(camera)
+add_subdirectory(pointer)
+add_subdirectory(lighting)
+add_subdirectory(headset)
+add_subdirectory(hardware)
+
+if(GHUB_BUILD_APP)
+    add_subdirectory(app)
+    add_subdirectory(ui)
+endif()

@@ -1,0 +1,4 @@
+add_executable(ghub_shared_kernel_tests FakeClockTest.cpp)
+target_link_libraries(ghub_shared_kernel_tests PRIVATE ghub_test_fakes GTest::gtest_main)
+ghub_set_warnings(ghub_shared_kernel_tests)
+gtest_discover_tests(ghub_shared_kernel_tests TEST_PREFIX "shared_kernel.")

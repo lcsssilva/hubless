@@ -1,0 +1,12 @@
+add_subdirectory(shared_kernel)
+add_subdirectory(modules/device_access)
+add_subdirectory(modules/device_inventory)
+add_subdirectory(modules/battery)
+add_subdirectory(modules/camera)
+add_subdirectory(modules/pointer)
+add_subdirectory(modules/lighting)
+add_subdirectory(modules/headset)
+
+if(GHUB_BUILD_APP)
+    add_subdirectory(app)
+endif()
