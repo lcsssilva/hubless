@@ -1,6 +1,8 @@
 # Hubless
 
-**Configurador nativo de periféricos Logitech para Linux** — C++23, Qt 6/QML — feito para o CachyOS e testado com G915 (teclado), G703 (mouse), G733 (headset) e Brio 100 (webcam).
+**Configurador nativo de periféricos Logitech para Linux** — C++23, Qt 6/QML — voltado a distribuições baseadas em **Arch Linux** (Arch, CachyOS, EndeavourOS, Manjaro etc.). Desenvolvido e testado no CachyOS com G915 (teclado), G703 (mouse), G733 (headset) e Brio 100 (webcam).
+
+> **Plataforma-alvo:** Arch Linux e derivadas. Os nomes de pacotes, o empacotamento planejado (PKGBUILD) e os testes assumem esse ambiente. Outras distribuições podem funcionar compilando do código-fonte, mas não são testadas nem suportadas.
 
 O objetivo é substituir o Logitech G HUB **nas funcionalidades tecnicamente possíveis no Linux**. Paridade total não é prometida: cada recurso só é anunciado depois de comprovado no hardware.
 
@@ -25,7 +27,7 @@ Princípios de segurança:
 
 ## Build e testes
 
-Dependências (CachyOS/Arch):
+Dependências (pacotes do Arch Linux, instaláveis com `pacman`):
 
 - Execução: `qt6-base`, `qt6-declarative`
 - Build e testes: `cmake`, `ninja`, `gcc`, `gtest`, `python`
