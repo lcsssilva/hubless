@@ -48,7 +48,6 @@ Monólito modular com DDD e Clean Architecture: cada módulo (`battery`, `camera
 
 | Tema | Documento |
 |---|---|
-| Regras de desenvolvimento (inclusive para agentes de IA) | [`CLAUDE.md`](CLAUDE.md) |
 | Arquitetura | [`docs/architecture/OVERVIEW.md`](docs/architecture/OVERVIEW.md) |
 | Módulos e ports | [`docs/architecture/COMPONENTS.md`](docs/architecture/COMPONENTS.md) |
 | Acesso exclusivo a dispositivos | [`docs/architecture/DEVICE_ACCESS_POLICY.md`](docs/architecture/DEVICE_ACCESS_POLICY.md) |
