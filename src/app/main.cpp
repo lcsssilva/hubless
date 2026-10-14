@@ -12,8 +12,23 @@
 // modo ou o aplicativo (inclusive por SIGTERM/SIGINT/SIGHUP) devolve o controle ao firmware; SIGKILL não (testes
 // físicos de 2026-10-14). Repouso do teclado (o firmware retoma o controle) desliga o modo na janela sem escrever,
 // e a suspensão do sistema devolve o controle antes de suspender (ADR-0014). Sidetone e luzes do G733 (HeadsetControl, ADR-0015): só por clique
-// na janela, nunca na abertura nem na reconexão. Nenhuma outra escrita de configuração.
+// na janela, nunca na abertura nem na reconexão. EQ de saída do G733 no host (PipeWire filter-chain dentro do
+// processo, ADR-0016) e redução de ruído do microfone (RNNoise, ADR-0018): só por clique; ao ligar, trocam a
+// saída/entrada padrão e a restauram ao desligar/fechar. Nenhuma
+// outra escrita de configuração.
+// INC-013 (ADR-0019): integração com o desktop — bandeja do sistema (X-03), inicialização automática XDG
+// (X-04) e diagnóstico/logs (X-06). A bandeja só existe fora do smoke test e com uma bandeja disponível;
+// fechar a janela esconde para a bandeja (o processo continua) e só "Sair" encerra. O autostart é opt-in na
+// janela: nada é gravado sem ação explícita; `--autostart` inicia escondido. O diagnóstico vive só em memória
+// e nada é gravado até o usuário exportar o relatório.
+#include "DesktopController.hpp"
+#include "SystemTrayIcon.hpp"
 #include "TerminationSignals.hpp"
+#include "modules/audio_processing/application/HostEqualizer.hpp"
+#include "modules/audio_processing/application/HostNoiseSuppression.hpp"
+#include "modules/audio_processing/infrastructure/PipeWireAudioGraph.hpp"
+#include "modules/audio_processing/presentation/HostEqualizerController.hpp"
+#include "modules/audio_processing/presentation/NoiseSuppressionController.hpp"
 #include "modules/battery/application/GetBatteryStatus.hpp"
 #include "modules/battery/infrastructure/HeadsetControlBatterySource.hpp"
 #include "modules/battery/infrastructure/KernelUevent.hpp"
@@ -41,6 +56,12 @@
 #include "modules/device_inventory/infrastructure/SysfsHidDiscovery.hpp"
 #include "modules/device_inventory/infrastructure/SysfsVideoDiscovery.hpp"
 #include "modules/device_inventory/presentation/DeviceInventoryViewModel.hpp"
+#include "modules/diagnostics/application/DiagnosticLog.hpp"
+#include "modules/diagnostics/application/ExportDiagnosticReport.hpp"
+#include "modules/diagnostics/domain/DiagnosticTypes.hpp"
+#include "modules/diagnostics/infrastructure/QtMessageLogSink.hpp"
+#include "modules/diagnostics/infrastructure/XdgReportWriter.hpp"
+#include "modules/diagnostics/presentation/DiagnosticsViewModel.hpp"
 #include "modules/headset/application/ChangeHeadsetSetting.hpp"
 #include "modules/headset/infrastructure/HeadsetControlSettingsWriter.hpp"
 #include "modules/headset/presentation/HeadsetSettingsController.hpp"
@@ -48,23 +69,34 @@
 #include "modules/lighting/infrastructure/G915HidppLighting.hpp"
 #include "modules/lighting/infrastructure/HidppNodeLocator.hpp"
 #include "modules/lighting/presentation/KeyboardLightingController.hpp"
+#include "modules/pointer/application/G703OnboardSettings.hpp"
 #include "modules/pointer/application/ReadPointerConfiguration.hpp"
 #include "modules/pointer/infrastructure/BackgroundPointerReader.hpp"
+#include "modules/pointer/infrastructure/FileOnboardBackupStore.hpp"
+#include "modules/pointer/infrastructure/G703NodeLocator.hpp"
 #include "modules/pointer/infrastructure/RatbagPointerBackend.hpp"
+#include "modules/pointer/presentation/G703OnboardController.hpp"
 #include "modules/pointer/presentation/PointerViewModel.hpp"
 
+#include <QApplication>
 #include <QCommandLineParser>
-#include <QLoggingCategory>
 #include <QDBusConnection>
+#include <QDBusConnectionInterface>
+#include <QFileInfo>
 #include <QGuiApplication>
+#include <QLoggingCategory>
 #include <QQmlApplicationEngine>
 #include <QStandardPaths>
+#include <QSysInfo>
 #include <QtQml/qqml.h>
 
 #include <chrono>
 #include <cstdlib>
+#include <filesystem>
 #include <memory>
+#include <string>
 #include <utility>
+#include <vector>
 
 namespace {
 
@@ -72,7 +104,7 @@ namespace {
 // QT_LOGGING_RULES="ghub.lighting.hidpp.debug=true"), falha em warning.
 Q_LOGGING_CATEGORY(lcLightingHidpp, "ghub.lighting.hidpp", QtInfoMsg)
 
-void traceHidppCommand(const ghub::lighting::infrastructure::HidppCommandTrace& trace)
+void traceHidppCommand(const ghub::platform::hidpp::HidppCommandTrace& trace)
 {
     if (!trace.failure.has_value()) {
         qCDebug(lcLightingHidpp, "dev %u feature 0x%04x fn %u (%zu bytes): ok", trace.deviceIndex, trace.featureId,
@@ -84,15 +116,34 @@ void traceHidppCommand(const ghub::lighting::infrastructure::HidppCommandTrace& 
               static_cast<int>(*trace.failure), trace.errorCode);
 }
 
+// INC-013 R15: sonda simples para a saúde dos backends, usada só para exibir (nada é alterado).
+bool serviceRegistered(const QString& service)
+{
+    auto* const interface = QDBusConnection::systemBus().interface();
+    return interface != nullptr && interface->isServiceRegistered(service);
+}
+
+// Socket padrão do PipeWire na sessão do usuário ($XDG_RUNTIME_DIR/pipewire-0). O módulo de áudio é de
+// outro incremento; aqui só se informa se o servidor do host está no ar.
+bool pipeWireSocketExists()
+{
+    const QString runtimeDir = qEnvironmentVariable("XDG_RUNTIME_DIR");
+    return !runtimeDir.isEmpty() && QFileInfo::exists(runtimeDir + QStringLiteral("/pipewire-0"));
+}
+
 } // namespace
 
 int main(int argc, char* argv[])
 {
-    QGuiApplication app(argc, argv);
-    QGuiApplication::setApplicationName(QStringLiteral("ghub-linux"));
-    QGuiApplication::setApplicationVersion(QStringLiteral(GHUB_VERSION));
+    QApplication app(argc, argv);
+    QCoreApplication::setApplicationName(QStringLiteral("ghub-linux"));
+    QCoreApplication::setApplicationVersion(QStringLiteral(GHUB_VERSION));
+    // Diagnóstico (INC-013 R10–R15): buffer circular em memória das mensagens do Qt. Declarado cedo para
+    // capturar os logs dos módulos e destruído por último; o tratador é global e nada toca o disco até exportar.
+    ghub::diagnostics::DiagnosticLog diagnosticLog{500};
+    ghub::diagnostics::QtMessageLogSink messageLogSink{diagnosticLog};
     // SIGTERM/SIGINT/SIGHUP encerram pelo laço de eventos, para que os destrutores rodem (ex.: devolver o controle
-    // do G915 ao firmware). Declarado logo após o app: é destruído por último e restaura os tratadores anteriores.
+    // do G915 ao firmware). Declarado logo após o app: restaura os tratadores anteriores ao ser destruído.
     ghub::app::TerminationSignals terminationSignals;
     if (!terminationSignals.isActive()) {
         qWarning("app: tratamento de SIGTERM/SIGINT/SIGHUP indisponível; esses sinais encerram sem limpeza");
@@ -106,7 +157,18 @@ int main(int argc, char* argv[])
     const QCommandLineOption smokeTest(QStringLiteral("smoke-test"),
                                        QStringLiteral("Carrega a interface e encerra (usado pelo CTest)."));
     parser.addOption(smokeTest);
+    const QCommandLineOption autostart(QStringLiteral("autostart"),
+                                       QStringLiteral("Inicia escondido na bandeja (entrada XDG de autostart)."));
+    parser.addOption(autostart);
     parser.process(app);
+
+    const bool smokeTestRun = parser.isSet(smokeTest);
+    // Bandeja (INC-013 R1/R2): `QSystemTrayIcon` exige `QApplication`. No smoke test nem se consulta o tema da
+    // plataforma; sem bandeja nada é criado e o app funciona como antes.
+    const bool trayAvailable = !smokeTestRun && ghub::app::SystemTrayIcon::trayAvailable();
+    ghub::app::DesktopController desktopController{trayAvailable, parser.isSet(autostart)};
+    QObject::connect(&desktopController, &ghub::app::DesktopController::quitRequested, &app,
+                     [] { QCoreApplication::quit(); });
 
     using namespace std::chrono_literals;
     // Registro de leases (DEVICE_ACCESS_POLICY §2), compartilhado por todos os módulos que escrevem ou consultam
@@ -179,7 +241,7 @@ int main(int argc, char* argv[])
     // em andamento), caso de uso, backend e, por fim, o registro de leases e o probe (declarados acima).
     ghub::pointer::RatbagPointerBackend ratbagPointerBackend{QDBusConnection::systemBus(),
                                                              QStringLiteral("org.freedesktop.ratbag1"), 30s};
-    auto pointerInterface = ghub::device_access::PhysicalInterfaceId::create("ratbag:046d:4086");
+    auto pointerInterface = ghub::device_access::PhysicalInterfaceId::create("hidpp:046d:c539");
     if (!pointerInterface) {
         qCritical("pointer: identificador de interface inválido: %s",
                   qPrintable(QString::fromStdString(pointerInterface.error().detail)));
@@ -191,6 +253,18 @@ int main(int argc, char* argv[])
     ghub::pointer::PointerViewModel pointerViewModel{pointerReader};
     QObject::connect(&pointerReader, &ghub::pointer::BackgroundPointerReader::readFinished, &pointerViewModel,
                      &ghub::pointer::PointerViewModel::onReadFinished);
+    // Memória onboard do G703 (ADR-0017): HID++ próprio, só por clique em G703OnboardController (ler, gravar,
+    // restaurar); nada é aberto nem escrito na construção. Ordem de destruição (inversa à declaração): o
+    // controlador primeiro (espera a operação em andamento), depois o caso de uso, a cópia de segurança, o conector
+    // e, por fim, o registro de leases, o probe e o relógio (declarados acima).
+    ghub::pointer::infrastructure::G703OnboardConnector g703OnboardConnector{
+        ghub::pointer::infrastructure::G703NodeLocator{}, steadyClock};
+    ghub::pointer::infrastructure::FileOnboardBackupStore g703BackupStore{std::filesystem::path{
+        (QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + QStringLiteral("/ghub-linux/backup"))
+            .toStdString()}};
+    const ghub::pointer::G703OnboardSettings g703OnboardSettings{externalProcessProbe, accessRegistry,
+                                                                 g703OnboardConnector, g703BackupStore};
+    ghub::pointer::G703OnboardController g703OnboardController{g703OnboardSettings};
     // Teclado (ADR-0013): o modo ao vivo do G915 só é aberto por clique em KeyboardLightingController::startLive();
     // nada é aberto nem escrito na construção. Ordem de destruição (inversa à declaração): o controlador primeiro
     // (espera a operação em andamento e devolve o controle ao firmware), depois o caso de uso, o adaptador e,
@@ -213,6 +287,14 @@ int main(int argc, char* argv[])
     const ghub::headset::ChangeHeadsetSetting changeHeadsetSetting{headsetSettingsWriter, externalProcessProbe,
                                                                    accessRegistry, *headsetInterface};
     ghub::headset::HeadsetSettingsController headsetSettingsController{changeHeadsetSetting};
+    // EQ do host (ADR-0016): nada conecta ao PipeWire na construção nem no smoke test. Ordem de destruição:
+    // controlador (desliga o EQ e restaura a saída padrão), caso de uso e, por fim, o grafo (desconecta).
+    ghub::audio_processing::PipeWireAudioGraph audioGraph;
+    ghub::audio_processing::HostEqualizer hostEqualizer{audioGraph};
+    ghub::audio_processing::HostEqualizerController hostEqualizerController{hostEqualizer, audioGraph};
+    // Redução de ruído do microfone (ADR-0018): mesma conexão; independente do EQ; só por clique.
+    ghub::audio_processing::HostNoiseSuppression hostNoiseSuppression{audioGraph};
+    ghub::audio_processing::NoiseSuppressionController noiseSuppressionController{hostNoiseSuppression, audioGraph};
     qmlRegisterType<ghub::camera::CameraPreviewItem>("GHub.Camera", 1, 0, "CameraPreviewItem");
     // Uevent do kernel antecipa a releitura; sem ele vale só o polling de 30 s (ADR-0005 §4).
     std::unique_ptr<ghub::battery::UeventBatteryMonitor> batteryMonitor;
@@ -228,6 +310,43 @@ int main(int argc, char* argv[])
                  qPrintable(QString::fromStdString(socket.error().detail)));
     }
 
+    // Diagnóstico (INC-013 R13–R15): o relatório é montado a partir do que está exibido e gravado só por clique
+    // (XdgReportWriter). A saúde dos backends é montada aqui, no composition root (R15): o módulo `diagnostics`
+    // não conhece os outros módulos. Declarado antes do engine (destruído depois dele).
+    using ghub::diagnostics::BackendHealth;
+    const ghub::diagnostics::XdgReportWriter reportWriter;
+    const ghub::diagnostics::ExportDiagnosticReport exportDiagnosticReport{reportWriter};
+    const std::string platform =
+        (QSysInfo::prettyProductName() + QStringLiteral(" / ") + QGuiApplication::platformName()).toStdString();
+    ghub::diagnostics::DiagnosticsViewModel diagnosticsViewModel{
+        diagnosticLog, exportDiagnosticReport, GHUB_VERSION, platform,
+        [&]() -> std::vector<BackendHealth> {
+            std::vector<BackendHealth> health;
+            health.push_back({"Bandeja do sistema", trayAvailable,
+                              trayAvailable ? "ícone disponível nesta sessão" : "sem bandeja nesta sessão"});
+            const bool uevent = batteryMonitor != nullptr;
+            health.push_back({"Notificação por uevent do kernel", uevent,
+                              uevent ? "socket netlink aberto" : "socket netlink indisponível"});
+            const bool headsetControl = !headsetControlExecutable.isEmpty();
+            health.push_back({"HeadsetControl (G733)", headsetControl,
+                              headsetControl ? headsetControlExecutable.toStdString() : "não encontrado no PATH"});
+            const bool ratbagd = serviceRegistered(QStringLiteral("org.freedesktop.ratbag1"));
+            health.push_back({"ratbagd (G703)", ratbagd,
+                              ratbagd ? "serviço presente no barramento de sistema" : "serviço ausente"});
+            const bool pipeWire = pipeWireSocketExists();
+            health.push_back({"PipeWire (áudio no host)", pipeWire,
+                              pipeWire ? "servidor do usuário presente" : "servidor ausente"});
+            const bool logind = serviceRegistered(QStringLiteral("org.freedesktop.login1"));
+            health.push_back({"logind (suspensão)", logind,
+                              logind ? "serviço presente no barramento de sistema" : "serviço ausente"});
+            for (const auto& detection : listDetectedDevices.execute()) {
+                const bool detected = detection.paths.has_value() && !detection.paths->empty();
+                health.push_back({std::string{ghub::device_inventory::modelName(detection.model)}, detected,
+                                  detected ? "detectado" : "não detectado"});
+            }
+            return health;
+        }};
+
     // Declarado depois dos objetos acima: é destruído antes deles, sem referências pendentes no QML.
     QQmlApplicationEngine engine;
     engine.setInitialProperties({
@@ -237,8 +356,13 @@ int main(int argc, char* argv[])
         {QStringLiteral("cameraPreviewViewModel"), QVariant::fromValue(&cameraPreviewViewModel)},
         {QStringLiteral("cameraControlEditor"), QVariant::fromValue(&cameraControlEditor)},
         {QStringLiteral("pointerViewModel"), QVariant::fromValue(&pointerViewModel)},
+        {QStringLiteral("g703OnboardController"), QVariant::fromValue(&g703OnboardController)},
         {QStringLiteral("keyboardLightingController"), QVariant::fromValue(&keyboardLightingController)},
         {QStringLiteral("headsetSettingsController"), QVariant::fromValue(&headsetSettingsController)},
+        {QStringLiteral("hostEqualizerController"), QVariant::fromValue(&hostEqualizerController)},
+        {QStringLiteral("noiseSuppressionController"), QVariant::fromValue(&noiseSuppressionController)},
+        {QStringLiteral("desktopController"), QVariant::fromValue(&desktopController)},
+        {QStringLiteral("diagnosticsViewModel"), QVariant::fromValue(&diagnosticsViewModel)},
     });
     QObject::connect(
         &engine, &QQmlApplicationEngine::objectCreationFailed, &app, [] { QCoreApplication::exit(EXIT_FAILURE); },
@@ -248,12 +372,28 @@ int main(int argc, char* argv[])
     QObject::connect(&engine, &QQmlEngine::warnings, &app, [&qmlWarned](const QList<QQmlError>&) { qmlWarned = true; });
     engine.loadFromModule("GHub", "Main");
 
-    if (parser.isSet(smokeTest)) {
+    if (smokeTestRun) {
         return engine.rootObjects().isEmpty() || qmlWarned ? EXIT_FAILURE : EXIT_SUCCESS;
     }
     if (engine.rootObjects().isEmpty()) {
         return EXIT_FAILURE;
     }
+    // Bandeja do sistema (INC-013 R2): criada só fora do smoke test e com bandeja disponível; sem ela, nenhum
+    // ícone e o app segue como antes, com um aviso. O adaptador é destruído ao sair (esconde o ícone).
+    std::unique_ptr<ghub::app::SystemTrayIcon> systemTray;
+    if (desktopController.trayAvailable()) {
+        systemTray = std::make_unique<ghub::app::SystemTrayIcon>(desktopController);
+    } else {
+        qWarning("app: bandeja do sistema indisponível; fechar a janela encerra o aplicativo");
+    }
+    // "Mostrar janela"/ativação do ícone trazem a janela de volta (INC-013 R2). O objeto raiz do QML sobrevive
+    // ao engine; o lambda o mantém por ponteiro só enquanto o engine vive (conexão destruída com o controller).
+    QObject* const mainWindow = engine.rootObjects().constFirst();
+    QObject::connect(&desktopController, &ghub::app::DesktopController::showWindowRequested, mainWindow, [mainWindow] {
+        QMetaObject::invokeMethod(mainWindow, "show");
+        QMetaObject::invokeMethod(mainWindow, "raise");
+        QMetaObject::invokeMethod(mainWindow, "requestActivate");
+    });
     // ADR-0014 (R16): antes de suspender, devolve o controle do G915 ao firmware sob um inhibitor "delay" do logind.
     // Fora do smoke test, para o CTest não tocar no logind real. Sem logind: só um aviso.
     ghub::device_access::LogindSleepMonitor sleepMonitor{QDBusConnection::systemBus()};
@@ -265,5 +405,5 @@ int main(int argc, char* argv[])
                  "suspender",
                  qPrintable(sleepMonitor.lastError()));
     }
-    return QGuiApplication::exec();
+    return QCoreApplication::exec();
 }

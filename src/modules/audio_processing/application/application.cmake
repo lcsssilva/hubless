@@ -1,0 +1,6 @@
+add_library(ghub_audio_processing_application STATIC)
+target_sources(ghub_audio_processing_application PRIVATE
+    ${CMAKE_CURRENT_LIST_DIR}/HostEqualizer.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/HostNoiseSuppression.cpp)
+target_link_libraries(ghub_audio_processing_application PUBLIC ghub_audio_processing_domain)
+ghub_set_warnings(ghub_audio_processing_application)

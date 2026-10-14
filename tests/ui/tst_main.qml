@@ -99,6 +99,112 @@ TestCase {
         }
     }
 
+    // Controlador do EQ do G733 falso: registra os pedidos; nada chega ao PipeWire.
+    Component {
+        id: fakeEqualizerComponent
+        QtObject {
+            property bool busy: false
+            property bool enabled: false
+            property var gains: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            property var bandFrequencies: ["32", "64", "125", "250", "500", "1k", "2k", "4k", "8k", "16k"]
+            property int minimumGain: -12
+            property int maximumGain: 12
+            property string status: ""
+            property int enableCalls: 0
+            property int disableCalls: 0
+            property int flatCalls: 0
+            property var bandCalls: []
+            function enable() { enableCalls++ }
+            function disable() { disableCalls++ }
+            function flat() { flatCalls++ }
+            function setBand(band, gain) { bandCalls = bandCalls.concat([[band, gain]]) }
+        }
+    }
+
+    // Controlador da redução de ruído do microfone falso: registra os pedidos; nada chega ao PipeWire.
+    Component {
+        id: fakeNoiseSuppressionComponent
+        QtObject {
+            property bool busy: false
+            property bool enabled: false
+            property int threshold: 50
+            property int minimumThreshold: 0
+            property int maximumThreshold: 99
+            property string status: ""
+            property int enableCalls: 0
+            property int disableCalls: 0
+            property var thresholdCalls: []
+            function enable() { enableCalls++ }
+            function disable() { disableCalls++ }
+            function setThreshold(percent) { thresholdCalls = thresholdCalls.concat([percent]) }
+        }
+    }
+
+    // Controlador da memória onboard do G703 falso: registra os pedidos; nada chega ao mouse.
+    Component {
+        id: fakeOnboardComponent
+        QtObject {
+            property bool busy: false
+            property string status: ""
+            property bool loaded: false
+            property int reportRateHz: 0
+            property var dpiStages: []
+            property int defaultStage: 0
+            property bool backupExists: false
+            property int activeSector: 0
+            property int readCalls: 0
+            property int restoreCalls: 0
+            property var writeCalls: []
+            function readFromMouse() { readCalls++ }
+            function writeToMouse(rate, stages, defaultStage) {
+                writeCalls = writeCalls.concat([[rate, stages.slice(), defaultStage]])
+            }
+            function restoreBackup() { restoreCalls++ }
+        }
+    }
+
+    // Controlador de desktop falso (INC-013): registra os pedidos; nada é gravado em disco.
+    // `setAutostart` atualiza `autostartEnabled` como o controlador real faria.
+    Component {
+        id: fakeDesktopComponent
+        QtObject {
+            property bool trayAvailable: false
+            property bool hideOnClose: false
+            property bool startHidden: false
+            property bool quitting: false
+            property bool autostartEnabled: false
+            property string status: ""
+            property int showWindowCalls: 0
+            property int quitCalls: 0
+            property var autostartCalls: []
+            property int refreshAutostartCalls: 0
+            signal showWindowRequested()
+            signal quitRequested()
+            function showWindow() { showWindowCalls++ }
+            function requestQuit() { quitCalls++ }
+            function setAutostart(enabled) {
+                autostartCalls = autostartCalls.concat([enabled])
+                autostartEnabled = enabled
+            }
+            function refreshAutostart() { refreshAutostartCalls++ }
+        }
+    }
+
+    // ViewModel de diagnóstico falso: registra as chamadas; nada é gravado nem lido do sistema.
+    Component {
+        id: fakeDiagnosticsComponent
+        QtObject {
+            property var backends: []
+            property var entries: []
+            property string status: ""
+            property string lastReportPath: ""
+            property int refreshCalls: 0
+            property int exportCalls: 0
+            function refresh() { refreshCalls++ }
+            function exportReport() { exportCalls++ }
+        }
+    }
+
     // A janela precisa ser destruída antes do ViewModel falso (evita TypeError de binding no teardown).
     property var windows: []
     property var fakes: []
@@ -112,7 +218,7 @@ TestCase {
 
     // Carrega o Main.qml real do código-fonte (caminho relativo a este arquivo).
     function createMain(fake, inventoryFake, cameraFake, previewFake, editorFake, pointerFake, lightingFake,
-                        headsetFake) {
+                        headsetFake, equalizerFake, onboardFake, noiseFake, desktopFake, diagnosticsFake) {
         const component = Qt.createComponent(Qt.resolvedUrl("../../src/ui/qml/Main.qml"));
         compare(component.status, Component.Ready, component.errorString());
         const window = component.createObject(null, {batteryViewModel: fake,
@@ -122,7 +228,12 @@ TestCase {
                                                      cameraControlEditor: editorFake || createEditorFake(),
                                                      pointerViewModel: pointerFake || createPointerFake(),
                                                      keyboardLightingController: lightingFake || createLightingFake(),
-                                                     headsetSettingsController: headsetFake || createHeadsetFake()});
+                                                     headsetSettingsController: headsetFake || createHeadsetFake(),
+                                                     hostEqualizerController: equalizerFake || createEqualizerFake(),
+                                                     noiseSuppressionController: noiseFake || createNoiseSuppressionFake(),
+                                                     g703OnboardController: onboardFake || createOnboardFake(),
+                                                     desktopController: desktopFake || createDesktopFake(),
+                                                     diagnosticsViewModel: diagnosticsFake || createDiagnosticsFake()});
         verify(window !== null, "Main.qml deve instanciar");
         windows.push(window);
         return window;
@@ -170,8 +281,72 @@ TestCase {
         return fake;
     }
 
+    function createEqualizerFake(props) {
+        const fake = fakeEqualizerComponent.createObject(null, props || {});
+        fakes.push(fake);
+        return fake;
+    }
+
+    function createNoiseSuppressionFake(props) {
+        const fake = fakeNoiseSuppressionComponent.createObject(null, props || {});
+        fakes.push(fake);
+        return fake;
+    }
+
+    function createMainWithNoiseSuppression(noise) {
+        return createMain(createFake([]), null, null, null, null, null, null, null, null, null, noise);
+    }
+
+    function createOnboardFake(props) {
+        const fake = fakeOnboardComponent.createObject(null, props || {});
+        fakes.push(fake);
+        return fake;
+    }
+
+    function createMainWithEqualizer(equalizer) {
+        return createMain(createFake([]), null, null, null, null, null, null, null, equalizer);
+    }
+
+    function eqSliders(window) {
+        return allItems(window).filter(item => item.objectName === "eqBandSlider");
+    }
+
+    function createMainWithOnboard(onboard) {
+        return createMain(createFake([]), null, null, null, null, null, null, null, null, onboard);
+    }
+
+    function createDesktopFake(props) {
+        const fake = fakeDesktopComponent.createObject(null, props || {});
+        fakes.push(fake);
+        return fake;
+    }
+
+    function createDiagnosticsFake(props) {
+        const fake = fakeDiagnosticsComponent.createObject(null, props || {});
+        fakes.push(fake);
+        return fake;
+    }
+
     function createMainWithHeadset(headset) {
         return createMain(createFake([]), null, null, null, null, null, null, headset);
+    }
+
+    function createMainWithDesktop(desktop) {
+        return createMain(createFake([]), null, null, null, null, null, null, null, null, null, null, desktop);
+    }
+
+    function createMainWithDesktopAndDiagnostics(desktop, diagnostics) {
+        return createMain(createFake([]), null, null, null, null, null, null, null, null, null, null, desktop, diagnostics);
+    }
+
+    // Rola a ScrollView até o item ficar visível (mouseClick não rola; a janela é limitada pela tela offscreen).
+    function reveal(item) {
+        for (let flick = item.parent; flick; flick = flick.parent) {
+            if (flick.contentY !== undefined && flick.flickableDirection !== undefined) {
+                flick.contentY = Math.max(0, item.mapToItem(flick.contentItem, 0, 0).y - 20);
+                return;
+            }
+        }
     }
 
     function swatches(window) {
@@ -356,6 +531,7 @@ TestCase {
         window.show();
         const button = findItem(window, "cameraControlDefault");
         tryVerify(() => button.width > 0 && button.visible);
+        reveal(button);
         mouseClick(button);
         tryCompare(editor, "defaultCalls", [7]);
         compare(editor.setCalls.length, 0);
@@ -368,6 +544,7 @@ TestCase {
         window.show();
         const toggle = findItem(window, "cameraControlSwitch");
         tryVerify(() => toggle.width > 0 && toggle.visible);
+        reveal(toggle);
         mouseClick(toggle);
         tryCompare(editor, "setCalls", [[9, 0]]);
     }
@@ -379,6 +556,7 @@ TestCase {
         window.show();
         const slider = findItem(window, "cameraControlSlider");
         tryVerify(() => slider.width > 0 && slider.visible);
+        reveal(slider);
         const y = slider.height / 2;
         mousePress(slider, slider.leftPadding + slider.availableWidth * 0.25, y);
         mouseMove(slider, slider.leftPadding + slider.availableWidth * 0.5, y);
@@ -420,9 +598,67 @@ TestCase {
         // O fundo do Button (ButtonPanel) não é um botão: o padrão exige o nome do tipo seguido de "(".
         const buttons = items.filter(item => /^(Button|QQuickButton)(_QMLTYPE_\d+)?\(/.test(item.toString()));
         compare(buttons.map(b => b.objectName).sort().join(","),
-                "cameraControlDefault,cameraControlDefault,cameraPreviewToggle,headsetLightsOffButton,"
+                "cameraControlDefault,cameraControlDefault,cameraPreviewToggle,diagnosticsExportButton,"
+                + "diagnosticsRefreshButton,eqDisableButton,eqEnableButton,"
+                + "eqFlatButton,headsetLightsOffButton,"
                 + "headsetLightsOnButton,headsetSidetoneApplyButton,lightingCustomColorButton,"
-                + "lightingLiveButton,pointerReadButton"); // amostras: delegates de tipo próprio, testadas à parte
+                + "lightingLiveButton,noiseDisableButton,noiseEnableButton,onboardAddStageButton,onboardReadButton,onboardRemoveStageButton,"
+                + "onboardRestoreButton,onboardWriteButton,pointerReadButton"); // amostras: delegates de tipo próprio, testadas à parte
+    }
+
+    function test_onboardSectionWarnsAndDoesNotTouchTheMouseOnLoad() {
+        const onboard = createOnboardFake();
+        const window = createMainWithOnboard(onboard);
+        verify(findItem(window, "onboardNoticeLabel").text.indexOf("Feche o Piper") >= 0);
+        compare(findItem(window, "onboardEditor").visible, false);
+        compare(onboard.readCalls, 0);
+        compare(onboard.restoreCalls, 0);
+        compare(onboard.writeCalls.length, 0);
+    }
+
+    function test_onboardReadButtonCallsReadOnClick() {
+        const onboard = createOnboardFake();
+        const window = createMainWithOnboard(onboard);
+        const button = findItem(window, "onboardReadButton");
+        compare(button.text, "Ler do mouse");
+        button.clicked();
+        compare(onboard.readCalls, 1);
+    }
+
+    function test_onboardEditorAppearsOnceLoadedAndWriteForwardsTheEditedValues() {
+        const onboard = createOnboardFake();
+        const window = createMainWithOnboard(onboard);
+        onboard.reportRateHz = 1000;
+        onboard.dpiStages = [7050, 1600];
+        onboard.defaultStage = 1;
+        onboard.loaded = true;
+        tryCompare(findItem(window, "onboardEditor"), "visible", true);
+        tryVerify(() => allItems(window).filter(item => item.objectName === "onboardDpiField").length === 2);
+        compare(allItems(window).filter(item => item.objectName === "onboardDpiField")[0].value, 7050);
+        findItem(window, "onboardWriteButton").clicked();
+        compare(JSON.stringify(onboard.writeCalls), JSON.stringify([[1000, [7050, 1600], 1]]));
+    }
+
+    function test_onboardRestoreEnabledOnlyWithBackupAndButtonsDisabledWhileBusy() {
+        const onboard = createOnboardFake({loaded: true, dpiStages: [800], reportRateHz: 500});
+        const window = createMainWithOnboard(onboard);
+        const restore = findItem(window, "onboardRestoreButton");
+        compare(restore.enabled, false);
+        onboard.backupExists = true;
+        tryCompare(restore, "enabled", true);
+        restore.clicked();
+        compare(onboard.restoreCalls, 1);
+        onboard.busy = true;
+        tryCompare(restore, "enabled", false);
+        compare(findItem(window, "onboardWriteButton").enabled, false);
+        compare(findItem(window, "onboardReadButton").enabled, false);
+    }
+
+    function test_onboardStatusShowsControllerStatus() {
+        const onboard = createOnboardFake();
+        const window = createMainWithOnboard(onboard);
+        onboard.status = "Falha: em uso por piper";
+        tryCompare(findItem(window, "onboardStatusLabel"), "text", "Falha: em uso por piper");
     }
 
     function test_previewToggleShowsStartText_WhenStopped() {
@@ -441,6 +677,7 @@ TestCase {
         window.show();
         const button = findItem(window, "cameraPreviewToggle");
         tryVerify(() => button.width > 0 && button.visible);
+        reveal(button);
         mouseClick(button);
         tryCompare(preview, "toggleCalls", 1);
     }
@@ -520,6 +757,120 @@ TestCase {
         window.show();
         window.close();
         compare(preview.stopCalls, 1);
+    }
+
+    // INC-013 R9: `--autostart` esconde na abertura (só faz sentido com bandeja).
+    function test_windowStartsHiddenWithAutostart() {
+        const desktop = createDesktopFake({trayAvailable: true, hideOnClose: true, startHidden: true});
+        const window = createMainWithDesktop(desktop);
+        compare(window.visible, false);
+    }
+
+    function test_windowStartsVisibleWithoutAutostart() {
+        const desktop = createDesktopFake({trayAvailable: true, hideOnClose: true});
+        const window = createMainWithDesktop(desktop);
+        compare(window.visible, true);
+    }
+
+    // INC-013 R4/R5: com bandeja, fechar esconde (o fechamento é recusado) e encerra a pré-visualização.
+    function test_closingWindowHidesWhenTrayAvailable() {
+        const preview = createPreviewFake();
+        const desktop = createDesktopFake({trayAvailable: true, hideOnClose: true});
+        const window = createMain(createFake([]), null, null, preview, null, null, null, null, null, null, null, desktop);
+        window.show();
+        compare(window.close(), false);
+        compare(window.visible, false);
+        compare(preview.stopCalls, 1);
+    }
+
+    // INC-013 R4: durante um encerramento pedido, fechar deixa a janela fechar de verdade.
+    function test_closingWindowQuitsWhenQuitting() {
+        const desktop = createDesktopFake({trayAvailable: true, hideOnClose: true, quitting: true});
+        const window = createMainWithDesktop(desktop);
+        window.show();
+        compare(window.close(), true);
+        compare(window.visible, false);
+    }
+
+    // INC-013 R8: a alternância reflete o estado e ligar chama o controlador (que grava o .desktop).
+    // O `Switch` fica no fim da rolagem: rolamos até o fim e clicamos de verdade (o `toggled` só dispara
+    // com interação do usuário; `toggle()` programático não emite o sinal).
+    function test_autostartSwitchOffByDefaultAndTogglingCallsSetAutostart() {
+        const desktop = createDesktopFake();
+        const window = createMainWithDesktop(desktop);
+        window.show();
+        const view = findItem(window, "mainScrollView");
+        view.contentItem.contentY = Math.max(0, view.contentItem.contentHeight - view.height);
+        const toggle = findItem(window, "autostartSwitch");
+        tryVerify(() => toggle.mapToItem(null, 0, 0).y >= 0
+                  && toggle.mapToItem(null, 0, 0).y + toggle.height <= window.height);
+        compare(toggle.checked, false);
+        mouseClick(toggle);
+        tryCompare(desktop, "autostartCalls", [true]);
+        compare(toggle.checked, true);
+    }
+
+    function test_autostartSwitchReflectsEnabledState() {
+        const desktop = createDesktopFake({autostartEnabled: true});
+        const window = createMainWithDesktop(desktop);
+        tryVerify(() => findItem(window, "autostartSwitch").checked === true);
+        compare(desktop.autostartCalls.length, 0);
+    }
+
+    function test_autostartStatusFollowsController() {
+        const desktop = createDesktopFake({status: "Inicialização automática desligada"});
+        const window = createMainWithDesktop(desktop);
+        const label = findItem(window, "autostartStatusLabel");
+        compare(label.text, "Inicialização automática desligada");
+        desktop.status = "não foi possível gravar /home/x/.config/autostart/ghub-linux.desktop";
+        tryCompare(label, "text", "não foi possível gravar /home/x/.config/autostart/ghub-linux.desktop");
+    }
+
+    // R8: abrir a janela só lê o estado; nada é escrito sem ação explícita.
+    function test_autostartWritesNothingOnLoad() {
+        const desktop = createDesktopFake();
+        createMainWithDesktop(desktop);
+        wait(50);
+        compare(desktop.autostartCalls.length, 0);
+        compare(desktop.refreshAutostartCalls, 0);
+    }
+
+    // INC-013 R14: a lista de saúde e as últimas entradas vêm do ViewModel, sem ação do usuário.
+    function test_diagnosticsListsBackendsAndEntries() {
+        const diagnostics = createDiagnosticsFake({
+            backends: [{name: "Bandeja do sistema", available: true, detail: "ícone disponível"},
+                       {name: "ratbagd (G703)", available: false, detail: "serviço ausente"}],
+            entries: [{timestamp: "2026-10-14T10:00:00.000", severity: "aviso", category: "ghub.camera",
+                       message: "falha ao ler"}]});
+        const window = createMainWithDesktopAndDiagnostics(null, diagnostics);
+        tryVerify(() => JSON.stringify(labelTexts(window, "diagnosticsBackendLabel"))
+                  === JSON.stringify(["Bandeja do sistema: disponível · ícone disponível",
+                                      "ratbagd (G703): indisponível · serviço ausente"]));
+        tryVerify(() => labelTexts(window, "diagnosticsEntryLabel").length === 1);
+        verify(labelTexts(window, "diagnosticsEntryLabel")[0].indexOf("falha ao ler") >= 0);
+        verify(labelTexts(window, "diagnosticsEntryLabel")[0].indexOf("aviso") >= 0);
+    }
+
+    // R14: "Atualizar" e "Exportar" só agem por clique; nada é lido nem gravado na abertura.
+    function test_diagnosticsRefreshAndExportOnlyOnClick() {
+        const diagnostics = createDiagnosticsFake();
+        const window = createMainWithDesktopAndDiagnostics(null, diagnostics);
+        compare(diagnostics.refreshCalls, 0);
+        compare(diagnostics.exportCalls, 0);
+        findItem(window, "diagnosticsRefreshButton").clicked();
+        compare(diagnostics.refreshCalls, 1);
+        findItem(window, "diagnosticsExportButton").clicked();
+        compare(diagnostics.exportCalls, 1);
+        compare(diagnostics.refreshCalls, 1);
+    }
+
+    function test_diagnosticsStatusFollowsViewModel() {
+        const diagnostics = createDiagnosticsFake({status: "relatório gravado em /home/x/relatorio.txt"});
+        const window = createMainWithDesktopAndDiagnostics(null, diagnostics);
+        const label = findItem(window, "diagnosticsStatusLabel");
+        compare(label.text, "relatório gravado em /home/x/relatorio.txt");
+        diagnostics.status = "falha ao exportar o relatório: sem espaço";
+        tryCompare(label, "text", "falha ao exportar o relatório: sem espaço");
     }
 
     function test_pointerSectionWarnsAboutRatbagdAndDoesNotReadOnLoad() {
@@ -763,5 +1114,159 @@ TestCase {
         compare(label.text, "Sidetone aplicado: 40");
         headset.status = "Falha: em uso por solaar";
         tryCompare(label, "text", "Falha: em uso por solaar");
+    }
+
+    function test_eqSectionWarnsAndCallsNothingOnLoad() {
+        const eq = createEqualizerFake();
+        const window = createMainWithEqualizer(eq);
+        const notice = findItem(window, "eqNoticeLabel");
+        verify(notice.text.indexOf("Processado no PC pelo PipeWire, não no headset") >= 0, notice.text);
+        verify(notice.text.indexOf("Vale só com o app aberto") >= 0, notice.text);
+        verify(notice.text.indexOf("G733 + EQ") >= 0, notice.text);
+        compare(eq.enableCalls + eq.disableCalls + eq.flatCalls, 0);
+        compare(eq.bandCalls.length, 0);
+    }
+
+    function test_eqHasTenVerticalSlidersWithLabelsAndTheControllerRange() {
+        const eq = createEqualizerFake();
+        const window = createMainWithEqualizer(eq);
+        const sliders = eqSliders(window);
+        compare(sliders.length, 10);
+        sliders.forEach(slider => {
+            compare(slider.from, -12);
+            compare(slider.to, 12);
+            compare(slider.stepSize, 1);
+            compare(slider.orientation, Qt.Vertical);
+        });
+        compare(labelTexts(window, "eqBandLabel"), eq.bandFrequencies);
+    }
+
+    function test_eqSlidersFollowControllerGainsWithoutSendingAnything() {
+        const eq = createEqualizerFake();
+        const window = createMainWithEqualizer(eq);
+        eq.gains = [1, -2, 3, 0, 0, 0, 0, 0, 0, 12];
+        tryCompare(eqSliders(window)[1], "value", -2);
+        compare(eqSliders(window)[9].value, 12);
+        compare(labelTexts(window, "eqBandValueLabel")[2], "+3");
+        compare(labelTexts(window, "eqBandValueLabel")[1], "-2");
+        compare(eq.bandCalls.length, 0);
+    }
+
+    function test_eqMovingASliderSendsThatBandOnly() {
+        const eq = createEqualizerFake();
+        const window = createMainWithEqualizer(eq);
+        const slider = eqSliders(window)[4];
+        slider.value = 7;
+        compare(eq.bandCalls.length, 0); // mudar o valor sem o usuário mover não envia nada
+        slider.moved();
+        compare(eq.bandCalls, [[4, 7]]);
+    }
+
+    function test_eqButtonsForwardToTheController() {
+        const eq = createEqualizerFake();
+        const window = createMainWithEqualizer(eq);
+        findItem(window, "eqEnableButton").clicked();
+        eq.enabled = true;
+        tryVerify(() => findItem(window, "eqDisableButton").enabled);
+        findItem(window, "eqDisableButton").clicked();
+        findItem(window, "eqFlatButton").clicked();
+        compare(eq.enableCalls, 1);
+        compare(eq.disableCalls, 1);
+        compare(eq.flatCalls, 1);
+    }
+
+    function test_eqButtonsFollowEnabledAndBusy() {
+        const eq = createEqualizerFake();
+        const window = createMainWithEqualizer(eq);
+        compare(findItem(window, "eqEnableButton").enabled, true);
+        compare(findItem(window, "eqDisableButton").enabled, false);
+        eq.enabled = true;
+        tryCompare(findItem(window, "eqEnableButton"), "enabled", false);
+        compare(findItem(window, "eqDisableButton").enabled, true);
+        eq.busy = true;
+        tryCompare(findItem(window, "eqDisableButton"), "enabled", false);
+        compare(findItem(window, "eqFlatButton").enabled, false);
+        eq.enabled = false;
+        compare(findItem(window, "eqEnableButton").enabled, false); // ocupado
+    }
+
+    function test_eqStatusFollowsController() {
+        const eq = createEqualizerFake({status: "EQ ligado: saída padrão = G733 + EQ"});
+        const window = createMainWithEqualizer(eq);
+        const label = findItem(window, "eqStatusLabel");
+        compare(label.text, "EQ ligado: saída padrão = G733 + EQ");
+        eq.status = "EQ desligado: G733 removido";
+        tryCompare(label, "text", "EQ desligado: G733 removido");
+    }
+
+    function test_noiseSectionWarnsAndCallsNothingOnLoad() {
+        const noise = createNoiseSuppressionFake();
+        const window = createMainWithNoiseSuppression(noise);
+        const notice = findItem(window, "noiseNoticeLabel");
+        verify(notice.text.indexOf("Processado no PC pelo RNNoise, não no headset") >= 0, notice.text);
+        verify(notice.text.indexOf("não é o Blue VO!CE") >= 0, notice.text);
+        verify(notice.text.indexOf("Vale só com o app aberto") >= 0, notice.text);
+        verify(notice.text.indexOf("G733 + Redução de ruído") >= 0, notice.text);
+        compare(noise.enableCalls + noise.disableCalls, 0);
+        compare(noise.thresholdCalls.length, 0);
+    }
+
+    function test_noiseSliderUsesTheControllerRangeAndFollowsItWithoutSending() {
+        const noise = createNoiseSuppressionFake();
+        const window = createMainWithNoiseSuppression(noise);
+        const slider = findItem(window, "noiseThresholdSlider");
+        compare(slider.from, 0);
+        compare(slider.to, 99);
+        compare(slider.stepSize, 1);
+        compare(slider.orientation, Qt.Horizontal);
+        compare(slider.value, 50);
+        noise.threshold = 80;
+        tryCompare(slider, "value", 80);
+        compare(findItem(window, "noiseThresholdLabel").text, "Sensibilidade: 80 %");
+        compare(noise.thresholdCalls.length, 0);
+    }
+
+    function test_noiseMovingTheSliderSendsTheThreshold() {
+        const noise = createNoiseSuppressionFake();
+        const window = createMainWithNoiseSuppression(noise);
+        const slider = findItem(window, "noiseThresholdSlider");
+        slider.value = 33;
+        compare(noise.thresholdCalls.length, 0); // mudar o valor sem o usuário mover não envia nada
+        slider.moved();
+        compare(noise.thresholdCalls, [33]);
+    }
+
+    function test_noiseButtonsForwardToTheController() {
+        const noise = createNoiseSuppressionFake();
+        const window = createMainWithNoiseSuppression(noise);
+        findItem(window, "noiseEnableButton").clicked();
+        noise.enabled = true;
+        tryVerify(() => findItem(window, "noiseDisableButton").enabled);
+        findItem(window, "noiseDisableButton").clicked();
+        compare(noise.enableCalls, 1);
+        compare(noise.disableCalls, 1);
+    }
+
+    function test_noiseButtonsFollowEnabledAndBusy() {
+        const noise = createNoiseSuppressionFake();
+        const window = createMainWithNoiseSuppression(noise);
+        compare(findItem(window, "noiseEnableButton").enabled, true);
+        compare(findItem(window, "noiseDisableButton").enabled, false);
+        noise.enabled = true;
+        tryCompare(findItem(window, "noiseEnableButton"), "enabled", false);
+        compare(findItem(window, "noiseDisableButton").enabled, true);
+        noise.busy = true;
+        tryCompare(findItem(window, "noiseDisableButton"), "enabled", false);
+        noise.enabled = false;
+        compare(findItem(window, "noiseEnableButton").enabled, false); // ocupado
+    }
+
+    function test_noiseStatusFollowsController() {
+        const noise = createNoiseSuppressionFake({status: "Redução de ruído ligada: entrada padrão = G733 + Redução de ruído"});
+        const window = createMainWithNoiseSuppression(noise);
+        const label = findItem(window, "noiseStatusLabel");
+        compare(label.text, "Redução de ruído ligada: entrada padrão = G733 + Redução de ruído");
+        noise.status = "Redução de ruído desligada: G733 removido";
+        tryCompare(label, "text", "Redução de ruído desligada: G733 removido");
     }
 }

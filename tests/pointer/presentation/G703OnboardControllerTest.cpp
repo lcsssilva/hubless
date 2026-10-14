@@ -1,0 +1,268 @@
+#include "modules/pointer/presentation/G703OnboardController.hpp"
+#include "../application/FakeOnboardMemory.hpp"
+#include "../domain/G703SectorFixtures.hpp"
+#include "fakes/FakeClock.hpp"
+#include "fakes/FakeExternalProcessProbe.hpp"
+
+#include <QSignalSpy>
+#include <QTest>
+#include <QVariantList>
+
+#include <atomic>
+#include <condition_variable>
+#include <memory>
+#include <mutex>
+#include <thread>
+#include <vector>
+
+using ghub::device_access::AccessRegistry;
+using ghub::device_access::ExternalOwner;
+using ghub::pointer::G703OnboardController;
+using ghub::pointer::G703OnboardSettings;
+
+namespace {
+
+using Bytes = std::vector<std::uint8_t>;
+
+// Porta que bloqueia a thread de trabalho até o teste liberar (sem sleep).
+class Gate {
+public:
+    void wait()
+    {
+        entered_.store(true);
+        std::unique_lock lock{mutex_};
+        condition_.wait(lock, [this] { return open_; });
+    }
+
+    void open()
+    {
+        {
+            const std::scoped_lock lock{mutex_};
+            open_ = true;
+        }
+        condition_.notify_all();
+    }
+
+    [[nodiscard]] bool entered() const { return entered_.load(); }
+
+private:
+    std::mutex mutex_;
+    std::condition_variable condition_;
+    bool open_ = false;
+    std::atomic<bool> entered_{false};
+};
+
+Bytes sector0001()
+{
+    return {ghub::pointer::fixtures::kSector0001.begin(), ghub::pointer::fixtures::kSector0001.end()};
+}
+
+QVariantList stages(std::initializer_list<int> values)
+{
+    QVariantList list;
+    for (const int value : values) {
+        list.append(value);
+    }
+    return list;
+}
+
+class G703OnboardControllerTest : public QObject {
+    Q_OBJECT
+
+private slots:
+    // Fixture nova a cada teste: os membros de um QObject de teste sobreviveriam entre os slots.
+    void init() { fixture = std::make_unique<Fixture>(); }
+
+    void cleanup() { fixture.reset(); }
+
+    void construction_CallsNothingAndStartsEmpty()
+    {
+        const G703OnboardController controller{fixture->useCase};
+
+        QCOMPARE(fixture->probe.calls(), 0);
+        QCOMPARE(fixture->connector.state.opens, 0);
+        QVERIFY(!controller.busy());
+        QVERIFY(!controller.loaded());
+        QVERIFY(!controller.backupExists());
+        QVERIFY(controller.status().isEmpty());
+        QCOMPARE(controller.reportRateHz(), 0);
+        QVERIFY(controller.dpiStages().isEmpty());
+    }
+
+    void readFromMouse_PopulatesPropertiesOffTheUiThread()
+    {
+        G703OnboardController controller{fixture->useCase};
+
+        controller.readFromMouse();
+        QVERIFY(controller.busy());
+        QTRY_VERIFY(!controller.busy());
+
+        QVERIFY(controller.loaded());
+        QCOMPARE(controller.reportRateHz(), 1000);
+        QCOMPARE(controller.dpiStages(), stages({7050}));
+        QCOMPARE(controller.defaultStage(), 0);
+        QCOMPARE(controller.activeSector(), 1);
+        QVERIFY(!controller.backupExists());
+        QVERIFY(!controller.status().isEmpty());
+        QCOMPARE(fixture->connector.state.count("write:1"), 0);
+    }
+
+    void readFromMouse_FailureReportsTheReasonAndStaysUnloaded()
+    {
+        fixture->probe.setResult(std::vector<ExternalOwner>{ExternalOwner::Piper});
+        G703OnboardController controller{fixture->useCase};
+
+        controller.readFromMouse();
+        QTRY_VERIFY(!controller.busy());
+
+        QVERIFY(!controller.loaded());
+        QVERIFY(controller.status().contains(QStringLiteral("piper")));
+    }
+
+    void writeToMouse_InvalidDpiDoesNotCallThePortAndExplainsInStatus()
+    {
+        G703OnboardController controller{fixture->useCase};
+
+        controller.writeToMouse(1000, stages({7025}), 0);
+
+        QVERIFY(!controller.busy());
+        QVERIFY(!controller.status().isEmpty());
+        QCOMPARE(fixture->probe.calls(), 0);
+        QCOMPARE(fixture->connector.state.opens, 0);
+    }
+
+    void writeToMouse_ValidWritesAndPublishesWhatWasReadBack()
+    {
+        G703OnboardController controller{fixture->useCase};
+
+        controller.writeToMouse(500, stages({7050, 1600}), 1);
+        QVERIFY(controller.busy());
+        QTRY_VERIFY(!controller.busy());
+
+        QCOMPARE(fixture->connector.state.count("write:1"), 1);
+        QVERIFY(controller.loaded());
+        QCOMPARE(controller.reportRateHz(), 500);
+        QCOMPARE(controller.dpiStages(), stages({7050, 1600}));
+        QCOMPARE(controller.defaultStage(), 1);
+        QVERIFY(controller.backupExists());
+        QVERIFY(!controller.status().isEmpty());
+    }
+
+    // Gravar o que o mouse já tem não escreve nem cria cópia: "Restaurar cópia" não pode ficar habilitado.
+    void writeToMouse_SameSettingsPublishesTheRealBackupStateAndSector()
+    {
+        G703OnboardController controller{fixture->useCase};
+
+        controller.writeToMouse(1000, stages({7050}), 0);
+        QTRY_VERIFY(!controller.busy());
+
+        QCOMPARE(fixture->connector.state.count("write:1"), 0);
+        QVERIFY(controller.loaded());
+        QVERIFY(!controller.backupExists());
+        QCOMPARE(controller.activeSector(), 1);
+    }
+
+    void writeToMouse_FailureReportsTheReason()
+    {
+        fixture->connector.state.mode = 2; // fora do modo onboard: a escrita é recusada
+        G703OnboardController controller{fixture->useCase};
+
+        controller.writeToMouse(500, stages({7050}), 0);
+        QTRY_VERIFY(!controller.busy());
+
+        QCOMPARE(fixture->connector.state.count("write:1"), 0);
+        QVERIFY(!controller.status().isEmpty());
+        QVERIFY(!controller.backupExists());
+    }
+
+    void request_DuringBusyIsRefusedAndNotQueued()
+    {
+        Gate gate;
+        fixture->backup.onSave = [&gate] { gate.wait(); };
+        G703OnboardController controller{fixture->useCase};
+
+        controller.writeToMouse(500, stages({7050, 1600}), 0);
+        QTRY_VERIFY(gate.entered());
+        controller.writeToMouse(250, stages({1000}), 0);
+        QCOMPARE(controller.status(), QStringLiteral("aguarde a operação em andamento"));
+        controller.readFromMouse();
+        controller.restoreBackup();
+        QCOMPARE(controller.status(), QStringLiteral("aguarde a operação em andamento"));
+
+        gate.open();
+        QTRY_VERIFY(!controller.busy());
+        QCOMPARE(fixture->connector.state.count("write:1"), 1); // o segundo pedido não foi enfileirado
+        QCOMPARE(controller.reportRateHz(), 500);
+    }
+
+    void restoreBackup_WithoutBackupReportsIt()
+    {
+        G703OnboardController controller{fixture->useCase};
+
+        controller.restoreBackup();
+        QTRY_VERIFY(!controller.busy());
+
+        QVERIFY(controller.status().contains(QStringLiteral("sem cópia de segurança")));
+        QCOMPARE(fixture->connector.state.count("write:1"), 0);
+    }
+
+    void restoreBackup_RestoresAndPublishesTheOriginal()
+    {
+        G703OnboardController controller{fixture->useCase};
+        controller.writeToMouse(500, stages({7050, 1600}), 0);
+        QTRY_VERIFY(!controller.busy());
+
+        controller.restoreBackup();
+        QTRY_VERIFY(!controller.busy());
+
+        QCOMPARE(fixture->connector.state.sectors.at(1), sector0001());
+        QCOMPARE(controller.reportRateHz(), 1000);
+        QCOMPARE(controller.dpiStages(), stages({7050}));
+        QVERIFY(controller.backupExists());
+    }
+
+    void destructor_WaitsForTheOperationInProgress()
+    {
+        Gate gate;
+        fixture->backup.onSave = [&gate] { gate.wait(); };
+        auto controller = std::make_unique<G703OnboardController>(fixture->useCase);
+        controller->writeToMouse(500, stages({7050, 1600}), 0);
+        QTRY_VERIFY(gate.entered());
+
+        std::thread opener{[&gate] { gate.open(); }};
+        controller.reset(); // só retorna depois que a gravação terminou
+        opener.join();
+
+        QCOMPARE(fixture->connector.state.count("write:1"), 1);
+        QCOMPARE(fixture->connector.state.liveMemories, 0);
+    }
+
+    // NOLINTNEXTLINE(readability-redundant-access-specifiers): `private slots:` acima é `private:` para o clang.
+private:
+    struct Fixture {
+        ghub::fakes::FakeClock clock;
+        AccessRegistry registry{clock};
+        ghub::fakes::FakeExternalProcessProbe probe;
+        ghub::fakes::FakeOnboardMemoryConnector connector;
+        ghub::fakes::FakeOnboardBackupStore backup;
+        G703OnboardSettings useCase{probe, registry, connector, backup};
+
+        Fixture()
+        {
+            probe.setResult(std::vector<ExternalOwner>{});
+            connector.state.sectors[0] = {ghub::pointer::fixtures::kDirectory0000.begin(),
+                                          ghub::pointer::fixtures::kDirectory0000.end()};
+            connector.state.sectors[1] = sector0001();
+            connector.state.sectors[2] = {ghub::pointer::fixtures::kSector0002.begin(),
+                                          ghub::pointer::fixtures::kSector0002.end()};
+        }
+    };
+
+    std::unique_ptr<Fixture> fixture;
+};
+
+} // namespace
+
+// NOLINTNEXTLINE(bugprone-exception-escape): o construtor do teste usa Result::value() em dado constante válido.
+QTEST_GUILESS_MAIN(G703OnboardControllerTest)
+#include "G703OnboardControllerTest.moc"

@@ -68,7 +68,7 @@ TEST_F(G915HidppLightingTest, TraceSinkReachesTheChannelCreatedByOpen)
     addNode("hidraw7", "0003:0000046D:0000C547", "usb-0000:11:00.4-2.4/input2");
     addNode("hidraw9", "0003:0000046D:0000407C", "usb-0000:11:00.4-2.4/input2:1");
     std::ofstream{root / "dev" / "hidraw7"}.close(); // arquivo comum: a leitura da resposta falha ou esgota o prazo
-    std::vector<ghub::lighting::infrastructure::HidppCommandTrace> traces;
+    std::vector<ghub::platform::hidpp::HidppCommandTrace> traces;
     G915HidppLighting lighting{HidppNodeLocator{root / "sys", root / "dev"}, clock,
                                [&traces](const auto& trace) { traces.push_back(trace); }};
     auto session = lighting.open();

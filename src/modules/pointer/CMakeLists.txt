@@ -5,14 +5,18 @@ target_sources(ghub_pointer_domain PRIVATE
     domain/ButtonMapping.cpp
     domain/LedState.cpp
     domain/PointerProfile.cpp
-    domain/PointerConfiguration.cpp)
+    domain/PointerConfiguration.cpp
+    domain/OnboardSector.cpp
+    domain/G703ProfileSettings.cpp
+    domain/OnboardDirectory.cpp)
 target_link_libraries(ghub_pointer_domain PUBLIC ghub_shared_kernel)
 ghub_set_warnings(ghub_pointer_domain)
 
 # Camada de aplicação: casos de uso e ports; sem Qt nem I/O.
 add_library(ghub_pointer_application STATIC)
 target_sources(ghub_pointer_application PRIVATE
-    application/ReadPointerConfiguration.cpp)
+    application/ReadPointerConfiguration.cpp
+    application/G703OnboardSettings.cpp)
 # Outros módulos só pela API pública (ADR-0006).
 target_link_libraries(ghub_pointer_application PUBLIC
     ghub_pointer_domain ghub_device_inventory_api ghub_device_access_api)
@@ -42,8 +46,25 @@ if(GHUB_BUILD_APP)
     add_library(ghub_pointer_presentation STATIC)
     target_sources(ghub_pointer_presentation PRIVATE
         presentation/PointerViewModel.hpp
-        presentation/PointerViewModel.cpp)
+        presentation/PointerViewModel.cpp
+        presentation/G703OnboardController.hpp
+        presentation/G703OnboardController.cpp)
     set_target_properties(ghub_pointer_presentation PROPERTIES AUTOMOC ON)
-    target_link_libraries(ghub_pointer_presentation PUBLIC ghub_pointer_application Qt6::Core)
+    target_link_libraries(ghub_pointer_presentation PUBLIC ghub_pointer_application Qt6::Core
+                                                    PRIVATE Qt6::Concurrent)
     ghub_set_warnings(ghub_pointer_presentation)
 endif()
+
+# Infraestrutura HID++ do G703 (ADR-0017): memória onboard sobre o canal compartilhado; sem Qt.
+add_library(ghub_pointer_hidpp STATIC)
+target_sources(ghub_pointer_hidpp PRIVATE
+    infrastructure/G703OnboardPolicy.hpp
+    infrastructure/G703OnboardPolicy.cpp
+    infrastructure/HidppOnboardMemory.hpp
+    infrastructure/HidppOnboardMemory.cpp
+    infrastructure/G703NodeLocator.hpp
+    infrastructure/G703NodeLocator.cpp
+    infrastructure/FileOnboardBackupStore.hpp
+    infrastructure/FileOnboardBackupStore.cpp)
+target_link_libraries(ghub_pointer_hidpp PUBLIC ghub_pointer_application ghub_platform_hidpp)
+ghub_set_warnings(ghub_pointer_hidpp)

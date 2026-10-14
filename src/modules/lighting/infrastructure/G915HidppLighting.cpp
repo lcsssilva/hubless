@@ -1,8 +1,9 @@
 #include "modules/lighting/infrastructure/G915HidppLighting.hpp"
 
 #include "modules/lighting/infrastructure/G915HidppSession.hpp"
-#include "modules/lighting/infrastructure/HidppChannel.hpp"
-#include "modules/lighting/infrastructure/HidrawDevice.hpp"
+#include "modules/lighting/infrastructure/LightingHidppPolicy.hpp"
+#include "platform/hidpp/HidppChannel.hpp"
+#include "platform/hidpp/HidrawDevice.hpp"
 
 #include <utility>
 
@@ -13,8 +14,11 @@ namespace {
 // Sessão dona do canal: o canal (e o hidraw) fecham depois da sessão que os usa.
 class OwningG915Session final : public application::KeyboardLightingSession {
 public:
-    OwningG915Session(std::unique_ptr<HidppChannel> channel, std::uint8_t deviceIndex)
-        : channel_(std::move(channel)), session_(*channel_, deviceIndex)
+    OwningG915Session(std::unique_ptr<platform::hidpp::HidReportIo> io, const shared_kernel::Clock& clock,
+                      platform::hidpp::HidppTraceSink trace, std::uint8_t deviceIndex)
+        : channel_(std::make_unique<platform::hidpp::HidppChannel>(
+              std::move(io), clock, policy_, platform::hidpp::HidppChannel::defaultTimeout, std::move(trace))),
+          session_(*channel_, deviceIndex)
     {
     }
 
@@ -28,7 +32,8 @@ public:
     shared_kernel::Result<bool> controlLost() override { return session_.controlLost(); }
 
 private:
-    std::unique_ptr<HidppChannel> channel_;
+    LightingHidppPolicy policy_; // antes do canal: a política precisa viver mais que ele
+    std::unique_ptr<platform::hidpp::HidppChannel> channel_;
     G915HidppSession session_;
 };
 
@@ -40,12 +45,11 @@ shared_kernel::Result<std::unique_ptr<application::KeyboardLightingSession>> G91
     if (!node.has_value()) {
         return std::unexpected(node.error());
     }
-    auto device = HidrawDevice::open(node->devicePath);
+    auto device = platform::hidpp::HidrawDevice::open(node->devicePath);
     if (!device.has_value()) {
         return std::unexpected(device.error());
     }
-    auto channel = std::make_unique<HidppChannel>(std::move(*device), *clock_, HidppChannel::defaultTimeout, trace_);
-    return std::make_unique<OwningG915Session>(std::move(channel), node->deviceIndex);
+    return std::make_unique<OwningG915Session>(std::move(*device), *clock_, trace_, node->deviceIndex);
 }
 
 } // namespace ghub::lighting::infrastructure

@@ -36,6 +36,8 @@ def classify(rel: Path) -> tuple[str | None, str | None]:
         return parts[2], parts[3]
     if len(parts) >= 2 and parts[0] == "src" and parts[1] == "shared_kernel":
         return "", "shared_kernel"
+    if len(parts) >= 3 and parts[0] == "src" and parts[1] == "platform":
+        return "", "platform"  # código de plataforma compartilhado, fora dos módulos (ADR-0017)
     return None, None
 
 
@@ -54,11 +56,16 @@ def check_file(root: Path, path: Path) -> list[str]:
         if layer in CORE_LAYERS | {"shared_kernel"} and FORBIDDEN_IN_CORE.match(target):
             found.append(f"{where} — framework/I-O proibido em {layer}")
             continue
+        if target.startswith("platform/") and layer != "infrastructure" and layer != "platform":
+            found.append(f"{where} — só infrastructure (e platform) pode incluir platform/")
+            continue
         module_match = MODULE_INCLUDE_RE.match(target)
         if not module_match:
             continue
         target_module, target_layer = module_match.groups()
-        if layer == "shared_kernel":
+        if layer == "platform":
+            found.append(f"{where} — platform não pode depender de módulos")
+        elif layer == "shared_kernel":
             found.append(f"{where} — shared_kernel não pode depender de módulos")
         elif layer == "domain" and target_module != module:
             found.append(f"{where} — domain não pode incluir nada de outro módulo (nem a api/)")

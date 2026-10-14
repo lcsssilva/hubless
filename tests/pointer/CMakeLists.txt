@@ -3,17 +3,30 @@ add_executable(ghub_pointer_domain_tests
     domain/ButtonMappingTest.cpp
     domain/LedStateTest.cpp
     domain/PointerProfileTest.cpp
-    domain/PointerConfigurationTest.cpp)
+    domain/PointerConfigurationTest.cpp
+    domain/OnboardSectorTest.cpp
+    domain/G703ProfileSettingsTest.cpp
+    domain/OnboardDirectoryTest.cpp)
 target_link_libraries(ghub_pointer_domain_tests PRIVATE ghub_pointer_domain GTest::gtest_main)
 ghub_set_warnings(ghub_pointer_domain_tests)
 gtest_discover_tests(ghub_pointer_domain_tests TEST_PREFIX "pointer.")
 
 add_executable(ghub_pointer_application_tests
-    application/ReadPointerConfigurationTest.cpp)
+    application/ReadPointerConfigurationTest.cpp
+    application/G703OnboardSettingsTest.cpp)
 target_link_libraries(ghub_pointer_application_tests PRIVATE
     ghub_pointer_application ghub_test_fakes GTest::gtest_main)
 ghub_set_warnings(ghub_pointer_application_tests)
 gtest_discover_tests(ghub_pointer_application_tests TEST_PREFIX "pointer.")
+
+add_executable(ghub_pointer_hidpp_tests
+    infrastructure/G703OnboardPolicyTest.cpp
+    infrastructure/HidppOnboardMemoryTest.cpp
+    infrastructure/G703NodeLocatorTest.cpp
+    infrastructure/FileOnboardBackupStoreTest.cpp)
+target_link_libraries(ghub_pointer_hidpp_tests PRIVATE ghub_pointer_hidpp ghub_test_fakes GTest::gtest_main)
+ghub_set_warnings(ghub_pointer_hidpp_tests)
+gtest_discover_tests(ghub_pointer_hidpp_tests TEST_PREFIX "pointer.")
 
 if(GHUB_BUILD_APP)
     find_package(Qt6 6.12 REQUIRED COMPONENTS Core DBus)
@@ -40,7 +53,20 @@ if(GHUB_BUILD_APP)
     ghub_set_warnings(ghub_pointer_viewmodel_tests)
     add_test(NAME pointer.PointerViewModelTest COMMAND ghub_pointer_viewmodel_tests)
     set_tests_properties(pointer.PointerViewModelTest PROPERTIES TIMEOUT 30 ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
+    add_executable(ghub_pointer_onboard_controller_tests presentation/G703OnboardControllerTest.cpp)
+    set_target_properties(ghub_pointer_onboard_controller_tests PROPERTIES AUTOMOC ON)
+    target_link_libraries(ghub_pointer_onboard_controller_tests PRIVATE
+        ghub_pointer_presentation ghub_test_fakes Qt6::Test)
+    ghub_set_warnings(ghub_pointer_onboard_controller_tests)
+    add_test(NAME pointer.G703OnboardControllerTest COMMAND ghub_pointer_onboard_controller_tests)
+    set_tests_properties(pointer.G703OnboardControllerTest PROPERTIES TIMEOUT 30 ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 endif()
 
 add_test(NAME pointer.read_only_source
     COMMAND Python3::Interpreter -I "${CMAKE_CURRENT_SOURCE_DIR}/read_only_source.py" "${PROJECT_SOURCE_DIR}")
+
+# INC-011 R8b: a escrita onboard só é chamada pelo caso de uso e implementada pelo adaptador; a política do G703
+# não é usada pelo lighting.
+add_test(NAME pointer.onboard_write_source
+    COMMAND Python3::Interpreter -I "${CMAKE_CURRENT_SOURCE_DIR}/onboard_write_source.py" "${PROJECT_SOURCE_DIR}")

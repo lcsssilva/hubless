@@ -25,6 +25,10 @@ ApplicationWindow {
     // PointerViewModel (módulo pointer), fornecido pelo composition root: a leitura do G703 só começa por clique.
     required property QtObject pointerViewModel
 
+    // G703OnboardController (módulo pointer), fornecido pelo composition root: ler, gravar e restaurar a memória
+    // onboard do G703 só por clique (ADR-0017).
+    required property QtObject g703OnboardController
+
     // KeyboardLightingController (módulo lighting), fornecido pelo composition root: o modo ao vivo do G915
     // só é ligado por clique.
     required property QtObject keyboardLightingController
@@ -33,19 +37,44 @@ ApplicationWindow {
     // são gravados por clique (ADR-0015).
     required property QtObject headsetSettingsController
 
+    // HostEqualizerController (módulo audio_processing), fornecido pelo composition root: o EQ do G733 roda no PC
+    // (PipeWire) e só é ligado por clique (ADR-0016).
+    required property QtObject hostEqualizerController
+
+    // NoiseSuppressionController (módulo audio_processing), fornecido pelo composition root: a redução de ruído do
+    // microfone do G733 roda no PC (RNNoise via PipeWire) e só é ligada por clique (ADR-0018).
+    required property QtObject noiseSuppressionController
+
+    // DesktopController (src/app), fornecido pelo composition root: política da bandeja, do fechamento e do
+    // autostart (INC-013 R2–R5/R8/R9).
+    required property QtObject desktopController
+
+    // DiagnosticsViewModel (módulo diagnostics), fornecido pelo composition root: saúde dos backends, últimas
+    // entradas e exportação do relatório só por clique (INC-013 R14).
+    required property QtObject diagnosticsViewModel
+
     // Cor usada pelos efeitos de prévia; estado de UI apenas (atualizada ao escolher uma cor).
     property string lightingEffectColor: "#ffffff"
 
     width: 960
     height: 600
-    visible: true
+    // `--autostart` inicia escondido na bandeja; sem bandeja, o controlador não esconde (INC-013 R9).
+    visible: !desktopController.startHidden
     title: qsTr("G HUB para Linux")
 
-    // Encerra o stream da câmera ao fechar a janela.
-    onClosing: window.cameraPreviewViewModel.stop()
+    // Encerra o stream da câmera ao fechar a janela. Com bandeja (hideOnClose) e fora de um encerramento
+    // pedido, recusa o fechamento e esconde a janela: o processo continua e a bandeja reabre (INC-013 R4/R5).
+    onClosing: function(close) {
+        window.cameraPreviewViewModel.stop()
+        if (window.desktopController.hideOnClose && !window.desktopController.quitting) {
+            close.accepted = false
+            window.hide()
+        }
+    }
 
     ScrollView {
         id: scrollView
+        objectName: "mainScrollView"
         anchors.fill: parent
         contentWidth: availableWidth
 
@@ -163,6 +192,164 @@ ApplicationWindow {
                     Label {
                         objectName: "headsetStatusLabel"
                         text: window.headsetSettingsController.status
+                    }
+                }
+            }
+
+            GroupBox {
+                Layout.alignment: Qt.AlignHCenter
+                title: qsTr("Equalizador do G733 (no PC)")
+
+                ColumnLayout {
+                    Label {
+                        objectName: "eqNoticeLabel"
+                        Layout.maximumWidth: window.width - 96
+                        wrapMode: Text.WordWrap
+                        text: qsTr("Processado no PC pelo PipeWire, não no headset. Vale só com o app aberto. Enquanto ligado, a saída padrão passa a ser “G733 + EQ”.")
+                    }
+
+                    // Uma faixa por banda. O QML só mostra a curva e encaminha o movimento do usuário ao controlador.
+                    RowLayout {
+                        spacing: 8
+
+                        Repeater {
+                            model: window.hostEqualizerController.bandFrequencies
+
+                            delegate: ColumnLayout {
+                                id: eqBand
+                                required property int index
+                                required property string modelData
+                                readonly property int gain: window.hostEqualizerController.gains[index] ?? 0
+
+                                Label {
+                                    objectName: "eqBandValueLabel"
+                                    Layout.alignment: Qt.AlignHCenter
+                                    text: (eqBand.gain > 0 ? "+" : "") + eqBand.gain
+                                }
+
+                                Slider {
+                                    id: eqBandSlider
+                                    objectName: "eqBandSlider"
+                                    Layout.alignment: Qt.AlignHCenter
+                                    Layout.preferredHeight: 160
+                                    orientation: Qt.Vertical
+                                    from: window.hostEqualizerController.minimumGain
+                                    to: window.hostEqualizerController.maximumGain
+                                    stepSize: 1
+                                    snapMode: Slider.SnapAlways
+                                    Accessible.name: qsTr("Banda %1 Hz").arg(eqBand.modelData)
+                                    // O valor segue o controlador; o envio acontece só quando o usuário move.
+                                    onMoved: window.hostEqualizerController.setBand(eqBand.index, Math.round(value))
+
+                                    Binding {
+                                        target: eqBandSlider
+                                        property: "value"
+                                        value: eqBand.gain
+                                        when: !eqBandSlider.pressed
+                                        restoreMode: Binding.RestoreNone
+                                    }
+                                }
+
+                                Label {
+                                    objectName: "eqBandLabel"
+                                    Layout.alignment: Qt.AlignHCenter
+                                    text: eqBand.modelData
+                                }
+                            }
+                        }
+                    }
+
+                    RowLayout {
+                        Button {
+                            objectName: "eqEnableButton"
+                            text: qsTr("Ligar EQ")
+                            enabled: !window.hostEqualizerController.busy && !window.hostEqualizerController.enabled
+                            onClicked: window.hostEqualizerController.enable()
+                        }
+
+                        Button {
+                            objectName: "eqDisableButton"
+                            text: qsTr("Desligar EQ")
+                            enabled: !window.hostEqualizerController.busy && window.hostEqualizerController.enabled
+                            onClicked: window.hostEqualizerController.disable()
+                        }
+
+                        Button {
+                            objectName: "eqFlatButton"
+                            text: qsTr("Plano")
+                            enabled: !window.hostEqualizerController.busy
+                            onClicked: window.hostEqualizerController.flat()
+                        }
+                    }
+
+                    Label {
+                        objectName: "eqStatusLabel"
+                        text: window.hostEqualizerController.status
+                    }
+                }
+            }
+
+            GroupBox {
+                Layout.alignment: Qt.AlignHCenter
+                title: qsTr("Redução de ruído do microfone do G733 (no PC)")
+
+                ColumnLayout {
+                    Label {
+                        objectName: "noiseNoticeLabel"
+                        Layout.maximumWidth: window.width - 96
+                        wrapMode: Text.WordWrap
+                        text: qsTr("Processado no PC pelo RNNoise, não no headset; não é o Blue VO!CE. Vale só com o app aberto. Enquanto ligado, a entrada padrão passa a ser “G733 + Redução de ruído”.")
+                    }
+
+                    RowLayout {
+                        Button {
+                            objectName: "noiseEnableButton"
+                            text: qsTr("Ligar")
+                            enabled: !window.noiseSuppressionController.busy && !window.noiseSuppressionController.enabled
+                            onClicked: window.noiseSuppressionController.enable()
+                        }
+
+                        Button {
+                            objectName: "noiseDisableButton"
+                            text: qsTr("Desligar")
+                            enabled: !window.noiseSuppressionController.busy && window.noiseSuppressionController.enabled
+                            onClicked: window.noiseSuppressionController.disable()
+                        }
+                    }
+
+                    // O QML só mostra o limiar e encaminha o movimento do usuário ao controlador.
+                    RowLayout {
+                        Label {
+                            objectName: "noiseThresholdLabel"
+                            text: qsTr("Sensibilidade: %1 %").arg(window.noiseSuppressionController.threshold)
+                        }
+
+                        Slider {
+                            id: noiseSlider
+                            objectName: "noiseThresholdSlider"
+                            Layout.preferredWidth: 280
+                            orientation: Qt.Horizontal
+                            from: window.noiseSuppressionController.minimumThreshold
+                            to: window.noiseSuppressionController.maximumThreshold
+                            stepSize: 1
+                            snapMode: Slider.SnapAlways
+                            Accessible.name: qsTr("Sensibilidade da redução de ruído")
+                            // O valor segue o controlador; o envio acontece só quando o usuário move.
+                            onMoved: window.noiseSuppressionController.setThreshold(Math.round(value))
+
+                            Binding {
+                                target: noiseSlider
+                                property: "value"
+                                value: window.noiseSuppressionController.threshold
+                                when: !noiseSlider.pressed
+                                restoreMode: Binding.RestoreNone
+                            }
+                        }
+                    }
+
+                    Label {
+                        objectName: "noiseStatusLabel"
+                        text: window.noiseSuppressionController.status
                     }
                 }
             }
@@ -399,6 +586,144 @@ ApplicationWindow {
                             }
                         }
                     }
+
+                    // Memória do mouse por HID++ (INC-011): o QML só repassa os valores editados ao controlador,
+                    // que valida e grava; nada é lido nem gravado na abertura.
+                    Label {
+                        font.bold: true
+                        text: qsTr("Memória do mouse (HID++)")
+                    }
+
+                    Label {
+                        objectName: "onboardNoticeLabel"
+                        Layout.maximumWidth: window.width - 96
+                        wrapMode: Text.WordWrap
+                        text: qsTr("Grava na memória do mouse (perfil ativo). Antes da primeira gravação é salva uma cópia do perfil. Feche o Piper e não use o ratbagd ao mesmo tempo: um Commit dele sobrescreve estes valores.")
+                    }
+
+                    Button {
+                        objectName: "onboardReadButton"
+                        text: qsTr("Ler do mouse")
+                        enabled: !window.g703OnboardController.busy
+                        onClicked: window.g703OnboardController.readFromMouse()
+                    }
+
+                    ColumnLayout {
+                        id: onboardEditor
+                        objectName: "onboardEditor"
+                        visible: window.g703OnboardController.loaded
+
+                        // Estado de edição (UI apenas): copiado do controlador quando ele termina uma operação.
+                        property var editStages: []
+                        property int editDefault: 0
+                        property int editRate: 1000
+
+                        function syncFromController() {
+                            if (window.g703OnboardController.busy) {
+                                return;
+                            }
+                            editStages = window.g703OnboardController.dpiStages.slice();
+                            editDefault = window.g703OnboardController.defaultStage;
+                            editRate = window.g703OnboardController.reportRateHz;
+                        }
+
+                        Component.onCompleted: syncFromController()
+
+                        Connections {
+                            target: window.g703OnboardController
+                            function onBusyChanged() { onboardEditor.syncFromController() }
+                            function onReportRateHzChanged() { onboardEditor.syncFromController() }
+                            function onDpiStagesChanged() { onboardEditor.syncFromController() }
+                            function onDefaultStageChanged() { onboardEditor.syncFromController() }
+                        }
+
+                        RowLayout {
+                            Label { text: qsTr("Taxa de relatório (Hz)") }
+                            ComboBox {
+                                objectName: "onboardRateBox"
+                                model: [125, 250, 500, 1000]
+                                currentIndex: Math.max(0, model.indexOf(onboardEditor.editRate))
+                                onActivated: onboardEditor.editRate = model[currentIndex]
+                            }
+                        }
+
+                        Repeater {
+                            model: onboardEditor.editStages.length
+
+                            delegate: RowLayout {
+                                id: stageRow
+                                required property int index
+
+                                Label { text: qsTr("Estágio ") + (stageRow.index + 1) }
+                                SpinBox {
+                                    objectName: "onboardDpiField"
+                                    from: 100
+                                    to: 25500
+                                    stepSize: 50
+                                    editable: true
+                                    value: onboardEditor.editStages[stageRow.index]
+                                    onValueModified: {
+                                        const next = onboardEditor.editStages.slice();
+                                        next[stageRow.index] = value;
+                                        onboardEditor.editStages = next;
+                                    }
+                                }
+                                RadioButton {
+                                    objectName: "onboardDefaultRadio"
+                                    text: qsTr("padrão")
+                                    checked: onboardEditor.editDefault === stageRow.index
+                                    onClicked: onboardEditor.editDefault = stageRow.index
+                                }
+                            }
+                        }
+
+                        RowLayout {
+                            Button {
+                                objectName: "onboardAddStageButton"
+                                text: qsTr("+ estágio")
+                                enabled: onboardEditor.editStages.length < 5
+                                onClicked: {
+                                    const next = onboardEditor.editStages.slice();
+                                    next.push(next[next.length - 1]);
+                                    onboardEditor.editStages = next;
+                                }
+                            }
+                            Button {
+                                objectName: "onboardRemoveStageButton"
+                                text: qsTr("− estágio")
+                                enabled: onboardEditor.editStages.length > 1
+                                onClicked: {
+                                    const next = onboardEditor.editStages.slice();
+                                    next.pop();
+                                    onboardEditor.editStages = next;
+                                    onboardEditor.editDefault = Math.min(onboardEditor.editDefault, next.length - 1);
+                                }
+                            }
+                        }
+
+                        RowLayout {
+                            Button {
+                                objectName: "onboardWriteButton"
+                                text: qsTr("Gravar no mouse")
+                                enabled: !window.g703OnboardController.busy
+                                onClicked: window.g703OnboardController.writeToMouse(
+                                    onboardEditor.editRate, onboardEditor.editStages, onboardEditor.editDefault)
+                            }
+                            Button {
+                                objectName: "onboardRestoreButton"
+                                text: qsTr("Restaurar cópia")
+                                enabled: !window.g703OnboardController.busy && window.g703OnboardController.backupExists
+                                onClicked: window.g703OnboardController.restoreBackup()
+                            }
+                        }
+                    }
+
+                    Label {
+                        objectName: "onboardStatusLabel"
+                        Layout.maximumWidth: window.width - 96
+                        wrapMode: Text.WordWrap
+                        text: window.g703OnboardController.status
+                    }
                 }
             }
             GroupBox {
@@ -493,6 +818,100 @@ ApplicationWindow {
                     Label {
                         objectName: "lightingStatusLabel"
                         text: window.keyboardLightingController.status
+                    }
+                }
+            }
+
+            GroupBox {
+                Layout.alignment: Qt.AlignHCenter
+                title: qsTr("Inicialização automática")
+
+                ColumnLayout {
+                    Label {
+                        objectName: "autostartNoticeLabel"
+                        Layout.maximumWidth: window.width - 96
+                        wrapMode: Text.WordWrap
+                        text: qsTr("Liga o aplicativo junto com a sessão (arquivo XDG em ~/.config/autostart). Nada é gravado até você ligar esta opção; desligar remove o arquivo.")
+                    }
+
+                    // O estado vem do controlador; ligar/desligar só é enviado quando o valor diverge (evita
+                    // laço entre a alternância e a releitura do arquivo). INC-013 R8.
+                    Switch {
+                        id: autostartSwitch
+                        objectName: "autostartSwitch"
+                        text: qsTr("Iniciar com a sessão")
+                        checked: window.desktopController.autostartEnabled
+                        onToggled: {
+                            if (checked !== window.desktopController.autostartEnabled)
+                                window.desktopController.setAutostart(checked)
+                        }
+                    }
+
+                    Label {
+                        objectName: "autostartStatusLabel"
+                        Layout.maximumWidth: window.width - 96
+                        wrapMode: Text.WordWrap
+                        text: window.desktopController.status
+                    }
+                }
+            }
+
+            GroupBox {
+                Layout.alignment: Qt.AlignHCenter
+                title: qsTr("Diagnóstico")
+
+                ColumnLayout {
+                    Label {
+                        objectName: "diagnosticsNoticeLabel"
+                        Layout.maximumWidth: window.width - 96
+                        wrapMode: Text.WordWrap
+                        text: qsTr("Últimas mensagens do aplicativo e saúde dos componentes. Ficam só na memória: o relatório só é gravado quando você clica em exportar.")
+                    }
+
+                    // "Atualizar" e "Exportar" só agem por clique; nada é lido nem gravado automaticamente (R14).
+                    Button {
+                        objectName: "diagnosticsRefreshButton"
+                        text: qsTr("Atualizar")
+                        onClicked: window.diagnosticsViewModel.refresh()
+                    }
+
+                    Repeater {
+                        model: window.diagnosticsViewModel.backends
+
+                        delegate: Label {
+                            required property var modelData
+                            objectName: "diagnosticsBackendLabel"
+                            Layout.maximumWidth: window.width - 96
+                            wrapMode: Text.WordWrap
+                            text: modelData.name + ": "
+                                + (modelData.available ? qsTr("disponível") : qsTr("indisponível"))
+                                + " · " + modelData.detail
+                        }
+                    }
+
+                    Button {
+                        objectName: "diagnosticsExportButton"
+                        text: qsTr("Exportar relatório")
+                        onClicked: window.diagnosticsViewModel.exportReport()
+                    }
+
+                    Label {
+                        objectName: "diagnosticsStatusLabel"
+                        Layout.maximumWidth: window.width - 96
+                        wrapMode: Text.WordWrap
+                        text: window.diagnosticsViewModel.status
+                    }
+
+                    Repeater {
+                        model: window.diagnosticsViewModel.entries
+
+                        delegate: Label {
+                            required property var modelData
+                            objectName: "diagnosticsEntryLabel"
+                            Layout.maximumWidth: window.width - 96
+                            wrapMode: Text.WordWrap
+                            text: modelData.severity + " · " + modelData.category + ": " + modelData.message
+                        }
                     }
                 }
             }

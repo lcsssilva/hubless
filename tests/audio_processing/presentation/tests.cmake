@@ -1,0 +1,18 @@
+find_package(Qt6 6.12 REQUIRED COMPONENTS Test)
+add_executable(ghub_audio_processing_controller_tests
+    ${CMAKE_CURRENT_LIST_DIR}/HostEqualizerControllerTest.cpp)
+set_target_properties(ghub_audio_processing_controller_tests PROPERTIES AUTOMOC ON)
+target_link_libraries(ghub_audio_processing_controller_tests PRIVATE
+    ghub_audio_processing_presentation ghub_test_fakes Qt6::Test)
+ghub_set_warnings(ghub_audio_processing_controller_tests)
+add_test(NAME audio_processing.HostEqualizerControllerTest COMMAND ghub_audio_processing_controller_tests)
+set_tests_properties(audio_processing.HostEqualizerControllerTest PROPERTIES TIMEOUT 30)
+
+add_executable(ghub_audio_processing_noise_controller_tests
+    ${CMAKE_CURRENT_LIST_DIR}/NoiseSuppressionControllerTest.cpp)
+set_target_properties(ghub_audio_processing_noise_controller_tests PROPERTIES AUTOMOC ON)
+target_link_libraries(ghub_audio_processing_noise_controller_tests PRIVATE
+    ghub_audio_processing_presentation ghub_test_fakes Qt6::Test)
+ghub_set_warnings(ghub_audio_processing_noise_controller_tests)
+add_test(NAME audio_processing.NoiseSuppressionControllerTest COMMAND ghub_audio_processing_noise_controller_tests)
+set_tests_properties(audio_processing.NoiseSuppressionControllerTest PROPERTIES TIMEOUT 30)

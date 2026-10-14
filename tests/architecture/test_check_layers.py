@@ -75,6 +75,25 @@ class CheckLayersTest(unittest.TestCase):
     def test_rejects_api_depending_on_infrastructure(self) -> None:
         self.assertEqual(len(self.violations({"src/modules/a/api/A.hpp": '#include "modules/a/infrastructure/Z.hpp"\n'})), 1)
 
+    def test_rejects_non_infrastructure_layers_including_platform(self) -> None:
+        for layer in ("domain", "application", "api", "presentation"):
+            with self.subTest(layer=layer):
+                found = self.violations({f"src/modules/a/{layer}/X.hpp": '#include "platform/hidpp/HidppChannel.hpp"\n'})
+                self.assertEqual(len(found), 1, found)
+
+    def test_accepts_infrastructure_and_platform_including_platform_and_kernel(self) -> None:
+        self.assertEqual(self.violations({
+            "src/modules/a/infrastructure/Z.cpp": '#include "platform/hidpp/HidppChannel.hpp"\n',
+            "src/platform/hidpp/HidppChannel.hpp": '#include "shared_kernel/Clock.hpp"\n#include "platform/hidpp/HidppError.hpp"\n',
+        }), [])
+
+    def test_rejects_platform_including_modules(self) -> None:
+        found = self.violations({"src/platform/hidpp/X.hpp": '#include "modules/a/api/A.hpp"\n'})
+        self.assertEqual(len(found), 1, found)
+
+    def test_platform_may_include_system_headers(self) -> None:
+        self.assertEqual(self.violations({"src/platform/hidpp/X.hpp": "#include <sys/ioctl.h>\n"}), [])
+
     def test_ignores_commented_include(self) -> None:
         self.assertEqual(self.violations({"src/modules/a/domain/X.hpp": "// #include <QString>\n"}), [])
 

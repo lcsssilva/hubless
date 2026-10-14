@@ -1,17 +1,13 @@
 # INC-008 parte A (ADR-0013): transporte HID++ 2.0 sobre hidraw. Só infraestrutura; sem Qt, sem hidapi.
 add_library(ghub_lighting_infrastructure STATIC)
 target_sources(ghub_lighting_infrastructure PRIVATE
-    infrastructure/HidrawDevice.cpp
-    infrastructure/HidppCommandPolicy.cpp
-    infrastructure/HidppFeatureMap.cpp
-    infrastructure/HidppChannel.cpp
-    infrastructure/HidppCapabilities.cpp
+    infrastructure/LightingHidppPolicy.cpp
     infrastructure/HidppNodeLocator.cpp
     infrastructure/G915PerKeyFrames.cpp
     infrastructure/G915EffectFrames.cpp
     infrastructure/G915HidppSession.cpp
     infrastructure/G915HidppLighting.cpp)
-target_link_libraries(ghub_lighting_infrastructure PUBLIC ghub_shared_kernel ghub_lighting_application)
+target_link_libraries(ghub_lighting_infrastructure PUBLIC ghub_shared_kernel ghub_platform_hidpp ghub_lighting_application)
 ghub_set_warnings(ghub_lighting_infrastructure)
 
 # INC-008 R1 (ADR-0013 decisão 2): domínio de iluminação. Só STL + shared_kernel; sem Qt, sem I/O.

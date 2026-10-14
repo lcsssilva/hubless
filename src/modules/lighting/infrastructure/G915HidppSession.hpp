@@ -1,7 +1,7 @@
 #pragma once
 
 #include "modules/lighting/application/KeyboardLighting.hpp"
-#include "modules/lighting/infrastructure/HidppChannel.hpp"
+#include "platform/hidpp/HidppChannel.hpp"
 
 #include <array>
 #include <cstdint>
@@ -16,7 +16,10 @@ namespace ghub::lighting::infrastructure {
 // após endLive). `channel` precisa sobreviver à sessão. Não é segura para threads.
 class G915HidppSession final : public application::KeyboardLightingSession {
 public:
-    G915HidppSession(HidppChannel& channel, std::uint8_t deviceIndex) : channel_(&channel), deviceIndex_(deviceIndex) {}
+    G915HidppSession(platform::hidpp::HidppChannel& channel, std::uint8_t deviceIndex)
+        : channel_(&channel), deviceIndex_(deviceIndex)
+    {
+    }
     // O observador instalado no canal guarda `this`: a sessão não se move nem se copia.
     G915HidppSession(const G915HidppSession&) = delete;
     G915HidppSession& operator=(const G915HidppSession&) = delete;
@@ -47,8 +50,8 @@ private:
     // Observador dos relatórios que não são respostas (R15): marca a perda do controle.
     void onNotification(std::span<const std::uint8_t> report) noexcept;
 
-    HidppChannel* channel_;                 // não nulo
-    std::optional<std::uint8_t> restIndex_; // índice da 0x1D4B (evento 0 = reconexão); ausente = critério (b) off
+    platform::hidpp::HidppChannel* channel_; // não nulo
+    std::optional<std::uint8_t> restIndex_;  // índice da 0x1D4B (evento 0 = reconexão); ausente = critério (b) off
     bool controlLost_ = false;
     std::uint8_t deviceIndex_;
     std::array<std::optional<ClusterEffects>, 2> clusters_; // índice = cluster (0 logo, 1 teclado)

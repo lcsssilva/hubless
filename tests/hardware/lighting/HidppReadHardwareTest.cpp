@@ -5,10 +5,11 @@
 // O diagnóstico dos perfis onboard do G915 exige GHUB_HW_TESTS=1 e GHUB_HW_LIGHTING_ONBOARD=1.
 #include "modules/device_access/infrastructure/ProcExternalProcessProbe.hpp"
 #include "modules/device_access/infrastructure/SteadyClock.hpp"
-#include "modules/lighting/infrastructure/HidppCapabilities.hpp"
-#include "modules/lighting/infrastructure/HidppChannel.hpp"
 #include "modules/lighting/infrastructure/HidppNodeLocator.hpp"
-#include "modules/lighting/infrastructure/HidrawDevice.hpp"
+#include "modules/lighting/infrastructure/LightingHidppPolicy.hpp"
+#include "platform/hidpp/HidppCapabilities.hpp"
+#include "platform/hidpp/HidppChannel.hpp"
+#include "platform/hidpp/HidrawDevice.hpp"
 
 #include <gtest/gtest.h>
 
@@ -65,11 +66,12 @@ bool anotherOwnerRunning(std::string& which)
 void readNode(const char* label, const HidppNode& node)
 {
     std::cout << "== " << label << " dev=" << static_cast<int>(node.deviceIndex) << "\n";
-    auto device = HidrawDevice::open(node.devicePath);
+    auto device = ghub::platform::hidpp::HidrawDevice::open(node.devicePath);
     ASSERT_TRUE(device.has_value()) << device.error().detail;
     ghub::device_access::SteadyClock clock;
-    HidppChannel channel{std::move(*device), clock};
-    HidppCapabilities capabilities{channel};
+    const ghub::lighting::infrastructure::LightingHidppPolicy policy;
+    ghub::platform::hidpp::HidppChannel channel{std::move(*device), clock, policy};
+    ghub::platform::hidpp::HidppCapabilities capabilities{channel};
 
     const auto features = capabilities.enumerateFeatures(node.deviceIndex);
     ASSERT_TRUE(features.has_value()) << "erro " << static_cast<int>(features.error().kind) << " código "
@@ -82,8 +84,8 @@ void readNode(const char* label, const HidppNode& node)
     // GetInfo como o Solaar 1.1.20 (hidpp20.py:1330-1401): 0x8071 fn0 com FF FF 00 (dispositivo), [zona FF 00]
     // e [zona efeito 00]; 0x8070 fn0 sem parâmetros, fn1 [zona FF 00], fn2 [zona efeito 00]. Só leituras.
     // Erros do dispositivo são impressos, não interrompem: o objetivo é registrar o que cada um responde.
-    const auto query = [&](std::uint16_t id, std::uint8_t function,
-                           std::initializer_list<std::uint8_t> params) -> std::optional<HidppChannel::Response> {
+    const auto query = [&](std::uint16_t id, std::uint8_t function, std::initializer_list<std::uint8_t> params)
+        -> std::optional<ghub::platform::hidpp::HidppChannel::Response> {
         const std::vector<std::uint8_t> bytes{params};
         const auto reply = channel.call(node.deviceIndex, id, function, bytes);
         std::cout << "  0x" << std::hex << id << " fn" << std::dec << static_cast<int>(function) << " ["
@@ -97,31 +99,35 @@ void readNode(const char* label, const HidppNode& node)
         return *reply;
     };
     constexpr int maxEntries = 16;
-    if (const auto deviceInfo = query(HidppCapabilities::featureEffects, 0, {0xFF, 0xFF, 0x00})) {
+    if (const auto deviceInfo =
+            query(ghub::platform::hidpp::HidppCapabilities::featureEffects, 0, {0xFF, 0xFF, 0x00})) {
         const int zones = std::min<int>((*deviceInfo)[2], maxEntries);
         for (int zone = 0; zone < zones; ++zone) {
             const auto z = static_cast<std::uint8_t>(zone);
-            if (const auto info = query(HidppCapabilities::featureEffects, 0, {z, 0xFF, 0x00})) {
+            if (const auto info = query(ghub::platform::hidpp::HidppCapabilities::featureEffects, 0, {z, 0xFF, 0x00})) {
                 const int effects = std::min<int>((*info)[4], maxEntries);
                 for (int effect = 0; effect < effects; ++effect) {
-                    query(HidppCapabilities::featureEffects, 0, {z, static_cast<std::uint8_t>(effect), 0x00});
+                    query(ghub::platform::hidpp::HidppCapabilities::featureEffects, 0,
+                          {z, static_cast<std::uint8_t>(effect), 0x00});
                 }
             }
         }
     }
-    if (const auto deviceInfo = query(HidppCapabilities::featureColorLed, 0, {})) {
+    if (const auto deviceInfo = query(ghub::platform::hidpp::HidppCapabilities::featureColorLed, 0, {})) {
         const int zones = std::min<int>((*deviceInfo)[0], maxEntries);
         for (int zone = 0; zone < zones; ++zone) {
             const auto z = static_cast<std::uint8_t>(zone);
-            if (const auto info = query(HidppCapabilities::featureColorLed, 1, {z, 0xFF, 0x00})) {
+            if (const auto info =
+                    query(ghub::platform::hidpp::HidppCapabilities::featureColorLed, 1, {z, 0xFF, 0x00})) {
                 const int effects = std::min<int>((*info)[3], maxEntries);
                 for (int effect = 0; effect < effects; ++effect) {
-                    query(HidppCapabilities::featureColorLed, 2, {z, static_cast<std::uint8_t>(effect), 0x00});
+                    query(ghub::platform::hidpp::HidppCapabilities::featureColorLed, 2,
+                          {z, static_cast<std::uint8_t>(effect), 0x00});
                 }
             }
         }
     }
-    query(HidppCapabilities::featurePerKey, 0, {});
+    query(ghub::platform::hidpp::HidppCapabilities::featurePerKey, 0, {});
 }
 
 // CRC-CCITT do libratbag: src/hidpp-generic.c:380-405@8235b5bb (hidpp_crc_ccitt): semente 0xFFFF; por byte:
@@ -155,7 +161,7 @@ unsigned be16(const std::uint8_t* p)
     return (static_cast<unsigned>(p[0]) << 8U) | p[1];
 }
 
-void printError(const HidppError& error)
+void printError(const ghub::platform::hidpp::HidppError& error)
 {
     std::cout << "erro tipo " << static_cast<int>(error.kind) << " código " << static_cast<int>(error.code) << " ("
               << error.detail << ")\n";
@@ -163,8 +169,8 @@ void printError(const HidppError& error)
 
 // Lê um setor inteiro (libratbag hidpp20.c:1900-1915): passos de 16 bytes; o último trecho curto relê de
 // sector_size-16. Em erro do dispositivo imprime e devolve nullopt (sem retentativa).
-std::optional<std::vector<std::uint8_t>> readSector(HidppChannel& channel, std::uint8_t deviceIndex, unsigned sector,
-                                                    unsigned sectorSize)
+std::optional<std::vector<std::uint8_t>> readSector(ghub::platform::hidpp::HidppChannel& channel,
+                                                    std::uint8_t deviceIndex, unsigned sector, unsigned sectorSize)
 {
     std::vector<std::uint8_t> data(sectorSize, 0);
     for (unsigned offset = 0; offset < sectorSize; offset += 16) {
@@ -236,10 +242,11 @@ TEST(LightingHidppHardware, ReadsOnboardProfilesOfG915)
     const HidppNodeLocator locator;
     const auto g915 = locator.locateG915();
     ASSERT_TRUE(g915.has_value()) << g915.error().detail;
-    auto device = HidrawDevice::open(g915->devicePath);
+    auto device = ghub::platform::hidpp::HidrawDevice::open(g915->devicePath);
     ASSERT_TRUE(device.has_value()) << device.error().detail;
     ghub::device_access::SteadyClock clock;
-    HidppChannel channel{std::move(*device), clock};
+    const ghub::lighting::infrastructure::LightingHidppPolicy policy;
+    ghub::platform::hidpp::HidppChannel channel{std::move(*device), clock, policy};
     const std::uint8_t index = g915->deviceIndex;
 
     const auto descr = channel.call(index, 0x8100, 0);

@@ -2,7 +2,7 @@
 """Garantia do módulo lighting (ADR-0013 decisão 7, INC-008 R3).
 
 Falha se algum arquivo de src/modules/lighting/ montar a feature 0x4522 (handshake de semântica desconhecida)
-fora de HidppCommandPolicy.cpp, onde ela só pode constar na lista de bloqueio.
+fora de LightingHidppPolicy.cpp, onde ela só pode constar na lista de bloqueio.
 
 Uso: python3 -I no_forbidden_feature_source.py <raiz-do-repositório>
 """
@@ -13,7 +13,7 @@ import sys
 from pathlib import Path
 
 FORBIDDEN = re.compile(r"0[xX]4522|0[xX]45\s*,\s*0[xX]22|0[xX]22\s*,\s*0[xX]45")
-ALLOWED_FILE = "HidppCommandPolicy.cpp"
+ALLOWED_FILE = "LightingHidppPolicy.cpp"
 
 
 def check(root: Path) -> list[str]:

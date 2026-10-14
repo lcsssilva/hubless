@@ -12,3 +12,17 @@ target_link_libraries(ghub_app_termination_signals_tests PRIVATE ghub_app_suppor
 ghub_set_warnings(ghub_app_termination_signals_tests)
 add_test(NAME app.TerminationSignalsTest COMMAND ghub_app_termination_signals_tests)
 set_tests_properties(app.TerminationSignalsTest PROPERTIES TIMEOUT 30)
+
+add_executable(ghub_app_autostart_tests AutostartTest.cpp)
+set_target_properties(ghub_app_autostart_tests PROPERTIES AUTOMOC ON)
+target_link_libraries(ghub_app_autostart_tests PRIVATE ghub_app_support Qt6::Test)
+ghub_set_warnings(ghub_app_autostart_tests)
+add_test(NAME app.AutostartTest COMMAND ghub_app_autostart_tests)
+set_tests_properties(app.AutostartTest PROPERTIES TIMEOUT 30)
+
+add_executable(ghub_app_desktop_controller_tests DesktopControllerTest.cpp)
+set_target_properties(ghub_app_desktop_controller_tests PROPERTIES AUTOMOC ON)
+target_link_libraries(ghub_app_desktop_controller_tests PRIVATE ghub_app_support Qt6::Test)
+ghub_set_warnings(ghub_app_desktop_controller_tests)
+add_test(NAME app.DesktopControllerTest COMMAND ghub_app_desktop_controller_tests)
+set_tests_properties(app.DesktopControllerTest PROPERTIES TIMEOUT 30)

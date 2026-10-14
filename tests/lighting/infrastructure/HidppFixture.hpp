@@ -2,8 +2,8 @@
 
 #include "fakes/FakeClock.hpp"
 #include "fakes/FakeHidReportIo.hpp"
-#include "modules/lighting/infrastructure/HidppChannel.hpp"
-#include "modules/lighting/infrastructure/HidppCommandPolicy.hpp"
+#include "modules/lighting/infrastructure/LightingHidppPolicy.hpp"
+#include "platform/hidpp/HidppChannel.hpp"
 
 #include <gtest/gtest.h>
 
@@ -12,6 +12,8 @@
 #include <memory>
 #include <optional>
 #include <vector>
+
+namespace hidpp = ghub::platform::hidpp;
 
 namespace ghub::lighting::testing {
 
@@ -43,7 +45,7 @@ protected:
         auto fake = std::make_unique<fakes::FakeHidReportIo>(&clock);
         io = fake.get();
         io->setResponder([this](const Frame& frame) { return respond(frame); });
-        channel.emplace(std::move(fake), clock);
+        channel.emplace(std::move(fake), clock, policy);
     }
 
     void TearDown() override
@@ -58,7 +60,7 @@ protected:
                 ASSERT_LE(index, features.size()) << "índice de feature desconhecido do dispositivo simulado";
                 featureId = features[index - 1U];
             }
-            EXPECT_TRUE(infrastructure::HidppCommandPolicy::isAllowed(featureId, function))
+            EXPECT_TRUE(infrastructure::LightingHidppPolicy::isAllowed(featureId, function))
                 << "quadro fora da política: feature " << std::hex << featureId << " fn " << std::dec
                 << static_cast<int>(function);
         }
@@ -99,8 +101,9 @@ protected:
     }
 
     fakes::FakeClock clock;
+    infrastructure::LightingHidppPolicy policy;
     fakes::FakeHidReportIo* io = nullptr;
-    std::optional<infrastructure::HidppChannel> channel;
+    std::optional<hidpp::HidppChannel> channel;
     // Ordem do dispositivo: índice = posição + 1. 0x8081 e 0x8070 existem; 0x8071 também.
     std::vector<std::uint16_t> features{0x1004, 0x8081, 0x0001, 0x8071, 0x8070};
 };

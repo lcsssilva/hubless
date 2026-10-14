@@ -57,3 +57,15 @@ target_link_libraries(ghub_hardware_lighting_tests PRIVATE
 ghub_set_warnings(ghub_hardware_lighting_tests)
 # Sem GHUB_HW_TESTS=1 e GHUB_HW_LIGHTING_READ=1 o teste só marca SKIP. Com elas: leitura HID++ (sem escrita de estado).
 gtest_discover_tests(ghub_hardware_lighting_tests TEST_PREFIX "hardware.lighting." PROPERTIES LABELS hardware TIMEOUT 60)
+
+# INC-011 fase A: leitura onboard do G703 pelo canal HID++ compartilhado e a G703OnboardPolicy (só fn0/2/4/5 da 0x8100). Sem
+# GHUB_HW_TESTS=1 e GHUB_HW_POINTER_ONBOARD=1 só marca SKIP.
+add_executable(ghub_hardware_pointer_onboard_tests
+    pointer/G703OnboardReadHardwareTest.cpp
+    # INC-011 (ADR-0017): escrita em etapas A/B/C, cada uma só com GHUB_HW_POINTER_WRITE=<etapa>.
+    pointer/G703OnboardWriteHardwareTest.cpp)
+target_compile_definitions(ghub_hardware_pointer_onboard_tests PRIVATE GHUB_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+target_link_libraries(ghub_hardware_pointer_onboard_tests PRIVATE
+    ghub_pointer_hidpp ghub_device_access_infrastructure GTest::gtest_main)
+ghub_set_warnings(ghub_hardware_pointer_onboard_tests)
+gtest_discover_tests(ghub_hardware_pointer_onboard_tests TEST_PREFIX "hardware.pointer_onboard." PROPERTIES LABELS hardware TIMEOUT 60)

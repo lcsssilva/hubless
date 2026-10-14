@@ -57,7 +57,7 @@ DiscoveredPointer discovered(UsbId id, const std::string& name)
 
 class ReadPointerConfigurationTest : public ::testing::Test {
 protected:
-    PhysicalInterfaceId interfaceId = PhysicalInterfaceId::create("ratbag:046d:4086").value();
+    PhysicalInterfaceId interfaceId = PhysicalInterfaceId::create("hidpp:046d:c539").value();
 
     PointerStatus run() { return ReadPointerConfiguration{backend, probe, registry, interfaceId}.execute(); }
 

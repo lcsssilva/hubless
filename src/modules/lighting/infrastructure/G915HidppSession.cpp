@@ -45,21 +45,21 @@ std::uint16_t bigEndian(std::uint8_t high, std::uint8_t low) noexcept
     return static_cast<std::uint16_t>((static_cast<unsigned>(high) * 256U) + low);
 }
 
-shared_kernel::DomainError toDomainError(const HidppError& error)
+shared_kernel::DomainError toDomainError(const platform::hidpp::HidppError& error)
 {
     switch (error.kind) {
-    case HidppErrorKind::PolicyDenied:
-    case HidppErrorKind::InvalidArgument:
+    case platform::hidpp::HidppErrorKind::PolicyDenied:
+    case platform::hidpp::HidppErrorKind::InvalidArgument:
         return {.code = shared_kernel::ErrorCode::InvalidArgument, .detail = error.detail};
-    case HidppErrorKind::DeviceErrorHidpp20:
-    case HidppErrorKind::DeviceErrorHidpp10:
+    case platform::hidpp::HidppErrorKind::DeviceErrorHidpp20:
+    case platform::hidpp::HidppErrorKind::DeviceErrorHidpp10:
         return {
             .code = shared_kernel::ErrorCode::BackendUnavailable,
             .detail = error.detail + " (código " + std::to_string(error.code) + ")",
         };
-    case HidppErrorKind::FeatureNotPresent:
-    case HidppErrorKind::Timeout:
-    case HidppErrorKind::Io:
+    case platform::hidpp::HidppErrorKind::FeatureNotPresent:
+    case platform::hidpp::HidppErrorKind::Timeout:
+    case platform::hidpp::HidppErrorKind::Io:
         break;
     }
     return {.code = shared_kernel::ErrorCode::BackendUnavailable, .detail = error.detail};
