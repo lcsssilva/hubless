@@ -140,6 +140,35 @@ TestCase {
         }
     }
 
+    // Controlador de perfis falso: registra os pedidos; nada chega à câmera, ao EQ nem ao arquivo.
+    Component {
+        id: fakeProfilesComponent
+        QtObject {
+            property bool busy: false
+            property var profileNames: []
+            property string status: ""
+            property var report: []
+            property bool loadFailed: false
+            property bool automaticSwitching: false
+            property string switchingStatus: "desligada"
+            property string lastApplication: ""
+            property var profileApplications: ({})
+            property var saveCalls: []
+            property var applyCalls: []
+            property var removeCalls: []
+            property var switchingCalls: []
+            property var assignCalls: []
+            property var unassignCalls: []
+            function setAutomaticSwitching(enabled) { switchingCalls = switchingCalls.concat([enabled]) }
+            function assignLastApplication(name) { assignCalls = assignCalls.concat([name]) }
+            function unassignApplication(application) { unassignCalls = unassignCalls.concat([application]) }
+            function exists(name) { return profileNames.indexOf(name) >= 0 }
+            function saveCurrent(name, replace) { saveCalls = saveCalls.concat([[name, replace]]) }
+            function apply(name) { applyCalls = applyCalls.concat([name]) }
+            function remove(name) { removeCalls = removeCalls.concat([name]) }
+        }
+    }
+
     // Controlador da memória onboard do G703 falso: registra os pedidos; nada chega ao mouse.
     Component {
         id: fakeOnboardComponent
@@ -218,7 +247,8 @@ TestCase {
 
     // Carrega o Main.qml real do código-fonte (caminho relativo a este arquivo).
     function createMain(fake, inventoryFake, cameraFake, previewFake, editorFake, pointerFake, lightingFake,
-                        headsetFake, equalizerFake, onboardFake, noiseFake, desktopFake, diagnosticsFake) {
+                        headsetFake, equalizerFake, onboardFake, noiseFake, desktopFake, diagnosticsFake,
+                        profilesFake) {
         const component = Qt.createComponent(Qt.resolvedUrl("../../src/ui/qml/Main.qml"));
         compare(component.status, Component.Ready, component.errorString());
         const window = component.createObject(null, {batteryViewModel: fake,
@@ -233,7 +263,8 @@ TestCase {
                                                      noiseSuppressionController: noiseFake || createNoiseSuppressionFake(),
                                                      g703OnboardController: onboardFake || createOnboardFake(),
                                                      desktopController: desktopFake || createDesktopFake(),
-                                                     diagnosticsViewModel: diagnosticsFake || createDiagnosticsFake()});
+                                                     diagnosticsViewModel: diagnosticsFake || createDiagnosticsFake(),
+                                                     profilesController: profilesFake || createProfilesFake()});
         verify(window !== null, "Main.qml deve instanciar");
         windows.push(window);
         return window;
@@ -295,6 +326,17 @@ TestCase {
 
     function createMainWithNoiseSuppression(noise) {
         return createMain(createFake([]), null, null, null, null, null, null, null, null, null, noise);
+    }
+
+    function createProfilesFake(props) {
+        const fake = fakeProfilesComponent.createObject(null, props || {});
+        fakes.push(fake);
+        return fake;
+    }
+
+    function createMainWithProfiles(profiles) {
+        return createMain(createFake([]), null, null, null, null, null, null, null, null, null, null, null, null,
+                          profiles);
     }
 
     function createOnboardFake(props) {
@@ -389,6 +431,18 @@ TestCase {
 
     function findItem(window, objectName) {
         const found = allItems(window).filter(item => item.objectName === objectName);
+        compare(found.length, 1, objectName);
+        return found[0];
+    }
+
+    // Diálogos (Popup) não estão na árvore visual: procura entre os filhos não visuais do contentItem.
+    function findDialog(window, objectName) {
+        const found = [];
+        const data = window.contentItem.data;
+        for (let i = 0; i < data.length; ++i) {
+            if (data[i].objectName === objectName)
+                found.push(data[i]);
+        }
         compare(found.length, 1, objectName);
         return found[0];
     }
@@ -603,7 +657,7 @@ TestCase {
                 + "eqFlatButton,headsetLightsOffButton,"
                 + "headsetLightsOnButton,headsetSidetoneApplyButton,lightingCustomColorButton,"
                 + "lightingLiveButton,noiseDisableButton,noiseEnableButton,onboardAddStageButton,onboardReadButton,onboardRemoveStageButton,"
-                + "onboardRestoreButton,onboardWriteButton,pointerReadButton"); // amostras: delegates de tipo próprio, testadas à parte
+                + "onboardRestoreButton,onboardWriteButton,pointerReadButton,profileSaveButton"); // amostras: delegates de tipo próprio, testadas à parte
     }
 
     function test_onboardSectionWarnsAndDoesNotTouchTheMouseOnLoad() {
@@ -1268,5 +1322,215 @@ TestCase {
         compare(label.text, "Redução de ruído ligada: entrada padrão = G733 + Redução de ruído");
         noise.status = "Redução de ruído desligada: G733 removido";
         tryCompare(label, "text", "Redução de ruído desligada: G733 removido");
+    }
+
+    function test_profilesSectionWarnsAndDoesNothingOnLoad() {
+        const profiles = createProfilesFake({profileNames: ["A"]});
+        const window = createMainWithProfiles(profiles);
+        const notice = findItem(window, "profilesNoticeLabel");
+        verify(notice.text.indexOf("Aplicar grava os controles da Brio 100") >= 0, notice.text);
+        verify(notice.text.indexOf("não liga nem desliga o EQ") >= 0, notice.text);
+        compare(findItem(window, "profilesLoadFailedLabel").visible, false);
+        compare(profiles.saveCalls.length, 0);
+        compare(profiles.applyCalls.length, 0);
+        compare(profiles.removeCalls.length, 0);
+    }
+
+    function test_profilesLoadFailureShowsTheWarning() {
+        const profiles = createProfilesFake({loadFailed: true});
+        const window = createMainWithProfiles(profiles);
+        const warning = findItem(window, "profilesLoadFailedLabel");
+        compare(warning.visible, true);
+        verify(warning.text.indexOf("Arquivo de perfis ilegível: nada será gravado até corrigi-lo.") >= 0, warning.text);
+    }
+
+    function test_profilesSaveWithNewNameCallsSaveCurrentWithoutReplace() {
+        const profiles = createProfilesFake({profileNames: ["A"]});
+        const window = createMainWithProfiles(profiles);
+        findItem(window, "profileNameField").text = "Jogos";
+        findItem(window, "profileSaveButton").clicked();
+        compare(profiles.saveCalls, [["Jogos", false]]);
+        compare(findDialog(window, "profileReplaceDialog").visible, false);
+    }
+
+    function test_profilesSaveWithExistingNameAsksBeforeReplacing() {
+        const profiles = createProfilesFake({profileNames: ["A"]});
+        const window = createMainWithProfiles(profiles);
+        findItem(window, "profileNameField").text = "A";
+        findItem(window, "profileSaveButton").clicked();
+        compare(profiles.saveCalls.length, 0);
+        const dialog = findDialog(window, "profileReplaceDialog");
+        tryVerify(() => dialog.visible);
+        dialog.accept();
+        compare(profiles.saveCalls, [["A", true]]);
+    }
+
+    function test_profilesRejectingTheReplaceDialogSavesNothing() {
+        const profiles = createProfilesFake({profileNames: ["A"]});
+        const window = createMainWithProfiles(profiles);
+        findItem(window, "profileNameField").text = "A";
+        findItem(window, "profileSaveButton").clicked();
+        const dialog = findDialog(window, "profileReplaceDialog");
+        tryVerify(() => dialog.visible);
+        dialog.reject();
+        compare(profiles.saveCalls.length, 0);
+    }
+
+    function test_profilesListHasApplyAndRemovePerProfile() {
+        const profiles = createProfilesFake({profileNames: ["A", "B"]});
+        const window = createMainWithProfiles(profiles);
+        const names = allItems(window).filter(item => item.objectName === "profileNameLabel").map(item => item.text);
+        compare(names, ["A", "B"]);
+        const applies = allItems(window).filter(item => item.objectName === "profileApplyButton");
+        compare(applies.length, 2);
+        applies[1].clicked();
+        compare(profiles.applyCalls, ["B"]);
+        compare(profiles.removeCalls.length, 0);
+    }
+
+    function test_profilesUpdateSavesCurrentStateIntoThatProfileAfterConfirmation() {
+        const profiles = createProfilesFake({profileNames: ["A", "B"]});
+        const window = createMainWithProfiles(profiles);
+        const updates = allItems(window).filter(item => item.objectName === "profileUpdateButton");
+        compare(updates.length, 2);
+        updates[1].clicked();
+        compare(profiles.saveCalls.length, 0);
+        const dialog = findDialog(window, "profileUpdateDialog");
+        tryVerify(() => dialog.visible);
+        dialog.accept();
+        compare(profiles.saveCalls, [["B", true]]);
+    }
+
+    function test_profilesRejectingTheUpdateDialogSavesNothing() {
+        const profiles = createProfilesFake({profileNames: ["A"]});
+        const window = createMainWithProfiles(profiles);
+        allItems(window).filter(item => item.objectName === "profileUpdateButton")[0].clicked();
+        const dialog = findDialog(window, "profileUpdateDialog");
+        tryVerify(() => dialog.visible);
+        dialog.reject();
+        compare(profiles.saveCalls.length, 0);
+    }
+
+    function test_profilesRemoveAsksForConfirmation() {
+        const profiles = createProfilesFake({profileNames: ["A", "B"]});
+        const window = createMainWithProfiles(profiles);
+        allItems(window).filter(item => item.objectName === "profileRemoveButton")[0].clicked();
+        compare(profiles.removeCalls.length, 0);
+        const dialog = findDialog(window, "profileRemoveDialog");
+        tryVerify(() => dialog.visible);
+        dialog.accept();
+        compare(profiles.removeCalls, ["A"]);
+    }
+
+    function test_profilesRejectingTheRemoveDialogRemovesNothing() {
+        const profiles = createProfilesFake({profileNames: ["A"]});
+        const window = createMainWithProfiles(profiles);
+        allItems(window).filter(item => item.objectName === "profileRemoveButton")[0].clicked();
+        const dialog = findDialog(window, "profileRemoveDialog");
+        tryVerify(() => dialog.visible);
+        dialog.reject();
+        compare(profiles.removeCalls.length, 0);
+    }
+
+    function test_profilesShowStatusAndReportLinesAndFollowChanges() {
+        const profiles = createProfilesFake({status: "Perfil aplicado: A", report: ["Brightness: 128 aplicado"]});
+        const window = createMainWithProfiles(profiles);
+        compare(findItem(window, "profilesStatusLabel").text, "Perfil aplicado: A");
+        compare(labelTexts(window, "profileReportLine"), ["Brightness: 128 aplicado"]);
+        profiles.report = ["Gain: falhou — câmera em uso", "EQ: curva definida (vale com o EQ ligado)"];
+        tryCompare(profiles, "report", ["Gain: falhou — câmera em uso", "EQ: curva definida (vale com o EQ ligado)"]);
+        tryVerify(() => labelTexts(window, "profileReportLine").length === 2);
+    }
+
+    function test_profilesButtonsAreDisabledWhileBusy() {
+        const profiles = createProfilesFake({profileNames: ["A"], busy: true});
+        const window = createMainWithProfiles(profiles);
+        ["profileSaveButton", "profileApplyButton", "profileRemoveButton"]
+            .forEach(name => compare(findItem(window, name).enabled, false, name));
+    }
+
+    function test_profilesAutoSwitchIsOffByDefaultAndDoesNothingOnOpen() {
+        const profiles = createProfilesFake({profileNames: ["A"]});
+        const window = createMainWithProfiles(profiles);
+        compare(findItem(window, "profilesAutoSwitch").checked, false);
+        compare(profiles.switchingCalls.length, 0);
+        compare(profiles.assignCalls.length, 0);
+    }
+
+    function test_profilesAutoSwitchCallsSetAutomaticSwitching() {
+        const profiles = createProfilesFake({profileNames: ["A"]});
+        const window = createMainWithProfiles(profiles);
+        const toggle = findItem(window, "profilesAutoSwitch");
+        toggle.click();
+        compare(profiles.switchingCalls, [true]);
+        // O estado exibido segue o controlador (a gravação pode falhar).
+        profiles.automaticSwitching = true;
+        tryCompare(toggle, "checked", true);
+        toggle.click();
+        compare(profiles.switchingCalls, [true, false]);
+    }
+
+    function test_profilesShowSwitchingStatusAndLastApplication() {
+        const profiles = createProfilesFake({automaticSwitching: true, switchingStatus: "indisponível: KWin ausente",
+                                             lastApplication: "org.mozilla.firefox"});
+        const window = createMainWithProfiles(profiles);
+        compare(findItem(window, "profilesSwitchingStatus").text, "Troca automática: indisponível: KWin ausente");
+        compare(findItem(window, "profilesLastApplication").text, "Último aplicativo em foco: org.mozilla.firefox");
+        profiles.switchingStatus = "ativa";
+        profiles.lastApplication = "konsole";
+        tryCompare(findItem(window, "profilesSwitchingStatus"), "text", "Troca automática: ativa");
+        tryCompare(findItem(window, "profilesLastApplication"), "text", "Último aplicativo em foco: konsole");
+    }
+
+    function test_profilesLastApplicationShowsNoneWhenEmpty() {
+        const window = createMainWithProfiles(createProfilesFake({}));
+        compare(findItem(window, "profilesLastApplication").text, "Último aplicativo em foco: nenhum");
+    }
+
+    function test_profilesAssignButtonCallsAssignLastApplicationWithTheProfileName() {
+        const profiles = createProfilesFake({profileNames: ["A", "B"], lastApplication: "konsole"});
+        const window = createMainWithProfiles(profiles);
+        const buttons = allItems(window).filter(item => item.objectName === "profileAssignButton");
+        compare(buttons.length, 2);
+        buttons[1].clicked();
+        compare(profiles.assignCalls, ["B"]);
+    }
+
+    function test_profilesAssignButtonIsDisabledWithoutLastApplicationOrWhileBusy() {
+        const profiles = createProfilesFake({profileNames: ["A"]});
+        const window = createMainWithProfiles(profiles);
+        compare(findItem(window, "profileAssignButton").enabled, false);
+        profiles.lastApplication = "konsole";
+        tryCompare(findItem(window, "profileAssignButton"), "enabled", true);
+        profiles.busy = true;
+        tryCompare(findItem(window, "profileAssignButton"), "enabled", false);
+    }
+
+    function test_profilesListAssociatedApplicationsWithRemoveButtons() {
+        const profiles = createProfilesFake({profileNames: ["A", "B"],
+                                             profileApplications: {"A": ["firefox", "kate"], "B": []}});
+        const window = createMainWithProfiles(profiles);
+        const labels = allItems(window).filter(item => item.objectName === "profileApplicationLabel").map(item => item.text);
+        compare(labels, ["firefox", "kate"]);
+        const removes = allItems(window).filter(item => item.objectName === "profileUnassignButton");
+        compare(removes.length, 2);
+        removes[1].clicked();
+        compare(profiles.unassignCalls, ["kate"]);
+        compare(profiles.removeCalls.length, 0);
+    }
+
+    function test_profilesAutoSwitchWarnsAboutTheKWinScript() {
+        const window = createMainWithProfiles(createProfilesFake({}));
+        const notice = findItem(window, "profilesAutoSwitchNotice");
+        verify(notice.text.indexOf("pequeno script no KWin") >= 0);
+        verify(notice.text.indexOf("só o nome do aplicativo") >= 0);
+    }
+
+    function test_profilesAutoSwitchControlsAreDisabledWhileBusy() {
+        const profiles = createProfilesFake({profileNames: ["A"], busy: true,
+                                             profileApplications: {"A": ["firefox"]}});
+        const window = createMainWithProfiles(profiles);
+        ["profilesAutoSwitch", "profileUnassignButton"]
+            .forEach(name => compare(findItem(window, name).enabled, false, name));
     }
 }

@@ -652,3 +652,75 @@ TEST_F(V4l2CameraBackendTest, UsesOnlyQueryIoctls)
 }
 
 } // namespace
+
+namespace {
+
+std::vector<std::string> firmwareManagedNames(const ghub::camera::CameraDescription& description)
+{
+    std::vector<std::string> names;
+    for (const auto& control : description.controls) {
+        if (control.firmwareManaged()) {
+            names.push_back(control.name());
+        }
+    }
+    return names;
+}
+
+} // namespace
+
+TEST_F(V4l2CameraBackendTest, MarksGainAsFirmwareManaged_WhenExposureIsAutomatic)
+{
+    FakeV4l2Api api = brioWithSysfs(); // Auto Exposure = 3 (Aperture Priority)
+
+    const auto result = read(api);
+
+    ASSERT_TRUE(result.has_value());
+    if (!result->has_value()) {
+        FAIL() << "câmera não encontrada";
+    }
+    EXPECT_EQ(firmwareManagedNames(**result), std::vector<std::string>{"Gain"});
+}
+
+TEST_F(V4l2CameraBackendTest, DoesNotMarkGain_WhenExposureIsManual)
+{
+    FakeV4l2Api api = brioWithSysfs();
+    std::ranges::find(api.nodes[0].controls, V4L2_CID_EXPOSURE_AUTO, &ghub::camera::testing::FakeControl::id)->value =
+        V4L2_EXPOSURE_MANUAL;
+
+    const auto result = read(api);
+
+    ASSERT_TRUE(result.has_value());
+    if (!result->has_value()) {
+        FAIL() << "câmera não encontrada";
+    }
+    EXPECT_TRUE(firmwareManagedNames(**result).empty());
+}
+
+TEST_F(V4l2CameraBackendTest, DoesNotMarkGain_WhenThereIsNoExposureControl)
+{
+    FakeV4l2Api api = brioWithSysfs();
+    std::erase_if(api.nodes[0].controls, [](const auto& control) { return control.id == V4L2_CID_EXPOSURE_AUTO; });
+
+    const auto result = read(api);
+
+    ASSERT_TRUE(result.has_value());
+    if (!result->has_value()) {
+        FAIL() << "câmera não encontrada";
+    }
+    EXPECT_NE(findControl(**result, "Gain"), nullptr);
+    EXPECT_TRUE(firmwareManagedNames(**result).empty());
+}
+
+TEST_F(V4l2CameraBackendTest, DoesNotMarkGain_WhenExposureValueCannotBeRead)
+{
+    FakeV4l2Api api = brioWithSysfs();
+    api.controlValueErrors[V4L2_CID_EXPOSURE_AUTO] = -EIO;
+
+    const auto result = read(api);
+
+    ASSERT_TRUE(result.has_value());
+    if (!result->has_value()) {
+        FAIL() << "câmera não encontrada";
+    }
+    EXPECT_TRUE(firmwareManagedNames(**result).empty());
+}

@@ -1,5 +1,6 @@
 #include "modules/audio_processing/presentation/HostEqualizerController.hpp"
 #include "fakes/FakeAudioGraph.hpp"
+#include "modules/audio_processing/api/EqualizerCurveAccess.hpp"
 #include "modules/audio_processing/application/HostEqualizer.hpp"
 
 #include <QSignalSpy>
@@ -195,6 +196,63 @@ private slots:
             QCOMPARE(controller.gains(), (QList<int>(10, 0)));
         }
         QVERIFY(fixture->graph.inner.calls.empty());
+    }
+
+    void requestGains_WhileDisabled_KeepsTheCurveWithoutTouchingTheGraph()
+    {
+        HostEqualizerController controller{fixture->equalizer, fixture->graph};
+        ghub::audio_processing::EqualizerCurveAccess& access = controller;
+        QSignalSpy changed(&controller, &HostEqualizerController::stateChanged);
+
+        const auto result = access.requestGains({1, 2, 3, 4, 5, 6, 7, 8, 9, 10});
+        QVERIFY(result.has_value());
+        QCOMPARE(controller.gains(), (QList<int>{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}));
+        QVERIFY(changed.count() >= 1);
+        QTRY_VERIFY(!controller.busy());
+
+        QCOMPARE(fixture->equalizer.curve().gainsDb(), (std::array<int, 10>{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}));
+        QVERIFY(fixture->graph.inner.calls.empty());
+        QVERIFY(!controller.enabled());
+    }
+
+    void requestGains_WhileEnabled_AppliesThroughTheQueue()
+    {
+        HostEqualizerController controller{fixture->equalizer, fixture->graph};
+        controller.enable();
+        QTRY_VERIFY(controller.enabled() && !controller.busy());
+
+        ghub::audio_processing::EqualizerCurveAccess& access = controller;
+        QVERIFY(access.requestGains({0, 0, 0, 0, 0, 0, 0, 0, 0, -12}).has_value());
+        QTRY_VERIFY(!controller.busy());
+
+        QCOMPARE(fixture->graph.inner.ops().back(), Op::Update);
+        QCOMPARE(fixture->graph.inner.equalizerCurve->gainsDb()[9], -12);
+        QVERIFY(controller.enabled());
+    }
+
+    void requestGains_Invalid_ReturnsErrorAndQueuesNothing()
+    {
+        HostEqualizerController controller{fixture->equalizer, fixture->graph};
+        ghub::audio_processing::EqualizerCurveAccess& access = controller;
+
+        const auto result = access.requestGains({0, 0, 0, 13, 0, 0, 0, 0, 0, 0});
+
+        QVERIFY(!result.has_value());
+        QCOMPARE(result.error().code, ghub::shared_kernel::ErrorCode::InvalidArgument);
+        QVERIFY(!controller.busy());
+        QCOMPARE(controller.gains(), (QList<int>(10, 0)));
+        QVERIFY(fixture->graph.inner.calls.empty());
+    }
+
+    void currentGains_ReflectsSetBand()
+    {
+        HostEqualizerController controller{fixture->equalizer, fixture->graph};
+        const ghub::audio_processing::EqualizerCurveAccess& access = controller;
+        QCOMPARE(access.currentGains(), (std::array<int, 10>{}));
+
+        controller.setBand(4, 6);
+
+        QCOMPARE(access.currentGains(), (std::array<int, 10>{0, 0, 0, 0, 6, 0, 0, 0, 0, 0}));
     }
 
     void flat_ResetsEveryBand()

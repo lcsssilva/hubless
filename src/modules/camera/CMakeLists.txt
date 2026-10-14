@@ -19,6 +19,12 @@ target_sources(ghub_camera_application PRIVATE
 target_link_libraries(ghub_camera_application PUBLIC ghub_camera_domain ghub_device_access_api)
 ghub_set_warnings(ghub_camera_application)
 
+# API pública (ADR-0020): fachada de leitura/aplicação dos controles, para outros módulos.
+add_library(ghub_camera_api STATIC)
+target_sources(ghub_camera_api PRIVATE api/CameraSettings.cpp)
+target_link_libraries(ghub_camera_api PUBLIC ghub_camera_application)
+ghub_set_warnings(ghub_camera_api)
+
 # Infraestrutura: adaptador V4L2 somente leitura (ADR-0008); filesystem e ioctl permitidos aqui.
 add_library(ghub_camera_infrastructure STATIC)
 target_sources(ghub_camera_infrastructure PRIVATE

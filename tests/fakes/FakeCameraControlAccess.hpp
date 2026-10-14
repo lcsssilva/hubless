@@ -31,6 +31,8 @@ public:
     std::function<void()> onRead; // executado no início de cada leitura (ex.: avançar o relógio do teste)
     // Executado no início de cada escrita, antes de registrá-la (ex.: bloquear a thread de trabalho num latch).
     std::function<void()> onWrite;
+    // A leitura seguinte a uma escrita devolve o controle escrito sem valor atual (driver que não deixa reler).
+    bool dropValueAfterWrite = false;
 
     // --- registro ---
     std::vector<Write> writes;
@@ -70,7 +72,11 @@ private:
             if (spec == nullptr) {
                 return shared_kernel::fail(shared_kernel::ErrorCode::InvalidArgument, "controle inexistente");
             }
-            return camera::CameraControl::create(*spec);
+            auto readSpec = *spec;
+            if (owner_->dropValueAfterWrite && !owner_->writes.empty()) {
+                readSpec.currentValue = std::nullopt;
+            }
+            return camera::CameraControl::create(std::move(readSpec));
         }
 
         [[nodiscard]] shared_kernel::Result<void> writeControl(std::uint32_t id, std::int64_t value) override

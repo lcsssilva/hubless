@@ -6,6 +6,10 @@ target_sources(ghub_audio_processing_domain PRIVATE
 target_link_libraries(ghub_audio_processing_domain PUBLIC ghub_shared_kernel)
 ghub_set_warnings(ghub_audio_processing_domain)
 
+# API pública (ADR-0020): só cabeçalhos.
+add_library(ghub_audio_processing_api INTERFACE)
+target_link_libraries(ghub_audio_processing_api INTERFACE ghub_shared_kernel)
+
 # Aplicação, infraestrutura (libpipewire) e apresentação: um arquivo por camada.
 include(${CMAKE_CURRENT_SOURCE_DIR}/application/application.cmake OPTIONAL)
 if(GHUB_BUILD_APP)

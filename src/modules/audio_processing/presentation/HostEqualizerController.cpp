@@ -86,6 +86,24 @@ void HostEqualizerController::flat()
     submitCurve(EqualizerCurve::flat());
 }
 
+static_assert(EqualizerCurve::bandCount == 10, "EqualizerCurveAccess usa 10 bandas");
+
+std::array<int, EqualizerCurve::bandCount> HostEqualizerController::currentGains() const
+{
+    return desired_.gainsDb();
+}
+
+shared_kernel::Result<void>
+HostEqualizerController::requestGains(const std::array<int, EqualizerCurve::bandCount>& gainsDb)
+{
+    const auto curve = EqualizerCurve::create(gainsDb);
+    if (!curve.has_value()) {
+        return std::unexpected(curve.error());
+    }
+    submitCurve(*curve);
+    return {};
+}
+
 void HostEqualizerController::submitCurve(const EqualizerCurve& curve)
 {
     desired_ = curve;

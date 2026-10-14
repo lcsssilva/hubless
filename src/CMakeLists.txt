@@ -7,6 +7,7 @@ add_subdirectory(modules/camera)
 add_subdirectory(modules/pointer)
 add_subdirectory(modules/lighting)
 add_subdirectory(modules/headset)
+add_subdirectory(modules/profiles)
 add_subdirectory(modules/audio_processing)
 add_subdirectory(modules/diagnostics)
 

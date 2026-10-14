@@ -75,6 +75,31 @@ void expectRejected(CameraControlSpec spec, const std::string& expectedFragment)
 
 } // namespace
 
+TEST(CameraControl, FirmwareManaged_DefaultsToFalse_AndKeepsTheFlag)
+{
+    auto spec = brightness();
+    EXPECT_FALSE(CameraControl::create(spec).value().firmwareManaged());
+
+    spec.firmwareManaged = true;
+    const auto control = CameraControl::create(spec).value();
+
+    EXPECT_TRUE(control.firmwareManaged());
+    EXPECT_TRUE(control.validateValue(100).has_value()); // gravar continua permitido
+}
+
+TEST(CameraControl, WithFirmwareManaged_ReturnsACopyWithOnlyTheFlagChanged)
+{
+    const auto original = CameraControl::create(brightness()).value();
+
+    const auto marked = original.withFirmwareManaged(true);
+
+    EXPECT_TRUE(marked.firmwareManaged());
+    EXPECT_FALSE(original.firmwareManaged());
+    EXPECT_EQ(marked.name(), original.name());
+    EXPECT_EQ(marked.currentValue(), original.currentValue());
+    EXPECT_FALSE(marked.withFirmwareManaged(false).firmwareManaged());
+}
+
 TEST(CameraControl, Accepts_Integer)
 {
     auto control = CameraControl::create(brightness());

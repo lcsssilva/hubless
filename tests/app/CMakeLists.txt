@@ -2,7 +2,7 @@
 # o executável carrega o módulo QML em plataforma offscreen e sai com 0 somente se a janela foi criada.
 add_test(NAME app.smoke_loads_main_qml COMMAND ghub-linux --smoke-test)
 set_tests_properties(app.smoke_loads_main_qml PROPERTIES
-    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/xdg-config"
     TIMEOUT 30)
 
 find_package(Qt6 6.12 REQUIRED COMPONENTS Test)

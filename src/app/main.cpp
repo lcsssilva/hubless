@@ -11,11 +11,12 @@
 // também só por ação do usuário na janela (ADR-0013): nada é aberto na abertura nem no smoke test, e fechar o
 // modo ou o aplicativo (inclusive por SIGTERM/SIGINT/SIGHUP) devolve o controle ao firmware; SIGKILL não (testes
 // físicos de 2026-10-14). Repouso do teclado (o firmware retoma o controle) desliga o modo na janela sem escrever,
-// e a suspensão do sistema devolve o controle antes de suspender (ADR-0014). Sidetone e luzes do G733 (HeadsetControl, ADR-0015): só por clique
-// na janela, nunca na abertura nem na reconexão. EQ de saída do G733 no host (PipeWire filter-chain dentro do
-// processo, ADR-0016) e redução de ruído do microfone (RNNoise, ADR-0018): só por clique; ao ligar, trocam a
-// saída/entrada padrão e a restauram ao desligar/fechar. Nenhuma
-// outra escrita de configuração.
+// e a suspensão do sistema devolve o controle antes de suspender (ADR-0014). Sidetone e luzes do G733 (HeadsetControl,
+// ADR-0015): só por clique na janela, nunca na abertura nem na reconexão. EQ de saída do G733 no host (PipeWire
+// filter-chain dentro do processo, ADR-0016) e redução de ruído do microfone (RNNoise, ADR-0018): só por clique; ao
+// ligar, trocam a saída/entrada padrão e a restauram ao desligar/fechar. Nenhuma outra escrita de configuração.
+// Perfis (INC-012, ADR-0020): salvar, atualizar e aplicar controles da Brio 100 e a curva do EQ só por clique;
+// a abertura só lê ~/.config/ghub-linux/profiles.json.
 // INC-013 (ADR-0019): integração com o desktop — bandeja do sistema (X-03), inicialização automática XDG
 // (X-04) e diagnóstico/logs (X-06). A bandeja só existe fora do smoke test e com uma bandeja disponível;
 // fechar a janela esconde para a bandeja (o processo continua) e só "Sair" encerra. O autostart é opt-in na
@@ -35,6 +36,7 @@
 #include "modules/battery/infrastructure/SysfsBatterySource.hpp"
 #include "modules/battery/infrastructure/UeventBatteryMonitor.hpp"
 #include "modules/battery/presentation/BatteryViewModel.hpp"
+#include "modules/camera/api/CameraSettings.hpp"
 #include "modules/camera/application/GetCameraStatus.hpp"
 #include "modules/camera/application/SetCameraControl.hpp"
 #include "modules/camera/application/StartCameraPreview.hpp"
@@ -77,6 +79,14 @@
 #include "modules/pointer/infrastructure/RatbagPointerBackend.hpp"
 #include "modules/pointer/presentation/G703OnboardController.hpp"
 #include "modules/pointer/presentation/PointerViewModel.hpp"
+#include "modules/profiles/application/ApplyProfile.hpp"
+#include "modules/profiles/application/ProfileBook.hpp"
+#include "modules/profiles/infrastructure/CameraSettingsAdapter.hpp"
+#include "modules/profiles/infrastructure/EqualizerSettingsAdapter.hpp"
+#include "modules/profiles/infrastructure/InactiveApplicationSource.hpp"
+#include "modules/profiles/infrastructure/JsonProfileRepository.hpp"
+#include "modules/profiles/infrastructure/KWinActiveApplicationSource.hpp"
+#include "modules/profiles/presentation/ProfilesController.hpp"
 
 #include <QApplication>
 #include <QCommandLineParser>
@@ -112,8 +122,8 @@ void traceHidppCommand(const ghub::platform::hidpp::HidppCommandTrace& trace)
         return;
     }
     qCWarning(lcLightingHidpp, "dev %u feature 0x%04x fn %u (%zu bytes): falha tipo %d, código 0x%02x",
-              trace.deviceIndex, trace.featureId, trace.function, trace.paramCount,
-              static_cast<int>(*trace.failure), trace.errorCode);
+              trace.deviceIndex, trace.featureId, trace.function, trace.paramCount, static_cast<int>(*trace.failure),
+              trace.errorCode);
 }
 
 // INC-013 R15: sonda simples para a saúde dos backends, usada só para exibir (nada é alterado).
@@ -295,6 +305,30 @@ int main(int argc, char* argv[])
     // Redução de ruído do microfone (ADR-0018): mesma conexão; independente do EQ; só por clique.
     ghub::audio_processing::HostNoiseSuppression hostNoiseSuppression{audioGraph};
     ghub::audio_processing::NoiseSuppressionController noiseSuppressionController{hostNoiseSuppression, audioGraph};
+    // Perfis (ADR-0020): salvar, aplicar e remover só por clique em ProfilesController; load() só lê o arquivo e nada
+    // é aplicado na abertura. A câmera usa um backend V4L2 PRÓPRIO (o do BackgroundCameraReader roda em outra thread)
+    // e o mesmo SetCameraControl da seção Câmera (lease compartilhado). Ordem de destruição (inversa à declaração):
+    // o controlador primeiro (espera a operação em andamento), antes do controlador do EQ e dos casos de uso.
+    ghub::camera::V4l2CameraBackend profilesCameraBackend{brio100, v4l2Api};
+    const ghub::camera::CameraSettings cameraSettings{profilesCameraBackend, setCameraControl};
+    ghub::profiles::CameraSettingsAdapter profilesCameraAdapter{cameraSettings};
+    ghub::profiles::EqualizerSettingsAdapter profilesEqualizerAdapter{hostEqualizerController};
+    ghub::profiles::JsonProfileRepository profileRepository{ghub::profiles::JsonProfileRepository::defaultFilePath()};
+    ghub::profiles::ProfileBook profileBook{profileRepository, profilesCameraAdapter};
+    const ghub::profiles::ApplyProfile applyProfile{profilesCameraAdapter, profilesEqualizerAdapter};
+    // Troca automática por aplicativo (ADR-0022): a fonte só é iniciada com a opção ligada pelo usuário (e persistida);
+    // declarada ANTES do controlador, que a para no destrutor. No smoke test a fonte é inerte (nunca toca no KWin
+    // nem no barramento de sessão).
+    const std::unique_ptr<ghub::profiles::ActiveApplicationSource> activeApplicationSource =
+        smokeTestRun ? std::unique_ptr<ghub::profiles::ActiveApplicationSource>{std::make_unique<
+                           ghub::profiles::InactiveApplicationSource>()}
+                     : std::make_unique<ghub::profiles::KWinActiveApplicationSource>(
+                           QDBusConnection::sessionBus(), qEnvironmentVariable("XDG_RUNTIME_DIR"));
+    ghub::profiles::ProfilesController profilesController{profileBook, applyProfile, profilesEqualizerAdapter,
+                                                          *activeApplicationSource};
+    // Depois de aplicar um perfil com câmera, a janela relê a câmera.
+    QObject::connect(&profilesController, &ghub::profiles::ProfilesController::cameraApplied, &cameraReader,
+                     &ghub::camera::BackgroundCameraReader::refresh);
     qmlRegisterType<ghub::camera::CameraPreviewItem>("GHub.Camera", 1, 0, "CameraPreviewItem");
     // Uevent do kernel antecipa a releitura; sem ele vale só o polling de 30 s (ADR-0005 §4).
     std::unique_ptr<ghub::battery::UeventBatteryMonitor> batteryMonitor;
@@ -319,8 +353,7 @@ int main(int argc, char* argv[])
     const std::string platform =
         (QSysInfo::prettyProductName() + QStringLiteral(" / ") + QGuiApplication::platformName()).toStdString();
     ghub::diagnostics::DiagnosticsViewModel diagnosticsViewModel{
-        diagnosticLog, exportDiagnosticReport, GHUB_VERSION, platform,
-        [&]() -> std::vector<BackendHealth> {
+        diagnosticLog, exportDiagnosticReport, GHUB_VERSION, platform, [&]() -> std::vector<BackendHealth> {
             std::vector<BackendHealth> health;
             health.push_back({"Bandeja do sistema", trayAvailable,
                               trayAvailable ? "ícone disponível nesta sessão" : "sem bandeja nesta sessão"});
@@ -331,11 +364,11 @@ int main(int argc, char* argv[])
             health.push_back({"HeadsetControl (G733)", headsetControl,
                               headsetControl ? headsetControlExecutable.toStdString() : "não encontrado no PATH"});
             const bool ratbagd = serviceRegistered(QStringLiteral("org.freedesktop.ratbag1"));
-            health.push_back({"ratbagd (G703)", ratbagd,
-                              ratbagd ? "serviço presente no barramento de sistema" : "serviço ausente"});
+            health.push_back(
+                {"ratbagd (G703)", ratbagd, ratbagd ? "serviço presente no barramento de sistema" : "serviço ausente"});
             const bool pipeWire = pipeWireSocketExists();
-            health.push_back({"PipeWire (áudio no host)", pipeWire,
-                              pipeWire ? "servidor do usuário presente" : "servidor ausente"});
+            health.push_back(
+                {"PipeWire (áudio no host)", pipeWire, pipeWire ? "servidor do usuário presente" : "servidor ausente"});
             const bool logind = serviceRegistered(QStringLiteral("org.freedesktop.login1"));
             health.push_back({"logind (suspensão)", logind,
                               logind ? "serviço presente no barramento de sistema" : "serviço ausente"});
@@ -361,9 +394,11 @@ int main(int argc, char* argv[])
         {QStringLiteral("headsetSettingsController"), QVariant::fromValue(&headsetSettingsController)},
         {QStringLiteral("hostEqualizerController"), QVariant::fromValue(&hostEqualizerController)},
         {QStringLiteral("noiseSuppressionController"), QVariant::fromValue(&noiseSuppressionController)},
+        {QStringLiteral("profilesController"), QVariant::fromValue(&profilesController)},
         {QStringLiteral("desktopController"), QVariant::fromValue(&desktopController)},
         {QStringLiteral("diagnosticsViewModel"), QVariant::fromValue(&diagnosticsViewModel)},
     });
+    profilesController.load(); // só lê o arquivo de perfis; nada é aplicado
     QObject::connect(
         &engine, &QQmlApplicationEngine::objectCreationFailed, &app, [] { QCoreApplication::exit(EXIT_FAILURE); },
         Qt::QueuedConnection);
@@ -397,8 +432,7 @@ int main(int argc, char* argv[])
     // ADR-0014 (R16): antes de suspender, devolve o controle do G915 ao firmware sob um inhibitor "delay" do logind.
     // Fora do smoke test, para o CTest não tocar no logind real. Sem logind: só um aviso.
     ghub::device_access::LogindSleepMonitor sleepMonitor{QDBusConnection::systemBus()};
-    QObject::connect(&sleepMonitor, &ghub::device_access::LogindSleepMonitor::aboutToSleep,
-                     &keyboardLightingController,
+    QObject::connect(&sleepMonitor, &ghub::device_access::LogindSleepMonitor::aboutToSleep, &keyboardLightingController,
                      &ghub::lighting::presentation::KeyboardLightingController::releaseForSleep);
     if (!sleepMonitor.start()) {
         qWarning("app: aviso de suspensão do logind indisponível (%s); o modo ao vivo não é desligado antes de "

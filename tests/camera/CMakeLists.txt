@@ -18,6 +18,11 @@ target_link_libraries(ghub_camera_application_tests PRIVATE
 ghub_set_warnings(ghub_camera_application_tests)
 gtest_discover_tests(ghub_camera_application_tests TEST_PREFIX "camera.")
 
+add_executable(ghub_camera_api_tests api/CameraSettingsTest.cpp)
+target_link_libraries(ghub_camera_api_tests PRIVATE ghub_camera_api ghub_test_fakes GTest::gtest_main)
+ghub_set_warnings(ghub_camera_api_tests)
+gtest_discover_tests(ghub_camera_api_tests TEST_PREFIX "camera.")
+
 if(GHUB_BUILD_APP)
     find_package(Qt6 6.12 REQUIRED COMPONENTS Test)
     add_executable(ghub_camera_presentation_tests presentation/CameraViewModelTest.cpp)

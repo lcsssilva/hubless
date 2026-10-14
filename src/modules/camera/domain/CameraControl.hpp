@@ -32,6 +32,9 @@ struct CameraControlSpec {
     bool inactive;
     bool readOnly;
     std::vector<MenuOption> options;
+    // O firmware ajusta este valor sozinho no modo atual (ex.: ganho com exposição automática): gravar é aceito,
+    // mas o valor não se sustenta.
+    bool firmwareManaged = false;
 
     friend bool operator==(const CameraControlSpec&, const CameraControlSpec&) = default;
 };
@@ -52,6 +55,15 @@ public:
     [[nodiscard]] bool inactive() const noexcept { return spec_.inactive; }
     [[nodiscard]] bool readOnly() const noexcept { return spec_.readOnly; }
     [[nodiscard]] const std::vector<MenuOption>& options() const noexcept { return spec_.options; }
+    [[nodiscard]] bool firmwareManaged() const noexcept { return spec_.firmwareManaged; }
+
+    // Cópia com a marca de firmware alterada; o resto do controle não muda.
+    [[nodiscard]] CameraControl withFirmwareManaged(bool managed) const
+    {
+        CameraControl copy = *this;
+        copy.spec_.firmwareManaged = managed;
+        return copy;
+    }
 
     // Opção de menu cujo valor é o atual; vazio se não for Menu, sem valor atual ou sem opção correspondente.
     [[nodiscard]] std::optional<MenuOption> currentOption() const;

@@ -53,6 +53,15 @@ ApplicationWindow {
     // entradas e exportação do relatório só por clique (INC-013 R14).
     required property QtObject diagnosticsViewModel
 
+    // ProfilesController (módulo profiles), fornecido pelo composition root: salvar, aplicar e remover perfis só por
+    // clique (ADR-0020). Nada é aplicado na abertura.
+    required property QtObject profilesController
+
+    // Nome do perfil à espera da confirmação de remoção; estado de UI apenas.
+    property string profilePendingRemoval: ""
+    // Nome do perfil à espera da confirmação de atualização; estado de UI apenas.
+    property string profilePendingUpdate: ""
+
     // Cor usada pelos efeitos de prévia; estado de UI apenas (atualizada ao escolher uma cor).
     property string lightingEffectColor: "#ffffff"
 
@@ -60,7 +69,7 @@ ApplicationWindow {
     height: 600
     // `--autostart` inicia escondido na bandeja; sem bandeja, o controlador não esconde (INC-013 R9).
     visible: !desktopController.startHidden
-    title: qsTr("G HUB para Linux")
+    title: qsTr("Hubless")
 
     // Encerra o stream da câmera ao fechar a janela. Com bandeja (hideOnClose) e fora de um encerramento
     // pedido, recusa o fechamento e esconde a janela: o processo continua e a bandeja reabre (INC-013 R4/R5).
@@ -84,7 +93,7 @@ ApplicationWindow {
 
             Label {
                 Layout.alignment: Qt.AlignHCenter
-                text: qsTr("G HUB para Linux")
+                text: qsTr("Hubless")
                 font.pixelSize: 28
             }
 
@@ -350,6 +359,174 @@ ApplicationWindow {
                     Label {
                         objectName: "noiseStatusLabel"
                         text: window.noiseSuppressionController.status
+                    }
+                }
+            }
+
+            GroupBox {
+                Layout.alignment: Qt.AlignHCenter
+                title: qsTr("Perfis")
+
+                ColumnLayout {
+                    Label {
+                        objectName: "profilesNoticeLabel"
+                        Layout.maximumWidth: window.width - 96
+                        wrapMode: Text.WordWrap
+                        text: qsTr("Aplicar grava os controles da Brio 100 e muda a curva do EQ; o perfil não liga nem desliga o EQ.")
+                    }
+
+                    Label {
+                        objectName: "profilesLoadFailedLabel"
+                        Layout.maximumWidth: window.width - 96
+                        wrapMode: Text.WordWrap
+                        visible: window.profilesController.loadFailed
+                        text: qsTr("Arquivo de perfis ilegível: nada será gravado até corrigi-lo.")
+                    }
+
+                    Switch {
+                        id: profilesAutoSwitch
+                        objectName: "profilesAutoSwitch"
+                        text: qsTr("Trocar de perfil pelo aplicativo em foco")
+                        checked: window.profilesController.automaticSwitching
+                        enabled: !window.profilesController.busy
+                        onClicked: {
+                            window.profilesController.setAutomaticSwitching(checked)
+                            // O estado exibido segue o controlador: a gravação pode falhar.
+                            checked = Qt.binding(() => window.profilesController.automaticSwitching)
+                        }
+                    }
+
+                    Label {
+                        objectName: "profilesAutoSwitchNotice"
+                        Layout.maximumWidth: window.width - 96
+                        wrapMode: Text.WordWrap
+                        text: qsTr("Com a troca ligada, o app carrega um pequeno script no KWin que informa só o nome do aplicativo em foco; ao trocar de aplicativo, o perfil associado é aplicado (grava na Brio 100 e muda a curva do EQ).")
+                    }
+
+                    Label {
+                        objectName: "profilesSwitchingStatus"
+                        text: qsTr("Troca automática: %1").arg(window.profilesController.switchingStatus)
+                    }
+
+                    Label {
+                        objectName: "profilesLastApplication"
+                        text: qsTr("Último aplicativo em foco: %1").arg(
+                                  window.profilesController.lastApplication !== ""
+                                  ? window.profilesController.lastApplication : qsTr("nenhum"))
+                    }
+
+                    RowLayout {
+                        TextField {
+                            id: profileNameField
+                            objectName: "profileNameField"
+                            Layout.preferredWidth: 280
+                            placeholderText: qsTr("Nome do perfil")
+                            Accessible.name: qsTr("Nome do perfil")
+                        }
+
+                        Button {
+                            objectName: "profileSaveButton"
+                            text: qsTr("Salvar estado atual")
+                            enabled: !window.profilesController.busy
+                            onClicked: {
+                                if (window.profilesController.exists(profileNameField.text))
+                                    profileReplaceDialog.open()
+                                else
+                                    window.profilesController.saveCurrent(profileNameField.text, false)
+                            }
+                        }
+                    }
+
+                    Repeater {
+                        model: window.profilesController.profileNames
+
+                        delegate: ColumnLayout {
+                            id: profileRow
+                            required property string modelData
+
+                            RowLayout {
+                            Label {
+                                objectName: "profileNameLabel"
+                                Layout.preferredWidth: 240
+                                elide: Text.ElideRight
+                                text: profileRow.modelData
+                            }
+
+                            Button {
+                                objectName: "profileApplyButton"
+                                text: qsTr("Aplicar")
+                                enabled: !window.profilesController.busy
+                                onClicked: window.profilesController.apply(profileRow.modelData)
+                            }
+
+                            Button {
+                                objectName: "profileUpdateButton"
+                                text: qsTr("Atualizar")
+                                enabled: !window.profilesController.busy
+                                onClicked: {
+                                    window.profilePendingUpdate = profileRow.modelData
+                                    profileUpdateDialog.open()
+                                }
+                            }
+
+                            Button {
+                                objectName: "profileRemoveButton"
+                                text: qsTr("Remover")
+                                enabled: !window.profilesController.busy
+                                onClicked: {
+                                    window.profilePendingRemoval = profileRow.modelData
+                                    profileRemoveDialog.open()
+                                }
+                            }
+
+                            Button {
+                                objectName: "profileAssignButton"
+                                text: qsTr("Associar o último aplicativo")
+                                enabled: !window.profilesController.busy
+                                         && window.profilesController.lastApplication !== ""
+                                onClicked: window.profilesController.assignLastApplication(profileRow.modelData)
+                            }
+                            }
+
+                            Repeater {
+                                model: window.profilesController.profileApplications[profileRow.modelData] || []
+
+                                delegate: RowLayout {
+                                    id: applicationRow
+                                    required property string modelData
+
+                                    Label {
+                                        objectName: "profileApplicationLabel"
+                                        Layout.leftMargin: 24
+                                        Layout.preferredWidth: 240
+                                        elide: Text.ElideRight
+                                        text: applicationRow.modelData
+                                    }
+
+                                    Button {
+                                        objectName: "profileUnassignButton"
+                                        text: qsTr("Remover")
+                                        enabled: !window.profilesController.busy
+                                        onClicked: window.profilesController.unassignApplication(applicationRow.modelData)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    Label {
+                        objectName: "profilesStatusLabel"
+                        text: window.profilesController.status
+                    }
+
+                    Repeater {
+                        model: window.profilesController.report
+
+                        delegate: Label {
+                            required property string modelData
+                            objectName: "profileReportLine"
+                            text: modelData
+                        }
                     }
                 }
             }
@@ -915,6 +1092,57 @@ ApplicationWindow {
                     }
                 }
             }
+        }
+    }
+
+    Dialog {
+        id: profileReplaceDialog
+        objectName: "profileReplaceDialog"
+        anchors.centerIn: Overlay.overlay
+        width: 400
+        modal: true
+        title: qsTr("Substituir?")
+        standardButtons: Dialog.Yes | Dialog.No
+        onAccepted: window.profilesController.saveCurrent(profileNameField.text, true)
+
+        Label {
+            width: parent.width
+            wrapMode: Text.WordWrap
+            text: qsTr("Já existe um perfil com esse nome. Substituir pelo estado atual?")
+        }
+    }
+
+    Dialog {
+        id: profileUpdateDialog
+        objectName: "profileUpdateDialog"
+        anchors.centerIn: Overlay.overlay
+        width: 400
+        modal: true
+        title: qsTr("Atualizar perfil?")
+        standardButtons: Dialog.Yes | Dialog.No
+        onAccepted: window.profilesController.saveCurrent(window.profilePendingUpdate, true)
+
+        Label {
+            width: parent.width
+            wrapMode: Text.WordWrap
+            text: qsTr("Salvar o estado atual da câmera e do EQ no perfil “%1”?").arg(window.profilePendingUpdate)
+        }
+    }
+
+    Dialog {
+        id: profileRemoveDialog
+        objectName: "profileRemoveDialog"
+        anchors.centerIn: Overlay.overlay
+        width: 400
+        modal: true
+        title: qsTr("Remover perfil?")
+        standardButtons: Dialog.Yes | Dialog.No
+        onAccepted: window.profilesController.remove(window.profilePendingRemoval)
+
+        Label {
+            width: parent.width
+            wrapMode: Text.WordWrap
+            text: qsTr("Remover o perfil “%1”?").arg(window.profilePendingRemoval)
         }
     }
 

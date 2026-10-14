@@ -1,5 +1,6 @@
 #pragma once
 
+#include "modules/audio_processing/api/EqualizerCurveAccess.hpp"
 #include "modules/audio_processing/application/AudioGraph.hpp"
 #include "modules/audio_processing/application/HostEqualizer.hpp"
 
@@ -31,7 +32,7 @@ namespace ghub::audio_processing {
 // Perda do EQ: o AudioGraphObserver pode ser chamado em qualquer thread; o aviso é reenfileirado para a
 // thread dona. O destrutor desregistra o observador, espera a operação em andamento, descarta os pendentes e,
 // se o EQ estiver ligado, o desliga de forma síncrona (restaura a saída padrão, R5).
-class HostEqualizerController final : public QObject {
+class HostEqualizerController final : public QObject, public EqualizerCurveAccess {
     Q_OBJECT
     Q_PROPERTY(bool busy READ busy NOTIFY stateChanged)
     Q_PROPERTY(bool enabled READ enabled NOTIFY stateChanged)
@@ -67,6 +68,11 @@ public:
     Q_INVOKABLE void setBand(int band, int gainDb);
     // Curva plana (todas as bandas em 0 dB).
     Q_INVOKABLE void flat();
+
+    // EqualizerCurveAccess (ADR-0020): mesma fila e mesmo caminho do setBand; nunca liga nem desliga o EQ.
+    [[nodiscard]] std::array<int, EqualizerCurve::bandCount> currentGains() const override;
+    [[nodiscard]] shared_kernel::Result<void>
+    requestGains(const std::array<int, EqualizerCurve::bandCount>& gainsDb) override;
 
 signals:
     void stateChanged();

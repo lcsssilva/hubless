@@ -185,6 +185,23 @@ Result<std::vector<VideoMode>> readModes(V4l2Api& api, int fd)
     }
 }
 
+// Com exposição automática o firmware reajusta o ganho sozinho (evidência na Brio 100) e o driver não o marca
+// como inativo; sem valor conhecido da exposição, nada é marcado.
+void markFirmwareManagedControls(std::vector<CameraControl>& controls)
+{
+    const auto exposure =
+        std::ranges::find(controls, static_cast<std::uint32_t>(V4L2_CID_EXPOSURE_AUTO), &CameraControl::id);
+    if (exposure == controls.end() || !exposure->currentValue().has_value() ||
+        *exposure->currentValue() == V4L2_EXPOSURE_MANUAL) {
+        return;
+    }
+    for (auto& control : controls) {
+        if (control.id() == static_cast<std::uint32_t>(V4L2_CID_GAIN)) {
+            control = control.withFirmwareManaged(true);
+        }
+    }
+}
+
 Result<std::vector<CameraControl>> readControls(V4l2Api& api, int fd)
 {
     std::vector<CameraControl> controls;
@@ -197,6 +214,7 @@ Result<std::vector<CameraControl>> readControls(V4l2Api& api, int fd)
             return std::unexpected(more.error());
         }
         if (!*more) {
+            markFirmwareManagedControls(controls);
             return controls;
         }
         if (count >= maxControls) {
