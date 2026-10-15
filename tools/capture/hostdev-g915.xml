@@ -1,0 +1,7 @@
+<!-- Repasse do g915 (046d:c547) para a VM ghub-captura. Ver 03-gravar-usb.sh. -->
+<hostdev mode='subsystem' type='usb' managed='yes'>
+  <source>
+    <vendor id='0x046d'/>
+    <product id='0xc547'/>
+  </source>
+</hostdev>
