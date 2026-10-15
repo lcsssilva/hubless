@@ -432,8 +432,13 @@ TestCase {
         const card = deviceCards(window).find(c => c.deviceName === name);
         verify(card !== undefined, "cartão " + name);
         tryVerify(() => card.visible && card.width > 0 && card.height > 0);
+        // Os cartões da parte 3 têm 450 px de altura: a segunda fileira precisa ser rolada para dentro da vista.
+        reveal(card);
+        waitForRendering(window.contentItem);
         mouseClick(card);
         tryVerify(() => window.currentPage !== 0);
+        // A página recém-aberta só posiciona o trilho (ColumnLayout) no próximo quadro.
+        waitForRendering(window.contentItem);
     }
 
     function openTab(window, key) {
@@ -723,7 +728,8 @@ TestCase {
         const items = allItems(window);
         verify(items.some(item => /^(Label|QQuickLabel)/.test(item.toString())), "toString deve expor o tipo");
         // O fundo do Button (ButtonPanel) não é um botão: o padrão exige o nome do tipo seguido de "(".
-        const buttons = items.filter(item => /^(Button|QQuickButton)(_QMLTYPE_\d+)?\(/.test(item.toString()));
+        // Desde a parte 3 do INC-014 os botões do painel são GHubButton (o estilo reto do G HUB).
+        const buttons = items.filter(item => /^(GHubButton|Button|QQuickButton)(_QMLTYPE_\d+)?\(/.test(item.toString()));
         compare(buttons.map(b => b.objectName).sort().join(","),
                 "cameraControlDefault,cameraControlDefault,cameraPreviewToggle,diagnosticsExportButton,"
                 + "diagnosticsRefreshButton,eqDisableButton,eqEnableButton,"
@@ -1661,10 +1667,11 @@ TestCase {
 
     function test_windowHasStartingAndMinimumSize() {
         const window = createMain(createFake([]));
+        // INC-014 parte 3 (R25): o mínimo é o do G HUB (1024×768), então a janela inicial não pode ser menor que ele.
         compare(window.width, 1100);
-        compare(window.height, 720);
-        compare(window.minimumWidth, 900);
-        compare(window.minimumHeight, 600);
+        compare(window.height, 800);
+        compare(window.minimumWidth, 1024);
+        compare(window.minimumHeight, 768);
     }
 
     function test_cardShowsConnectionAndBattery() {
@@ -1838,7 +1845,8 @@ TestCase {
 
     function test_themeExposesGHubTokens() {
         verify(Qt.colorEqual(Theme.primary, "#1196ff"), String(Theme.primary));
-        verify(Qt.colorEqual(Theme.background, "#101113"), String(Theme.background));
+        // INC-014 parte 3 (R18): o fundo da janela é preto puro; o #101113 antigo vinha do CSS do rev/.
+        verify(Qt.colorEqual(Theme.background, "#000000"), String(Theme.background));
         verify(Qt.colorEqual(Theme.surface, "#212225"), String(Theme.surface));
         verify(Qt.colorEqual(Theme.error, "#f54155"), String(Theme.error));
         verify(Qt.colorEqual(Theme.foreground, "#ffffff"), String(Theme.foreground));
@@ -1855,6 +1863,17 @@ TestCase {
         compare(Theme.easingCurve.length, 6);
     }
 
+    // INC-014 parte 3 (R18): tokens medidos nas capturas próprias do G HUB (REFERENCIA-ESTILO-GHUB.md §1).
+    function test_themeExposesLayoutTokens() {
+        verify(Qt.colorEqual(Theme.divider, "#2b303b"), String(Theme.divider));
+        verify(Qt.colorEqual(Theme.buttonSurface, "#393939"), String(Theme.buttonSurface));
+        verify(Qt.colorEqual(Theme.sliderFill, "#afb1b4"), String(Theme.sliderFill));
+        verify(Qt.colorEqual(Theme.sliderTrack, "#393939"), String(Theme.sliderTrack));
+        verify(Qt.colorEqual(Theme.cardHover, "#2e2f31"), String(Theme.cardHover));
+        verify(Qt.colorEqual(Theme.tabForeground, "#c8cdd7"), String(Theme.tabForeground));
+        compare(Theme.cardRadius, 12);
+    }
+
     function test_windowUsesThemeColors() {
         const window = createMain(createFake([]));
         verify(Qt.colorEqual(window.Material.accent, Theme.primary), String(window.Material.accent));
@@ -1863,50 +1882,220 @@ TestCase {
         verify(Qt.colorEqual(window.Material.foreground, Theme.foreground), String(window.Material.foreground));
     }
 
-    function test_deviceCardUsesThemeShape() {
-        const window = createMain(createFake([]), sampleInventory());
-        const card = deviceCards(window)[0];
-        compare(card.radius, Theme.radius);
-        verify(Qt.colorEqual(card.color, Theme.surface), String(card.color));
-        verify(Qt.colorEqual(card.border.color, Theme.outline), String(card.border.color));
+    function test_profilesLoadFailedLabelUsesErrorColor() {
+        const window = createMainWithProfiles(createProfilesFake({loadFailed: true}));
+        const warning = findItem(window, "profilesLoadFailedLabel");
+        verify(Qt.colorEqual(warning.color, Theme.error), String(warning.color));
     }
 
-    function test_deviceCardOverlayFollowsHoverAndPress() {
+    // ---- INC-014 parte 3: layout do G HUB (R19 barra do topo) ----
+
+    function test_topBarIs88pxBlackWithDividerAtTheBottomAndOwnBrand() {
         const window = createMain(createFake([]), sampleInventory());
+        compare(window.header.height, 88);
+        const bar = findItem(window, "topBar");
+        compare(bar.height, 88);
+        verify(Qt.colorEqual(bar.color, Theme.background), String(bar.color));
+        const divider = findItem(window, "topBarDivider");
+        compare(divider.height, 1);
+        verify(Qt.colorEqual(divider.color, Theme.divider), String(divider.color));
+        compare(divider.y + divider.height, bar.height);
+        compare(divider.width, bar.width);
+        compare(findItem(window, "brandLabel").text, "Hubless");
+    }
+
+    function test_topBarTabsMarkTheActivePageWithPrimaryAndA24x2Underline() {
+        const window = createMain(createFake([]), sampleInventory());
+        const devices = findItem(window, "devicesTabButton");
+        const profiles = findItem(window, "profilesPageButton");
+        compare(devices.text, "Dispositivos");
+        compare(profiles.text, "Perfis");
+        const underline = tab => descendants(tab).find(i => i.objectName === "tabUnderline");
+        verify(Qt.colorEqual(devices.contentItem.color, Theme.primary), String(devices.contentItem.color));
+        verify(Qt.colorEqual(profiles.contentItem.color, Theme.tabForeground), String(profiles.contentItem.color));
+        compare(underline(devices).visible, true);
+        compare(underline(devices).width, 24);
+        compare(underline(devices).height, 2);
+        verify(Qt.colorEqual(underline(devices).color, Theme.primary));
+        compare(underline(profiles).visible, false);
+        clickButton(window, "profilesPageButton");
+        tryVerify(() => Qt.colorEqual(profiles.contentItem.color, Theme.primary));
+        verify(Qt.colorEqual(devices.contentItem.color, Theme.tabForeground));
+        compare(underline(profiles).visible, true);
+        compare(underline(devices).visible, false);
+        clickButton(window, "devicesTabButton");
+        tryCompare(window, "currentPage", 0);
+    }
+
+    function test_topBarGearOpensSettingsAndIsA20pxThemeIcon() {
+        const window = createMain(createFake([]), sampleInventory());
+        const gear = findItem(window, "settingsPageButton");
+        compare(gear.icon.name, "applications-system");
+        compare(gear.icon.width, 20);
+        compare(gear.icon.height, 20);
+        compare(gear.text, "");
+        compare(gear.Accessible.name, "Configurações");
+        clickButton(window, "settingsPageButton");
+        tryCompare(window, "currentPage", 6);
+    }
+
+    // ---- INC-014 parte 3 (R20): tela inicial com cartões de 296×450 ----
+
+    // Mostra a janela no tamanho mínimo do G HUB (R25) e espera a primeira renderização.
+    function showMinimum(window) {
+        window.width = 1024;
+        window.height = 768;
         window.show();
         waitForRendering(window.contentItem);
-        const card = deviceCards(window)[0];
-        tryVerify(() => card.visible && card.width > 0 && card.height > 0);
-        const overlay = stateOverlayOf(card);
-        compare(overlay.radius, Theme.radius);
-        compare(overlay.opacity, 0);
-        mouseMove(card, 20, 20);
-        tryCompare(overlay, "opacity", Theme.hoverOpacity);
-        verify(Qt.colorEqual(card.border.color, Theme.primary), String(card.border.color));
-        mousePress(card, 20, 20);
-        tryCompare(overlay, "opacity", Theme.pressOpacity);
-        mouseRelease(card, 20, 20);
-        mouseMove(card, -20, -20);
-        tryCompare(overlay, "opacity", 0);
-        verify(Qt.colorEqual(card.border.color, Theme.outline), String(card.border.color));
     }
 
-    function test_sideTabUsesThemeColorsAndOverlay() {
+    function test_cardsHaveG_HubSizeAndShape() {
         const window = createMain(createFake([]), sampleInventory());
+        showMinimum(window);
+        const cards = deviceCards(window);
+        compare(cards.map(c => c.width), [616, 296, 296, 296]);
+        cards.forEach(c => {
+            compare(c.height, 450, c.deviceName);
+            compare(c.radius, Theme.cardRadius, c.deviceName);
+            verify(Qt.colorEqual(c.color, Theme.surface), String(c.color));
+        });
+        const content = descendants(cards[1]).find(i => i.objectName === "cardContent");
+        compare(content.x, 25);
+        compare(content.y, 25);
+        compare(content.width, 296 - 50);
+        compare(content.height, 450 - 50);
+    }
+
+    function test_cardsFormACenteredGridWith24pxGaps() {
+        const window = createMain(createFake([]), sampleInventory());
+        showMinimum(window);
+        const cards = deviceCards(window);
+        tryVerify(() => cards[0].visible && cards[0].width > 0);
+        compare(cards[1].y, cards[0].y);
+        compare(cards[1].x - (cards[0].x + cards[0].width), 24);
+        compare(cards[2].y - (cards[0].y + cards[0].height), 24);
+        compare(cards[3].x - (cards[2].x + cards[2].width), 24);
+        // A grade ocupa 616 + 24 + 296 px e fica centrada na janela.
+        const left = cards[0].mapToItem(null, 0, 0).x;
+        const right = cards[1].mapToItem(null, cards[1].width, 0).x;
+        compare(right - left, 616 + 24 + 296);
+        verify(Math.abs((left + right) / 2 - window.width / 2) <= 1, left + " " + right);
+    }
+
+    function test_cardContentIsTitleBatteryRowAndCenteredDrawing() {
+        const window = createMain(createFake([{name: "G915", summary: "63% · descarregando", percent: 63}]),
+                                  sampleInventory());
+        showMinimum(window);
+        const [wide, common] = deviceCards(window);
+        const title = descendants(wide).find(i => i.objectName === "cardTitle");
+        compare(title.text, "G915");
+        compare(title.font.pixelSize, 24);
+        compare(title.font.bold, true);
+        const row = descendants(wide).find(i => i.objectName === "cardBatteryRow");
+        compare(row.visible, true);
+        compare(descendants(row).find(i => i.objectName === "cardBatteryText").text, "63% · descarregando");
+        compare(descendants(row).find(i => i.objectName === "deviceCardBattery").value, 63);
+        // Sem bateria (Brio 100), a linha inteira some.
+        const brio = deviceCards(window)[3];
+        compare(descendants(brio).find(i => i.objectName === "cardBatteryRow").visible, false);
+        // Área de imagem: 246×200 no cartão comum, 566×177 no largo; o desenho fica no centro dela.
+        const area = card => descendants(card).find(i => i.objectName === "cardImageArea");
+        compare(area(common).width, 246);
+        compare(area(common).height, 200);
+        compare(area(wide).width, 616 - 50);
+        compare(area(wide).height, 177);
+        [wide, common].forEach(card => {
+            const drawing = descendants(area(card)).find(i => i.objectName === "deviceDrawing");
+            verify(drawing !== undefined, "desenho do dispositivo");
+            verify(Math.abs(drawing.x + drawing.width / 2 - area(card).width / 2) <= 1, "centro x");
+            verify(Math.abs(drawing.y + drawing.height / 2 - area(card).height / 2) <= 1, "centro y");
+            verify(drawing.width > 0 && drawing.height > 0);
+        });
+    }
+
+    function test_cardHoverShowsWhiteOutlineAndHoverFill() {
+        const window = createMain(createFake([]), sampleInventory());
+        showMinimum(window);
+        const card = deviceCards(window)[1];
+        tryVerify(() => card.visible && card.width > 0 && card.height > 0);
+        compare(card.border.width, 0);
+        verify(Qt.colorEqual(card.color, Theme.surface), String(card.color));
+        mouseMove(card, 20, 20);
+        tryVerify(() => Qt.colorEqual(card.color, Theme.cardHover));
+        compare(card.border.width, 1);
+        verify(Qt.colorEqual(card.border.color, Theme.foreground), String(card.border.color));
+        mouseMove(card, -20, -20);
+        tryVerify(() => Qt.colorEqual(card.color, Theme.surface));
+        compare(card.border.width, 0);
+    }
+
+    // ---- INC-014 parte 3 (R21): cabeçalho da página e trilho de ícones ----
+
+    function railButtons(window) {
+        return allItems(window).filter(item => item.objectName === "sideTab" && item.visible && item.width > 0)
+                              .sort((a, b) => a.mapToItem(null, 0, 0).y - b.mapToItem(null, 0, 0).y);
+    }
+
+    function test_deviceHeaderShowsPlainArrowAndTitle36pxBold() {
+        const window = createMain(createFake([]), sampleInventory());
+        showMinimum(window);
+        compare(findItem(window, "deviceTitle").visible, false);
+        openDevice(window, "G703");
+        const title = findItem(window, "deviceTitle");
+        compare(title.visible, true);
+        compare(title.text, "G703");
+        compare(title.font.pixelSize, 36);
+        compare(title.font.bold, true);
+        const back = findItem(window, "backButton");
+        compare(back.background, null);
+        compare(back.contentItem.text, "←");
+        compare(findItem(window, "brandLabel").visible, false);
+    }
+
+    function test_railHas48pxIconButtonsAt52pxStepWithTooltipsAndGearAtTheBottom() {
+        const window = createMain(createFake([]), sampleInventory());
+        showMinimum(window);
+        openDevice(window, "G733");
+        const buttons = railButtons(window);
+        compare(buttons.map(b => b.tabKey), ["headset", "equalizer", "microphone", "info"]);
+        compare(buttons.map(b => b.ToolTip.text), ["Headset", "Equalizador", "Microfone", "Informações"]);
+        buttons.forEach(b => {
+            compare(b.width, 48, b.tabKey);
+            compare(b.height, 48, b.tabKey);
+            compare(b.icon.width, 24, b.tabKey);
+            compare(b.icon.height, 24, b.tabKey);
+            verify(b.icon.name !== "", "ícone de " + b.tabKey);
+            compare(b.mapToItem(null, 0, 0).x, 13, b.tabKey);
+        });
+        const ys = buttons.map(b => b.mapToItem(null, 0, 0).y);
+        compare(ys[1] - ys[0], 52);
+        compare(ys[2] - ys[1], 52);
+        // A engrenagem (Informações) fica no rodapé do trilho, afastada das demais.
+        verify(ys[3] - ys[2] > 52, "engrenagem no rodapé: " + ys);
+        const rail = visibleByName(window, "tabRail")[0];
+        const bottom = buttons[3].mapToItem(rail, 0, 48).y;
+        verify(bottom <= rail.height && bottom >= rail.height - 8, bottom + " de " + rail.height);
+        compare(new Set(buttons.map(b => b.icon.name)).size, 4);
+    }
+
+    function test_railSelectedButtonIsPrimaryWithWhiteIconAndOthersAreDim() {
+        const window = createMain(createFake([]), sampleInventory());
+        showMinimum(window);
         openDevice(window, "G915");
-        const tabs = allItems(window).filter(item => item.objectName === "sideTab" && item.visible && item.width > 0);
-        const selected = tabs.find(t => t.selected);
-        const other = tabs.find(t => !t.selected);
+        const buttons = railButtons(window);
+        const selected = buttons.find(t => t.selected);
+        const other = buttons.find(t => !t.selected);
+        compare(selected.tabKey, "lighting");
         verify(selected !== undefined && other !== undefined);
-        verify(Qt.colorEqual(selected.contentItem.color, Theme.primary), String(selected.contentItem.color));
-        verify(Qt.colorEqual(other.contentItem.color, Theme.foreground), String(other.contentItem.color));
+        verify(Qt.colorEqual(selected.icon.color, Theme.foreground), String(selected.icon.color));
+        verify(Qt.colorEqual(other.icon.color, Theme.foregroundMedium), String(other.icon.color));
         const fill = descendants(selected).find(i => i.objectName === "selectedFill");
         verify(fill !== undefined, "selectedFill");
-        compare(fill.radius, Theme.radius);
+        compare(fill.radius, Theme.cardRadius);
         verify(Qt.colorEqual(fill.color, Theme.primary), String(fill.color));
-        compare(fill.opacity, Theme.selectedOpacity);
-        const otherFill = descendants(other).find(i => i.objectName === "selectedFill");
-        compare(otherFill.opacity, 0);
+        compare(fill.opacity, 1);
+        compare(descendants(other).find(i => i.objectName === "selectedFill").opacity, 0);
+        // Hover e clique seguem os overlays de estado da parte 2 (R15).
         const selectedOverlay = stateOverlayOf(selected);
         const overlay = stateOverlayOf(other);
         compare(overlay.opacity, 0);
@@ -1915,15 +2104,294 @@ TestCase {
         mousePress(other, 20, 10);
         tryCompare(overlay, "opacity", Theme.pressOpacity);
         mouseRelease(other, 20, 10);
+        // Soltar o clique abriu a aba Informações; o botão selecionado agora é outro.
+        tryVerify(() => other.selected);
         mouseMove(selected, -100, 10);
         tryCompare(overlay, "opacity", 0);
         compare(selectedOverlay.opacity, 0);
     }
 
-    function test_profilesLoadFailedLabelUsesErrorColor() {
-        const window = createMainWithProfiles(createProfilesFake({loadFailed: true}));
-        const warning = findItem(window, "profilesLoadFailedLabel");
-        verify(Qt.colorEqual(warning.color, Theme.error), String(warning.color));
+    // ---- INC-014 parte 3 (R22/R25): painel lateral de 310 px e área principal ----
+
+    function test_devicePanelIs310pxWideWithTabTitleAndFillsTheHeight() {
+        const window = createMain(createFake([]), sampleInventory());
+        showMinimum(window);
+        openDevice(window, "G733");
+        const panels = visibleByName(window, "devicePanel");
+        compare(panels.length, 1);
+        const panel = panels[0];
+        compare(panel.width, 310);
+        compare(panel.radius, Theme.cardRadius);
+        verify(Qt.colorEqual(panel.color, Theme.surface), String(panel.color));
+        const origin = panel.mapToItem(null, 0, 0);
+        compare(origin.x, 75);
+        compare(origin.y, 96);
+        compare(origin.y + panel.height, window.height - 5);
+        const title = descendants(panel).find(i => i.objectName === "panelTitle");
+        compare(title.text, "Headset");
+        compare(title.font.pixelSize, 24);
+        openTab(window, "equalizer");
+        compare(title.text, "Equalizador");
+    }
+
+    function test_mainAreaCentersTheDrawingAndPutsTheBatteryAtTheTopRight() {
+        const window = createMain(createFake([{name: "G733", summary: "93% · descarregando", percent: 93}]),
+                                  sampleInventory());
+        showMinimum(window);
+        openDevice(window, "G733");
+        const area = visibleByName(window, "mainArea")[0];
+        const origin = area.mapToItem(null, 0, 0);
+        compare(origin.x, 400);
+        compare(area.width, window.width - 400);
+        const drawing = descendants(area).find(i => i.objectName === "deviceDrawing");
+        compare(drawing.kind, "headset");
+        verify(Math.abs(drawing.mapToItem(area, drawing.width / 2, 0).x - area.width / 2) <= 1, "centro x");
+        verify(Math.abs(drawing.mapToItem(area, 0, drawing.height / 2).y - area.height / 2) <= 1, "centro y");
+        const block = descendants(area).find(i => i.objectName === "mainBatteryBlock");
+        compare(block.visible, true);
+        verify(block.mapToItem(area, block.width, 0).x <= area.width, "dentro da área");
+        verify(area.width - block.mapToItem(area, block.width, 0).x <= 40, "colado à direita");
+        verify(block.mapToItem(area, 0, 0).y <= 40, "no topo");
+        compare(descendants(block).find(i => i.objectName === "mainBatteryText").text, "93% · descarregando");
+        compare(descendants(block).find(i => i.objectName === "mainBatteryIcon").value, 93);
+    }
+
+    function test_mainAreaHasNoBatteryBlockForTheBrio100() {
+        const window = createMain(createFake([]), sampleInventory());
+        showMinimum(window);
+        openDevice(window, "Brio 100");
+        const area = visibleByName(window, "mainArea")[0];
+        compare(descendants(area).find(i => i.objectName === "deviceDrawing").kind, "camera");
+        compare(descendants(area).find(i => i.objectName === "mainBatteryBlock").visible, false);
+    }
+
+    // Nenhum item visível do painel passa da borda direita do painel (o conteúdo longo rola na vertical).
+    function allVisibleDescendants(root) {
+        const items = [];
+        const pending = [root];
+        while (pending.length > 0) {
+            const item = pending.shift();
+            if (!item.visible)
+                continue;
+            items.push(item);
+            for (let i = 0; i < item.children.length; ++i)
+                pending.push(item.children[i]);
+            if (item.contentItem && item.contentItem !== item && !pending.includes(item.contentItem))
+                pending.push(item.contentItem);
+        }
+        return items;
+    }
+
+    function richCamera() {
+        return createCameraFake("Brio 100", [{text: "MJPG: até 1920×1080 a 30 fps"}],
+                                [integerControl({id: 1}), booleanControl({id: 2}), menuControl({id: 3})]);
+    }
+
+    function test_noTabOverflowsThePanelAt1024x768() {
+        const onboard = createOnboardFake({loaded: true, dpiStages: [400, 800, 1600, 3200, 6400], defaultStage: 1,
+                                           reportRateHz: 1000, backupExists: true, status: "lido"});
+        const pointer = createPointerFake({statusText: "lido", deviceName: "G703", connectionText: "USB",
+                                           profiles: [pointerProfile()], warnings: ["aviso longo do ratbagd sobre bloqueio"]});
+        const tabsByDevice = {"G915": ["lighting", "info"], "G703": ["onboard", "ratbag", "info"],
+                              "G733": ["headset", "equalizer", "microphone", "info"], "Brio 100": ["image", "modes", "info"]};
+        const window = createMain(createFake([{name: "G915", summary: "44% · descarregando", percent: 44}]),
+                                  sampleInventory(), richCamera(), null, null, pointer, null, null, null, onboard);
+        showMinimum(window);
+        for (const name of Object.keys(tabsByDevice)) {
+            openDevice(window, name);
+            for (const key of tabsByDevice[name]) {
+                openTab(window, key);
+                const panel = visibleByName(window, "devicePanel")[0];
+                // Só itens com objectName (controles e rótulos do app); os internos do estilo Material (sombra,
+                // ondulação) passam da borda de propósito.
+                const bad = allVisibleDescendants(panel).filter(item => item.objectName !== "" && item.width > 0
+                    && item.height > 0 && item.mapToItem(panel, item.width, 0).x > panel.width + 1)
+                    .map(item => item.objectName + " " + item.mapToItem(panel, item.width, 0).x);
+                compare(bad, [], name + "/" + key);
+            }
+            clickButton(window, "backButton");
+            tryCompare(window, "currentPage", 0);
+        }
+    }
+
+    // ---- INC-014 parte 3 (R23): controles no estilo do G HUB ----
+
+    function test_sectionTitlesAreUppercase13pxWithSpacingAndDimWhite() {
+        const window = createMain(createFake([]), sampleInventory());
+        showMinimum(window);
+        openDeviceTab(window, "G915", "info");
+        const titles = visibleByName(window, "sectionTitle");
+        verify(titles.length > 0, "há cabeçalhos de seção");
+        titles.forEach(t => {
+            compare(t.font.pixelSize, 13);
+            compare(t.font.letterSpacing, 0.5);
+            compare(t.font.capitalization, Font.AllUppercase);
+            verify(Qt.colorEqual(t.color, Theme.foregroundMedium), String(t.color));
+        });
+    }
+
+    function test_horizontalSliderHas2pxTrackAndWhite12pxThumb() {
+        const window = createMain(createFake([]), sampleInventory());
+        showMinimum(window);
+        openDeviceTab(window, "G733", "headset");
+        const slider = findItem(window, "headsetSidetoneSlider");
+        const track = descendants(slider).find(i => i.objectName === "sliderTrack");
+        const fill = descendants(slider).find(i => i.objectName === "sliderFill");
+        compare(track.height, 2);
+        verify(Qt.colorEqual(track.color, Theme.sliderTrack), String(track.color));
+        compare(fill.height, 2);
+        verify(Qt.colorEqual(fill.color, Theme.sliderFill), String(fill.color));
+        compare(slider.handle.width, 12);
+        compare(slider.handle.height, 12);
+        compare(slider.handle.radius, 6);
+        verify(Qt.colorEqual(slider.handle.color, Theme.foreground), String(slider.handle.color));
+        // O trecho cheio acompanha o valor: no meio do curso, ocupa a metade do trilho.
+        slider.value = 50;
+        verify(Math.abs(fill.width - track.width / 2) <= 1, fill.width + " de " + track.width);
+    }
+
+    function test_verticalSliderHas2pxWideTrack() {
+        const window = createMain(createFake([]), sampleInventory());
+        showMinimum(window);
+        openDeviceTab(window, "G733", "equalizer");
+        const slider = eqSliders(window)[0];
+        const track = descendants(slider).find(i => i.objectName === "sliderTrack");
+        compare(track.width, 2);
+        compare(slider.handle.width, 12);
+        compare(slider.handle.height, 12);
+    }
+
+    function test_checkBoxIs14pxWith2pxBorderAndFillsWhenChecked() {
+        const desktop = createDesktopFake({autostartEnabled: true});
+        const window = createMainWithDesktop(desktop);
+        showMinimum(window);
+        clickButton(window, "settingsPageButton");
+        const box = findItem(window, "autostartSwitch");
+        tryVerify(() => box.visible && box.width > 0);
+        compare(box.indicator.width, 14);
+        compare(box.indicator.height, 14);
+        compare(box.indicator.border.width, 2);
+        compare(box.indicator.radius, 0);
+        verify(Qt.colorEqual(box.indicator.border.color, Theme.sliderFill), String(box.indicator.border.color));
+        compare(box.checked, true);
+        verify(Qt.colorEqual(box.indicator.color, Theme.sliderFill), String(box.indicator.color));
+        desktop.autostartEnabled = false;
+        tryVerify(() => !box.checked);
+        compare(box.indicator.color.a, 0);
+    }
+
+    function test_buttonsAreFlat32pxSurfaceWithUppercaseBoldText() {
+        const window = createMain(createFake([]), sampleInventory());
+        showMinimum(window);
+        const check = (name) => {
+            const button = findItem(window, name);
+            compare(button.height, 32, name);
+            compare(button.background.radius, 0, name);
+            verify(Qt.colorEqual(button.background.color, button.enabled ? Theme.buttonSurface : Theme.buttonDisabledSurface),
+                   name + " " + button.background.color);
+            compare(button.contentItem.font.bold, true, name);
+            compare(button.contentItem.font.capitalization, Font.AllUppercase, name);
+            verify(Qt.colorEqual(button.contentItem.color, button.enabled ? Theme.foreground : Theme.buttonDisabledText),
+                   name + " " + button.contentItem.color);
+        };
+        openDeviceTab(window, "G915", "lighting");
+        check("lightingLiveButton");
+        check("lightingCustomColorButton"); // desabilitado sem o modo ao vivo
+        clickButton(window, "backButton");
+        openDeviceTab(window, "G733", "headset");
+        check("headsetLightsOnButton");
+        clickButton(window, "backButton");
+        clickButton(window, "profilesPageButton");
+        check("profileSaveButton");
+        clickButton(window, "settingsPageButton");
+        check("diagnosticsRefreshButton");
+    }
+
+    // ---- INC-014 parte 3: renderização fora da tela (1024×768) para conferir o layout contra a referência ----
+
+    // Lê uma variável de ambiente (QML não tem getenv): /proc/self/environ, liberado pelo ctest com
+    // QML_XHR_ALLOW_FILE_READ=1. Sem a variável (ou sem a leitura), devolve "".
+    function environmentVariable(name) {
+        try {
+            const request = new XMLHttpRequest();
+            request.open("GET", "file:///proc/self/environ", false);
+            request.send();
+            const entry = request.responseText.split("\u0000").find(e => e.startsWith(name + "="));
+            return entry === undefined ? "" : entry.substring(name.length + 1);
+        } catch (e) {
+            return "";
+        }
+    }
+
+    function renderSampleWindow() {
+        const batteries = createFake([{name: "G915", summary: "63% · descarregando", percent: 63},
+                                      {name: "G703", summary: "88% · carregando", percent: 88},
+                                      {name: "G733", summary: "41% · descarregando", percent: 41}]);
+        const inventory = createFake([{name: "G915", summary: "detectado via receptor Lightspeed"},
+                                      {name: "G703", summary: "detectado via receptor Lightspeed e cabo USB"},
+                                      {name: "G733", summary: "detectado via receptor USB"},
+                                      {name: "Brio 100", summary: "detectado via cabo USB"}]);
+        const camera = createCameraFake("Brio 100 detectada", [{text: "MJPG: até 1920×1080 a 30 fps"},
+                                                               {text: "YUYV: até 640×480 a 30 fps"}],
+                                        [integerControl({id: 1}), booleanControl({id: 2}), menuControl({id: 3})]);
+        const pointer = createPointerFake({statusText: "lido", deviceName: "G703", connectionText: "receptor",
+                                           profiles: [pointerProfile()]});
+        const onboard = createOnboardFake({loaded: true, dpiStages: [400, 800, 1600, 3200], defaultStage: 1,
+                                           reportRateHz: 1000, backupExists: true, status: "memória lida"});
+        const equalizer = createEqualizerFake({gains: [4, 3, 1, 0, -1, 0, 2, 3, 2, 1], status: "EQ desligado"});
+        const profiles = createProfilesFake({profileNames: ["Jogos", "Escritório"],
+                                             profileApplications: {"Jogos": ["steam"]}, status: "2 perfis"});
+        const diagnostics = createDiagnosticsFake({backends: [{name: "HeadsetControl", available: true, detail: "4.1.0"},
+                                                              {name: "ratbagd", available: false, detail: "inativo"}],
+                                                   status: "pronto"});
+        return createMain(batteries, inventory, camera, null, null, pointer, null, null, equalizer, onboard, null,
+                          null, diagnostics, profiles);
+    }
+
+    // Sem GHUB_UI_RENDER_DIR só confere que a captura funciona; com ela, grava um PNG por tela.
+    function test_rendersEachScreenAtMinimumSize() {
+        const directory = environmentVariable("GHUB_UI_RENDER_DIR");
+        const window = renderSampleWindow();
+        showMinimum(window);
+        const root = window.contentItem.parent;
+        const capture = name => {
+            waitForRendering(root);
+            const image = grabImage(root);
+            compare(image.width, 1024, name);
+            compare(image.height, 768, name);
+            // A barra do topo é preta (Theme.background): o canto superior esquerdo da captura confirma que
+            // a captura enxerga o cabeçalho, não só o conteúdo.
+            verify(Qt.colorEqual(image.pixel(2, 2), Theme.background), name + " " + image.pixel(2, 2));
+            // save() lança exceção se não conseguir gravar (pasta inexistente, por exemplo).
+            if (directory !== "")
+                image.save(directory + "/" + name + ".png");
+        };
+        capture("01-inicio");
+        openDevice(window, "G915");
+        capture("02-g915-iluminacao");
+        openTab(window, "info");
+        capture("03-g915-informacoes");
+        clickButton(window, "backButton");
+        openDevice(window, "G703");
+        capture("04-g703-sensibilidade");
+        openTab(window, "ratbag");
+        capture("05-g703-leitura");
+        clickButton(window, "backButton");
+        openDevice(window, "G733");
+        capture("06-g733-headset");
+        openTab(window, "equalizer");
+        capture("07-g733-equalizador");
+        openTab(window, "microphone");
+        capture("08-g733-microfone");
+        clickButton(window, "backButton");
+        openDevice(window, "Brio 100");
+        capture("09-brio-imagem");
+        openTab(window, "modes");
+        capture("10-brio-modos");
+        clickButton(window, "profilesPageButton");
+        capture("11-perfis");
+        clickButton(window, "settingsPageButton");
+        capture("12-configuracoes");
     }
 
     // INC-015: identidade HID++ na aba Informações de G915, G703 e G733; nada é lido ao navegar.

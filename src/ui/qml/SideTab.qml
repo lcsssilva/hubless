@@ -1,43 +1,46 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Controls.Material
-import QtQuick.Layouts
 
-// Aba da coluna lateral de uma página de dispositivo (INC-014 R4). Só mostra o texto e emite `clicked`.
-AbstractButton {
+// Botão do trilho de ícones de uma página de dispositivo (INC-014 parte 3, R21): 48×48, ícone de 24 px do tema do
+// sistema, tooltip com o nome da aba. O selecionado tem fundo primário e ícone branco; os demais, ícone a 60%.
+// Só apresenta e emite `clicked`; sem regra de negócio.
+ToolButton {
     id: tab
     objectName: "sideTab"
 
     property string tabKey: ""
     property bool selected: false
 
-    Layout.fillWidth: true
-    implicitHeight: 40
+    width: 48
+    height: 48
+    padding: 0
     hoverEnabled: true
+    display: AbstractButton.IconOnly
+    icon.width: 24
+    icon.height: 24
+    icon.color: tab.selected ? Theme.foreground : Theme.foregroundMedium
+    Accessible.name: text
 
-    contentItem: Label {
-        text: tab.text
-        leftPadding: 16
-        verticalAlignment: Text.AlignVCenter
-        font.bold: tab.selected
-        color: tab.selected ? Theme.primary : Theme.foreground
-    }
+    ToolTip.visible: hovered
+    ToolTip.text: text
+    ToolTip.delay: 400
 
     background: Item {
-        // Fundo da aba selecionada: cor primária com opacidade de seleção.
+        // Fundo do item selecionado: cor primária.
         Rectangle {
             objectName: "selectedFill"
             anchors.fill: parent
-            radius: Theme.radius
+            radius: Theme.cardRadius
             color: Theme.primary
-            opacity: tab.selected ? Theme.selectedOpacity : 0
+            opacity: tab.selected ? 1 : 0
         }
 
         // Camada de estado: realce de hover e de clique.
         Rectangle {
             objectName: "stateOverlay"
             anchors.fill: parent
-            radius: Theme.radius
+            radius: Theme.cardRadius
             color: Theme.foreground
             opacity: tab.down ? Theme.pressOpacity : (tab.hovered ? Theme.hoverOpacity : 0)
 
@@ -48,15 +51,6 @@ AbstractButton {
                     easing.bezierCurve: Theme.easingCurve
                 }
             }
-        }
-
-        Rectangle {
-            visible: tab.selected
-            width: 3
-            height: parent.height - 12
-            anchors.verticalCenter: parent.verticalCenter
-            radius: 1.5
-            color: Theme.primary
         }
     }
 }

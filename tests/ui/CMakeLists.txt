@@ -11,5 +11,6 @@ ghub_set_warnings(ghub_ui_tests)
 
 add_test(NAME ui.main_qml COMMAND ghub_ui_tests)
 set_tests_properties(ui.main_qml PROPERTIES
-    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
-    TIMEOUT 30)
+    # QML_XHR_ALLOW_FILE_READ: o caso de renderização lê GHUB_UI_RENDER_DIR de /proc/self/environ (QML não tem getenv).
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QML_XHR_ALLOW_FILE_READ=1"
+    TIMEOUT 90)

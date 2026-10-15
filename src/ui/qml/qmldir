@@ -1,3 +1,13 @@
 singleton Theme 1.0 Theme.qml
 DeviceCard 1.0 DeviceCard.qml
 SideTab 1.0 SideTab.qml
+TopBarTab 1.0 TopBarTab.qml
+DeviceDrawing 1.0 DeviceDrawing.qml
+BatteryIcon 1.0 BatteryIcon.qml
+PanelCard 1.0 PanelCard.qml
+PanelPage 1.0 PanelPage.qml
+DevicePage 1.0 DevicePage.qml
+SectionTitle 1.0 SectionTitle.qml
+GHubButton 1.0 GHubButton.qml
+GHubSlider 1.0 GHubSlider.qml
+GHubCheckBox 1.0 GHubCheckBox.qml

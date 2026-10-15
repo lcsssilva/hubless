@@ -1,31 +1,36 @@
 import QtQuick
 import QtQuick.Controls
-import QtQuick.Controls.Material
 import QtQuick.Layouts
 
-// Cartão de um dispositivo na tela inicial (INC-014 R3). Só apresenta os textos recebidos e emite `clicked`;
-// nenhuma regra de negócio nem acesso a dispositivo.
+// Cartão de um dispositivo na tela inicial (INC-014 parte 3, R20): 296×450 (616×450 para o teclado), preenchimento
+// de 25 px, título de 24 px, linha de bateria, desenho próprio do dispositivo e a conexão no pé. Só apresenta os
+// textos recebidos e emite `clicked`; nenhuma regra de negócio nem acesso a dispositivo.
 Rectangle {
     id: card
     objectName: "deviceCard"
 
     property string deviceName: ""
-    property string iconName: ""
+    // "keyboard", "mouse", "headset" ou "camera": escolhe o desenho.
+    property string deviceKind: "keyboard"
     property string connectionText: ""
     property string batteryText: ""
-    // Nível atual (0–100); -1 esconde a barra de bateria.
+    // Nível atual (0–100); -1 esconde o ícone de bateria.
     property int batteryPercent: -1
+    // Cartão largo (teclado): ocupa a largura de dois cartões comuns e o intervalo entre eles.
+    property bool wide: false
     // Dispositivo não detectado fica esmaecido, mas continua clicável.
     property bool detected: true
 
     signal clicked()
 
-    width: 210
-    height: 250
-    radius: Theme.radius
-    color: Theme.surface
-    border.width: 2
-    border.color: pointer.containsMouse || card.activeFocus ? Theme.primary : Theme.outline
+    readonly property bool highlighted: pointer.containsMouse || card.activeFocus
+
+    width: wide ? 616 : 296
+    height: 450
+    radius: Theme.cardRadius
+    color: highlighted ? Theme.cardHover : Theme.surface
+    border.width: highlighted ? 1 : 0
+    border.color: Theme.foreground
     opacity: detected ? 1.0 : 0.5
     activeFocusOnTab: true
 
@@ -35,71 +40,76 @@ Rectangle {
     Keys.onEnterPressed: card.clicked()
     Keys.onSpacePressed: card.clicked()
 
-    // Camada de estado: realce de hover e de clique, sobre o fundo e sob o conteúdo.
-    Rectangle {
-        objectName: "stateOverlay"
-        anchors.fill: parent
-        radius: card.radius
-        color: Theme.foreground
-        opacity: pointer.pressed ? Theme.pressOpacity : (pointer.containsMouse ? Theme.hoverOpacity : 0)
-
-        Behavior on opacity {
-            NumberAnimation {
-                duration: Theme.shortDuration
-                easing.type: Easing.BezierSpline
-                easing.bezierCurve: Theme.easingCurve
-            }
+    Behavior on color {
+        ColorAnimation {
+            duration: Theme.shortDuration
+            easing.type: Easing.BezierSpline
+            easing.bezierCurve: Theme.easingCurve
         }
     }
 
-    ColumnLayout {
+    Item {
+        objectName: "cardContent"
         anchors.fill: parent
-        anchors.margins: 16
-        spacing: 8
-
-        // O ícone vem do tema do sistema; o clique é tratado pela área de mouse do cartão.
-        ToolButton {
-            Layout.alignment: Qt.AlignHCenter
-            focusPolicy: Qt.NoFocus
-            hoverEnabled: false
-            icon.name: card.iconName
-            icon.width: 64
-            icon.height: 64
-            display: AbstractButton.IconOnly
-        }
+        anchors.margins: 25
 
         Label {
-            Layout.alignment: Qt.AlignHCenter
+            objectName: "cardTitle"
+            width: parent.width
+            elide: Text.ElideRight
             text: card.deviceName
-            font.pixelSize: 20
+            font.pixelSize: 24
             font.bold: true
         }
 
-        Label {
-            Layout.fillWidth: true
-            horizontalAlignment: Text.AlignHCenter
-            wrapMode: Text.WordWrap
-            text: card.connectionText
-            color: Theme.foregroundMedium
-        }
-
-        Item { Layout.fillHeight: true }
-
-        Label {
-            Layout.fillWidth: true
-            horizontalAlignment: Text.AlignHCenter
+        // Porcentagem e ícone; o dispositivo sem bateria (Brio 100) não tem a linha.
+        Row {
+            objectName: "cardBatteryRow"
+            y: 60
+            spacing: 8
             visible: card.batteryText !== ""
-            text: card.batteryText
-            font.pixelSize: 13
+
+            Label {
+                objectName: "cardBatteryText"
+                anchors.verticalCenter: parent.verticalCenter
+                text: card.batteryText
+                font.pixelSize: 14
+                font.bold: true
+                color: Theme.foregroundMedium
+            }
+
+            BatteryIcon {
+                objectName: "deviceCardBattery"
+                anchors.verticalCenter: parent.verticalCenter
+                value: card.batteryPercent
+            }
         }
 
-        ProgressBar {
-            objectName: "deviceCardBattery"
-            Layout.fillWidth: true
-            visible: card.batteryPercent >= 0
-            from: 0
-            to: 100
-            value: Math.max(0, card.batteryPercent)
+        // Área da imagem: 246×200 (566×177 no cartão largo), desenho centralizado.
+        Item {
+            objectName: "cardImageArea"
+            y: 112 + (card.wide ? 11 : 0)
+            width: parent.width
+            height: card.wide ? 177 : 200
+
+            DeviceDrawing {
+                kind: card.deviceKind
+                anchors.centerIn: parent
+                boxWidth: parent.width
+                boxHeight: parent.height
+            }
+        }
+
+        Label {
+            objectName: "cardConnection"
+            anchors.bottom: parent.bottom
+            width: parent.width
+            wrapMode: Text.WordWrap
+            maximumLineCount: 3
+            elide: Text.ElideRight
+            text: card.connectionText
+            font.pixelSize: 13
+            color: Theme.foregroundMedium
         }
     }
 

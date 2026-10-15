@@ -20,19 +20,20 @@ endif()
 
 qt_add_executable(ghub-linux main.cpp)
 
-set_source_files_properties("${PROJECT_SOURCE_DIR}/src/ui/qml/Main.qml" PROPERTIES QT_RESOURCE_ALIAS Main.qml)
-set_source_files_properties("${PROJECT_SOURCE_DIR}/src/ui/qml/DeviceCard.qml" PROPERTIES QT_RESOURCE_ALIAS DeviceCard.qml)
-set_source_files_properties("${PROJECT_SOURCE_DIR}/src/ui/qml/SideTab.qml" PROPERTIES QT_RESOURCE_ALIAS SideTab.qml)
-set_source_files_properties("${PROJECT_SOURCE_DIR}/src/ui/qml/Theme.qml" PROPERTIES
-    QT_RESOURCE_ALIAS Theme.qml QT_QML_SINGLETON_TYPE TRUE)
+# Componentes QML de src/ui/qml (INC-014). Theme.qml é singleton; o alias mantém o nome do arquivo no recurso,
+# que o qmldir de src/ui/qml usa nos testes de apresentação.
+set(GHUB_QML_DIR "${PROJECT_SOURCE_DIR}/src/ui/qml")
+set(GHUB_QML_FILES Main.qml DeviceCard.qml DeviceDrawing.qml BatteryIcon.qml DevicePage.qml PanelCard.qml PanelPage.qml SideTab.qml TopBarTab.qml SectionTitle.qml GHubButton.qml GHubSlider.qml GHubCheckBox.qml Theme.qml)
+set(GHUB_QML_PATHS)
+foreach(qml_file IN LISTS GHUB_QML_FILES)
+    set_source_files_properties("${GHUB_QML_DIR}/${qml_file}" PROPERTIES QT_RESOURCE_ALIAS ${qml_file})
+    list(APPEND GHUB_QML_PATHS "${GHUB_QML_DIR}/${qml_file}")
+endforeach()
+set_source_files_properties("${GHUB_QML_DIR}/Theme.qml" PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 qt_add_qml_module(ghub-linux
     URI GHub
     VERSION 1.0
-    QML_FILES
-        "${PROJECT_SOURCE_DIR}/src/ui/qml/Main.qml"
-        "${PROJECT_SOURCE_DIR}/src/ui/qml/DeviceCard.qml"
-        "${PROJECT_SOURCE_DIR}/src/ui/qml/SideTab.qml"
-        "${PROJECT_SOURCE_DIR}/src/ui/qml/Theme.qml")
+    QML_FILES ${GHUB_QML_PATHS})
 
 # Estilo Material escuro lido pelo Qt Quick Controls na raiz do recurso (INC-014 R1); as cores vêm do singleton Theme.qml.
 qt_add_resources(ghub-linux "controls_conf"
