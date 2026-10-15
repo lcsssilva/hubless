@@ -106,6 +106,38 @@ private slots:
         QCOMPARE(item(viewModel, 0).value("summary").toString(), QStringLiteral("carregando"));
     }
 
+    void exposesPercent_WhenLevelKnown()
+    {
+        source.setResult(std::vector{reading(g915, ChargeState::Discharging, 44)});
+
+        const BatteryViewModel viewModel{getBatteryStatus, 1h};
+
+        QCOMPARE(item(viewModel, 0).value("percent").toInt(), 44);
+    }
+
+    void exposesMinusOnePercent_WhenNoLevel()
+    {
+        source.setResult(std::vector<SourcedBatteryReading>{
+            {.device = g915, .reading = BatteryReading{ChargeState::Charging, std::nullopt}},
+        });
+
+        const BatteryViewModel viewModel{getBatteryStatus, 1h};
+
+        QCOMPARE(item(viewModel, 0).value("percent").toInt(), -1);
+        QVERIFY(item(viewModel, 0).contains("percent"));
+        QCOMPARE(item(viewModel, 1).value("percent").toInt(), -1); // G703 não detectado
+    }
+
+    void exposesMinusOnePercent_WhenUnavailable()
+    {
+        source.setResult(ghub::shared_kernel::fail(ghub::shared_kernel::ErrorCode::BackendUnavailable, "sysfs"));
+
+        const BatteryViewModel viewModel{getBatteryStatus, 1h};
+
+        QVERIFY(item(viewModel, 0).contains("percent"));
+        QCOMPARE(item(viewModel, 0).value("percent").toInt(), -1);
+    }
+
     void notifies_WhenRefreshChangesDevices()
     {
         source.setResult(std::vector{reading(g915, ChargeState::Discharging, 44)});

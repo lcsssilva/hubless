@@ -1,5 +1,7 @@
 import QtQuick
+import QtQuick.Controls.Material
 import QtTest
+import "../../src/ui/qml"
 
 TestCase {
     id: testCase
@@ -391,6 +393,44 @@ TestCase {
         }
     }
 
+    // Navegação por cliques reais (INC-014): cartão da tela inicial -> aba lateral. A janela precisa estar
+    // visível para o mouseClick acertar o item.
+    function deviceCards(window) {
+        return allItems(window).filter(item => item.objectName === "deviceCard");
+    }
+
+    function openDevice(window, name) {
+        window.show();
+        waitForRendering(window.contentItem);
+        const card = deviceCards(window).find(c => c.deviceName === name);
+        verify(card !== undefined, "cartão " + name);
+        tryVerify(() => card.visible && card.width > 0 && card.height > 0);
+        mouseClick(card);
+        tryVerify(() => window.currentPage !== 0);
+    }
+
+    function openTab(window, key) {
+        const visibleTab = () => allItems(window).find(item => item.objectName === "sideTab" && item.tabKey === key
+                                                           && item.visible && item.width > 0);
+        tryVerify(() => visibleTab() !== undefined);
+        mouseClick(visibleTab());
+        tryVerify(() => visibleTab().selected);
+        waitForRendering(window.contentItem);
+    }
+
+    function openDeviceTab(window, name, key) {
+        openDevice(window, name);
+        openTab(window, key);
+    }
+
+    function clickButton(window, objectName) {
+        window.show();
+        const button = findItem(window, objectName);
+        tryVerify(() => button.visible && button.width > 0);
+        mouseClick(button);
+        waitForRendering(window.contentItem);
+    }
+
     function swatches(window) {
         return allItems(window).filter(item => item.objectName === "lightingSwatch");
     }
@@ -451,6 +491,8 @@ TestCase {
     function allItems(window) {
         const items = [];
         const pending = [window.contentItem];
+        if (window.header)
+            pending.push(window.header);
         while (pending.length > 0) {
             const item = pending.shift();
             items.push(item);
@@ -583,6 +625,7 @@ TestCase {
         const window = createMain(createFake([]), null, createCameraFake("Brio 100", [],
             [integerControl({id: 7})]), null, editor);
         window.show();
+        openDeviceTab(window, "Brio 100", "image");
         const button = findItem(window, "cameraControlDefault");
         tryVerify(() => button.width > 0 && button.visible);
         reveal(button);
@@ -596,6 +639,7 @@ TestCase {
         const window = createMain(createFake([]), null, createCameraFake("Brio 100", [],
             [booleanControl({id: 9})]), null, editor);
         window.show();
+        openDeviceTab(window, "Brio 100", "image");
         const toggle = findItem(window, "cameraControlSwitch");
         tryVerify(() => toggle.width > 0 && toggle.visible);
         reveal(toggle);
@@ -608,6 +652,7 @@ TestCase {
         const window = createMain(createFake([]), null, createCameraFake("Brio 100", [],
             [integerControl({id: 5})]), null, editor);
         window.show();
+        openDeviceTab(window, "Brio 100", "image");
         const slider = findItem(window, "cameraControlSlider");
         tryVerify(() => slider.width > 0 && slider.visible);
         reveal(slider);
@@ -682,6 +727,7 @@ TestCase {
     function test_onboardEditorAppearsOnceLoadedAndWriteForwardsTheEditedValues() {
         const onboard = createOnboardFake();
         const window = createMainWithOnboard(onboard);
+        openDeviceTab(window, "G703", "onboard");
         onboard.reportRateHz = 1000;
         onboard.dpiStages = [7050, 1600];
         onboard.defaultStage = 1;
@@ -729,6 +775,7 @@ TestCase {
         const preview = createPreviewFake();
         const window = createMain(createFake([]), null, null, preview);
         window.show();
+        openDeviceTab(window, "Brio 100", "image");
         const button = findItem(window, "cameraPreviewToggle");
         tryVerify(() => button.width > 0 && button.visible);
         reveal(button);
@@ -748,6 +795,7 @@ TestCase {
     function test_previewItemVisibleOnlyWhenActive() {
         const preview = createPreviewFake();
         const window = createMain(createFake([]), null, null, preview);
+        openDeviceTab(window, "Brio 100", "image");
         const item = findItem(window, "cameraPreviewItem");
         compare(item.visible, false);
         preview.active = true;
@@ -759,6 +807,7 @@ TestCase {
     function test_previewItemKeepsModeAspectRatio() {
         const preview = createPreviewFake({active: true, frameWidth: 1280, frameHeight: 720});
         const window = createMain(createFake([]), null, null, preview);
+        openDeviceTab(window, "Brio 100", "image");
         const item = findItem(window, "cameraPreviewItem");
         verify(item.width > 0);
         verify(Math.abs(item.height - item.width * 9 / 16) <= 1, item.width + "x" + item.height);
@@ -771,6 +820,7 @@ TestCase {
     function test_previewItemUses16by9_WhenFrameWidthIsZero() {
         const preview = createPreviewFake({active: true, frameWidth: 0, frameHeight: 0});
         const window = createMain(createFake([]), null, null, preview);
+        openDeviceTab(window, "Brio 100", "image");
         const item = findItem(window, "cameraPreviewItem");
         verify(item.width > 0);
         verify(Math.abs(item.height - item.width * 9 / 16) <= 1, item.width + "x" + item.height);
@@ -853,7 +903,9 @@ TestCase {
         const desktop = createDesktopFake();
         const window = createMainWithDesktop(desktop);
         window.show();
-        const view = findItem(window, "mainScrollView");
+        clickButton(window, "settingsPageButton");
+        const view = findItem(window, "settingsScrollView");
+        tryVerify(() => view.visible && view.height > 0);
         view.contentItem.contentY = Math.max(0, view.contentItem.contentHeight - view.height);
         const toggle = findItem(window, "autostartSwitch");
         tryVerify(() => toggle.mapToItem(null, 0, 0).y >= 0
@@ -1339,6 +1391,7 @@ TestCase {
     function test_profilesLoadFailureShowsTheWarning() {
         const profiles = createProfilesFake({loadFailed: true});
         const window = createMainWithProfiles(profiles);
+        clickButton(window, "profilesPageButton");
         const warning = findItem(window, "profilesLoadFailedLabel");
         compare(warning.visible, true);
         verify(warning.text.indexOf("Arquivo de perfis ilegível: nada será gravado até corrigi-lo.") >= 0, warning.text);
@@ -1452,6 +1505,7 @@ TestCase {
     function test_profilesAutoSwitchIsOffByDefaultAndDoesNothingOnOpen() {
         const profiles = createProfilesFake({profileNames: ["A"]});
         const window = createMainWithProfiles(profiles);
+        clickButton(window, "profilesPageButton");
         compare(findItem(window, "profilesAutoSwitch").checked, false);
         compare(profiles.switchingCalls.length, 0);
         compare(profiles.assignCalls.length, 0);
@@ -1460,6 +1514,7 @@ TestCase {
     function test_profilesAutoSwitchCallsSetAutomaticSwitching() {
         const profiles = createProfilesFake({profileNames: ["A"]});
         const window = createMainWithProfiles(profiles);
+        clickButton(window, "profilesPageButton");
         const toggle = findItem(window, "profilesAutoSwitch");
         toggle.click();
         compare(profiles.switchingCalls, [true]);
@@ -1474,6 +1529,7 @@ TestCase {
         const profiles = createProfilesFake({automaticSwitching: true, switchingStatus: "indisponível: KWin ausente",
                                              lastApplication: "org.mozilla.firefox"});
         const window = createMainWithProfiles(profiles);
+        clickButton(window, "profilesPageButton");
         compare(findItem(window, "profilesSwitchingStatus").text, "Troca automática: indisponível: KWin ausente");
         compare(findItem(window, "profilesLastApplication").text, "Último aplicativo em foco: org.mozilla.firefox");
         profiles.switchingStatus = "ativa";
@@ -1484,12 +1540,14 @@ TestCase {
 
     function test_profilesLastApplicationShowsNoneWhenEmpty() {
         const window = createMainWithProfiles(createProfilesFake({}));
+        clickButton(window, "profilesPageButton");
         compare(findItem(window, "profilesLastApplication").text, "Último aplicativo em foco: nenhum");
     }
 
     function test_profilesAssignButtonCallsAssignLastApplicationWithTheProfileName() {
         const profiles = createProfilesFake({profileNames: ["A", "B"], lastApplication: "konsole"});
         const window = createMainWithProfiles(profiles);
+        clickButton(window, "profilesPageButton");
         const buttons = allItems(window).filter(item => item.objectName === "profileAssignButton");
         compare(buttons.length, 2);
         buttons[1].clicked();
@@ -1499,6 +1557,7 @@ TestCase {
     function test_profilesAssignButtonIsDisabledWithoutLastApplicationOrWhileBusy() {
         const profiles = createProfilesFake({profileNames: ["A"]});
         const window = createMainWithProfiles(profiles);
+        clickButton(window, "profilesPageButton");
         compare(findItem(window, "profileAssignButton").enabled, false);
         profiles.lastApplication = "konsole";
         tryCompare(findItem(window, "profileAssignButton"), "enabled", true);
@@ -1510,6 +1569,7 @@ TestCase {
         const profiles = createProfilesFake({profileNames: ["A", "B"],
                                              profileApplications: {"A": ["firefox", "kate"], "B": []}});
         const window = createMainWithProfiles(profiles);
+        clickButton(window, "profilesPageButton");
         const labels = allItems(window).filter(item => item.objectName === "profileApplicationLabel").map(item => item.text);
         compare(labels, ["firefox", "kate"]);
         const removes = allItems(window).filter(item => item.objectName === "profileUnassignButton");
@@ -1521,6 +1581,7 @@ TestCase {
 
     function test_profilesAutoSwitchWarnsAboutTheKWinScript() {
         const window = createMainWithProfiles(createProfilesFake({}));
+        clickButton(window, "profilesPageButton");
         const notice = findItem(window, "profilesAutoSwitchNotice");
         verify(notice.text.indexOf("pequeno script no KWin") >= 0);
         verify(notice.text.indexOf("só o nome do aplicativo") >= 0);
@@ -1530,7 +1591,308 @@ TestCase {
         const profiles = createProfilesFake({profileNames: ["A"], busy: true,
                                              profileApplications: {"A": ["firefox"]}});
         const window = createMainWithProfiles(profiles);
+        clickButton(window, "profilesPageButton");
         ["profilesAutoSwitch", "profileUnassignButton"]
             .forEach(name => compare(findItem(window, name).enabled, false, name));
+    }
+
+    // ---- INC-014: interface no estilo do G HUB (cartões, páginas e abas) ----
+
+    function visibleTabKeys(window) {
+        return allItems(window).filter(item => item.objectName === "sideTab" && item.visible && item.width > 0)
+                               .map(item => item.tabKey);
+    }
+
+    function descendants(root) {
+        const items = [];
+        const pending = [root];
+        while (pending.length > 0) {
+            const item = pending.shift();
+            items.push(item);
+            for (let i = 0; i < item.children.length; ++i)
+                pending.push(item.children[i]);
+        }
+        return items;
+    }
+
+    function sampleInventory() {
+        return createFake([{name: "G915", summary: "detectado via receptor Lightspeed"},
+                           {name: "G703", summary: "detectado via cabo USB"},
+                           {name: "G733", summary: "não detectado"},
+                           {name: "Brio 100", summary: "detectado via cabo USB"}]);
+    }
+
+    function test_homeShowsFourDeviceCardsInCatalogOrder() {
+        const window = createMain(createFake([]), sampleInventory());
+        compare(deviceCards(window).map(c => c.deviceName), ["G915", "G703", "G733", "Brio 100"]);
+        compare(findItem(window, "pageStack").currentIndex, 0);
+        compare(findItem(window, "backButton").visible, false);
+    }
+
+    function test_windowHasStartingAndMinimumSize() {
+        const window = createMain(createFake([]));
+        compare(window.width, 1100);
+        compare(window.height, 720);
+        compare(window.minimumWidth, 900);
+        compare(window.minimumHeight, 600);
+    }
+
+    function test_cardShowsConnectionAndBattery() {
+        const window = createMain(createFake([{name: "G915", summary: "44% · descarregando", percent: 44}]),
+                                  sampleInventory());
+        const card = deviceCards(window)[0];
+        verify(card.connectionText.indexOf("receptor Lightspeed") >= 0, card.connectionText);
+        compare(card.batteryText, "44% · descarregando");
+        const bars = descendants(card).filter(item => item.objectName === "deviceCardBattery");
+        compare(bars.length, 1);
+        compare(bars[0].visible, true);
+        compare(bars[0].value, 44);
+        compare(card.opacity, 1);
+    }
+
+    function test_cardBatteryBarIsHidden_WhenPercentIsMinusOne() {
+        const window = createMain(createFake([{name: "G915", summary: "estado desconhecido", percent: -1}]),
+                                  sampleInventory());
+        const bar = descendants(deviceCards(window)[0]).find(item => item.objectName === "deviceCardBattery");
+        compare(bar.visible, false);
+        // Brio 100 não tem item de bateria: sem texto nem barra.
+        const brio = deviceCards(window)[3];
+        compare(brio.batteryText, "");
+        compare(descendants(brio).find(item => item.objectName === "deviceCardBattery").visible, false);
+    }
+
+    function test_absentDeviceCardIsDimmedButClickable() {
+        const window = createMain(createFake([]), createFake([{name: "G915", summary: "detectado via cabo USB"}]));
+        const cards = deviceCards(window);
+        compare(cards[0].opacity, 1);
+        compare(cards[1].connectionText, "não detectado");
+        verify(cards[1].opacity < 1);
+        verify(cards[3].opacity < 1);
+        openDevice(window, "G703");
+        compare(window.currentPage, 2);
+    }
+
+    function test_notDetectedSummaryDimsCard() {
+        const window = createMain(createFake([]), sampleInventory());
+        verify(deviceCards(window)[2].opacity < 1); // G733: "não detectado"
+        compare(deviceCards(window)[3].opacity, 1);
+    }
+
+    function test_clickingCardOpensItsPageWithItsTabs() {
+        const expected = {"G915": ["lighting", "info"], "G703": ["onboard", "ratbag", "info"],
+                          "G733": ["headset", "equalizer", "microphone", "info"],
+                          "Brio 100": ["image", "modes", "info"]};
+        const pages = {"G915": 1, "G703": 2, "G733": 3, "Brio 100": 4};
+        Object.keys(expected).forEach(name => {
+            const window = createMain(createFake([]), sampleInventory());
+            openDevice(window, name);
+            compare(findItem(window, "pageStack").currentIndex, pages[name], name);
+            compare(visibleTabKeys(window), expected[name], name);
+            compare(findItem(window, "backButton").visible, true);
+        });
+    }
+
+    function test_clickingTabShowsItsSectionOnly() {
+        const window = createMain(createFake([]), sampleInventory());
+        openDevice(window, "G733");
+        const sidetone = findItem(window, "headsetSidetoneApplyButton");
+        tryVerify(() => sidetone.visible);
+        compare(findItem(window, "eqEnableButton").visible, false);
+        openTab(window, "equalizer");
+        tryVerify(() => findItem(window, "eqEnableButton").visible);
+        compare(sidetone.visible, false);
+        openTab(window, "microphone");
+        tryVerify(() => findItem(window, "noiseEnableButton").visible);
+        compare(findItem(window, "eqEnableButton").visible, false);
+    }
+
+    function test_g703TabsSeparateOnboardAndRatbag() {
+        const window = createMain(createFake([]), sampleInventory());
+        openDevice(window, "G703");
+        tryVerify(() => findItem(window, "onboardReadButton").visible);
+        compare(findItem(window, "pointerReadButton").visible, false);
+        openTab(window, "ratbag");
+        tryVerify(() => findItem(window, "pointerReadButton").visible);
+        compare(findItem(window, "onboardReadButton").visible, false);
+    }
+
+    function test_backButtonReturnsHome() {
+        const window = createMain(createFake([]), sampleInventory());
+        openDevice(window, "G915");
+        clickButton(window, "backButton");
+        tryCompare(window, "currentPage", 0);
+        compare(findItem(window, "backButton").visible, false);
+    }
+
+    function test_profilesAndSettingsButtonsOpenTheirPages() {
+        const window = createMain(createFake([]), sampleInventory());
+        clickButton(window, "profilesPageButton");
+        compare(findItem(window, "pageStack").currentIndex, 5);
+        tryVerify(() => findItem(window, "profileSaveButton").visible);
+        clickButton(window, "settingsPageButton");
+        compare(findItem(window, "pageStack").currentIndex, 6);
+        tryVerify(() => findItem(window, "autostartSwitch").visible);
+        tryVerify(() => findItem(window, "diagnosticsRefreshButton").visible);
+        compare(findItem(window, "profileSaveButton").visible, false);
+    }
+
+    function test_infoTabShowsOnlyThatDevicesLabels() {
+        const window = createMain(createFake([{name: "G915", summary: "44% · descarregando", percent: 44},
+                                              {name: "G703", summary: "não detectado", percent: -1}]),
+                                  sampleInventory());
+        compare(labelTexts(window, "inventoryDeviceLabel").length, 4);
+        openDeviceTab(window, "G703", "info");
+        const visibleTexts = name => allItems(window).filter(i => i.objectName === name && i.visible)
+                                                     .map(i => i.text);
+        tryCompare(window, "currentPage", 2);
+        tryVerify(() => visibleTexts("inventoryDeviceLabel").length === 1);
+        compare(visibleTexts("inventoryDeviceLabel"), ["G703: detectado via cabo USB"]);
+        compare(visibleTexts("batteryDeviceLabel"), ["G703: não detectado"]);
+    }
+
+    // R7: o stream nunca fica ligado numa página invisível.
+    function test_leavingBrioPageStopsPreview() {
+        const preview = createPreviewFake();
+        const window = createMain(createFake([]), sampleInventory(), null, preview);
+        openDevice(window, "Brio 100");
+        compare(preview.stopCalls, 0);
+        clickButton(window, "backButton");
+        tryCompare(preview, "stopCalls", 1);
+    }
+
+    function test_goingFromBrioToProfilesStopsPreview() {
+        const preview = createPreviewFake();
+        const window = createMain(createFake([]), sampleInventory(), null, preview);
+        openDevice(window, "Brio 100");
+        clickButton(window, "profilesPageButton");
+        tryCompare(preview, "stopCalls", 1);
+        compare(preview.toggleCalls, 0);
+    }
+
+    function test_navigatingElsewhereDoesNotStopPreview() {
+        const preview = createPreviewFake();
+        const window = createMain(createFake([]), sampleInventory(), null, preview);
+        openDevice(window, "G915");
+        clickButton(window, "backButton");
+        clickButton(window, "settingsPageButton");
+        compare(preview.stopCalls, 0);
+    }
+
+    // R8: aviso antes do botão de leitura do ratbagd.
+    function test_ratbagTabWarnsAboutBlocking() {
+        const window = createMain(createFake([]), sampleInventory());
+        const warning = findItem(window, "ratbagBlockWarningLabel");
+        verify(warning.text.indexOf("ratbagd") >= 0, warning.text);
+        verify(warning.text.indexOf("20 minutos") >= 0, warning.text);
+        const button = findItem(window, "pointerReadButton");
+        verify(warning.parent === button.parent, "mesma coluna");
+        const siblings = Array.from(warning.parent.children);
+        verify(siblings.indexOf(warning) < siblings.indexOf(button), "aviso antes do botão");
+    }
+
+    // R9: o texto antigo era falso desde o INC-006 parte 2.
+    function test_noLabelClaimsNothingIsWritten() {
+        const window = createMain(createFake([]), sampleInventory());
+        const offenders = allItems(window).filter(i => typeof i.text === "string"
+                                                       && i.text.indexOf("Nenhuma configuração é gravada") >= 0);
+        compare(offenders.length, 0);
+    }
+
+    // ---- INC-014 parte 2: tokens de design do G HUB (singleton Theme) ----
+
+    function stateOverlayOf(item) {
+        const found = descendants(item).filter(i => i.objectName === "stateOverlay");
+        compare(found.length, 1, "stateOverlay");
+        return found[0];
+    }
+
+    function test_themeExposesGHubTokens() {
+        verify(Qt.colorEqual(Theme.primary, "#1196ff"), String(Theme.primary));
+        verify(Qt.colorEqual(Theme.background, "#101113"), String(Theme.background));
+        verify(Qt.colorEqual(Theme.surface, "#212225"), String(Theme.surface));
+        verify(Qt.colorEqual(Theme.error, "#f54155"), String(Theme.error));
+        verify(Qt.colorEqual(Theme.foreground, "#ffffff"), String(Theme.foreground));
+        verify(Qt.colorEqual(Theme.outline, "#1affffff"), String(Theme.outline));
+        verify(Qt.colorEqual(Theme.outlineHigh, "#4dffffff"), String(Theme.outlineHigh));
+        verify(Qt.colorEqual(Theme.foregroundMedium, "#99ffffff"), String(Theme.foregroundMedium));
+        verify(Qt.colorEqual(Theme.foregroundDisabled, "#4dffffff"), String(Theme.foregroundDisabled));
+        compare(Theme.radius, 8);
+        compare(Theme.hoverOpacity, 0.10);
+        compare(Theme.pressOpacity, 0.15);
+        compare(Theme.selectedOpacity, 0.15);
+        verify(Theme.shortDuration >= 150 && Theme.shortDuration <= 250, String(Theme.shortDuration));
+        verify(Theme.mediumDuration >= 150 && Theme.mediumDuration <= 250, String(Theme.mediumDuration));
+        compare(Theme.easingCurve.length, 6);
+    }
+
+    function test_windowUsesThemeColors() {
+        const window = createMain(createFake([]));
+        verify(Qt.colorEqual(window.Material.accent, Theme.primary), String(window.Material.accent));
+        verify(Qt.colorEqual(window.Material.background, Theme.background), String(window.Material.background));
+        verify(Qt.colorEqual(window.Material.primary, Theme.surface), String(window.Material.primary));
+        verify(Qt.colorEqual(window.Material.foreground, Theme.foreground), String(window.Material.foreground));
+    }
+
+    function test_deviceCardUsesThemeShape() {
+        const window = createMain(createFake([]), sampleInventory());
+        const card = deviceCards(window)[0];
+        compare(card.radius, Theme.radius);
+        verify(Qt.colorEqual(card.color, Theme.surface), String(card.color));
+        verify(Qt.colorEqual(card.border.color, Theme.outline), String(card.border.color));
+    }
+
+    function test_deviceCardOverlayFollowsHoverAndPress() {
+        const window = createMain(createFake([]), sampleInventory());
+        window.show();
+        waitForRendering(window.contentItem);
+        const card = deviceCards(window)[0];
+        tryVerify(() => card.visible && card.width > 0 && card.height > 0);
+        const overlay = stateOverlayOf(card);
+        compare(overlay.radius, Theme.radius);
+        compare(overlay.opacity, 0);
+        mouseMove(card, 20, 20);
+        tryCompare(overlay, "opacity", Theme.hoverOpacity);
+        verify(Qt.colorEqual(card.border.color, Theme.primary), String(card.border.color));
+        mousePress(card, 20, 20);
+        tryCompare(overlay, "opacity", Theme.pressOpacity);
+        mouseRelease(card, 20, 20);
+        mouseMove(card, -20, -20);
+        tryCompare(overlay, "opacity", 0);
+        verify(Qt.colorEqual(card.border.color, Theme.outline), String(card.border.color));
+    }
+
+    function test_sideTabUsesThemeColorsAndOverlay() {
+        const window = createMain(createFake([]), sampleInventory());
+        openDevice(window, "G915");
+        const tabs = allItems(window).filter(item => item.objectName === "sideTab" && item.visible && item.width > 0);
+        const selected = tabs.find(t => t.selected);
+        const other = tabs.find(t => !t.selected);
+        verify(selected !== undefined && other !== undefined);
+        verify(Qt.colorEqual(selected.contentItem.color, Theme.primary), String(selected.contentItem.color));
+        verify(Qt.colorEqual(other.contentItem.color, Theme.foreground), String(other.contentItem.color));
+        const fill = descendants(selected).find(i => i.objectName === "selectedFill");
+        verify(fill !== undefined, "selectedFill");
+        compare(fill.radius, Theme.radius);
+        verify(Qt.colorEqual(fill.color, Theme.primary), String(fill.color));
+        compare(fill.opacity, Theme.selectedOpacity);
+        const otherFill = descendants(other).find(i => i.objectName === "selectedFill");
+        compare(otherFill.opacity, 0);
+        const selectedOverlay = stateOverlayOf(selected);
+        const overlay = stateOverlayOf(other);
+        compare(overlay.opacity, 0);
+        mouseMove(other, 20, 10);
+        tryCompare(overlay, "opacity", Theme.hoverOpacity);
+        mousePress(other, 20, 10);
+        tryCompare(overlay, "opacity", Theme.pressOpacity);
+        mouseRelease(other, 20, 10);
+        mouseMove(selected, -100, 10);
+        tryCompare(overlay, "opacity", 0);
+        compare(selectedOverlay.opacity, 0);
+    }
+
+    function test_profilesLoadFailedLabelUsesErrorColor() {
+        const window = createMainWithProfiles(createProfilesFake({loadFailed: true}));
+        const warning = findItem(window, "profilesLoadFailedLabel");
+        verify(Qt.colorEqual(warning.color, Theme.error), String(warning.color));
     }
 }

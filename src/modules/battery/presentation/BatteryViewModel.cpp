@@ -52,6 +52,17 @@ QString summaryOf(const DeviceBatteryStatus& status)
     return BatteryViewModel::tr("leitura indisponível");
 }
 
+// Nível atual em % ou -1 quando não há (não detectado, leitura indisponível, estado sem nível).
+int percentOf(const DeviceBatteryStatus& status)
+{
+    if (const auto* reading = std::get_if<BatteryReading>(&status.state)) {
+        if (const auto level = reading->currentLevel(); level.has_value()) {
+            return level->percent();
+        }
+    }
+    return -1;
+}
+
 } // namespace
 
 BatteryViewModel::BatteryViewModel(const GetBatteryStatus& getBatteryStatus, std::chrono::milliseconds refreshInterval,
@@ -71,6 +82,7 @@ void BatteryViewModel::refresh()
         devices.append(QVariantMap{
             {QStringLiteral("name"), nameOf(status.model)},
             {QStringLiteral("summary"), summaryOf(status)},
+            {QStringLiteral("percent"), percentOf(status)},
         });
     }
     if (devices == devices_) {

@@ -21,10 +21,24 @@ endif()
 qt_add_executable(ghub-linux main.cpp)
 
 set_source_files_properties("${PROJECT_SOURCE_DIR}/src/ui/qml/Main.qml" PROPERTIES QT_RESOURCE_ALIAS Main.qml)
+set_source_files_properties("${PROJECT_SOURCE_DIR}/src/ui/qml/DeviceCard.qml" PROPERTIES QT_RESOURCE_ALIAS DeviceCard.qml)
+set_source_files_properties("${PROJECT_SOURCE_DIR}/src/ui/qml/SideTab.qml" PROPERTIES QT_RESOURCE_ALIAS SideTab.qml)
+set_source_files_properties("${PROJECT_SOURCE_DIR}/src/ui/qml/Theme.qml" PROPERTIES
+    QT_RESOURCE_ALIAS Theme.qml QT_QML_SINGLETON_TYPE TRUE)
 qt_add_qml_module(ghub-linux
     URI GHub
     VERSION 1.0
-    QML_FILES "${PROJECT_SOURCE_DIR}/src/ui/qml/Main.qml")
+    QML_FILES
+        "${PROJECT_SOURCE_DIR}/src/ui/qml/Main.qml"
+        "${PROJECT_SOURCE_DIR}/src/ui/qml/DeviceCard.qml"
+        "${PROJECT_SOURCE_DIR}/src/ui/qml/SideTab.qml"
+        "${PROJECT_SOURCE_DIR}/src/ui/qml/Theme.qml")
+
+# Estilo Material escuro lido pelo Qt Quick Controls na raiz do recurso (INC-014 R1); as cores vêm do singleton Theme.qml.
+qt_add_resources(ghub-linux "controls_conf"
+    PREFIX "/"
+    BASE "${PROJECT_SOURCE_DIR}/src/ui"
+    FILES "${PROJECT_SOURCE_DIR}/src/ui/qtquickcontrols2.conf")
 
 target_link_libraries(ghub-linux PRIVATE
     Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Widgets
