@@ -1,7 +1,7 @@
 #pragma once
 
 #include "modules/lighting/application/KeyboardLighting.hpp"
-#include "modules/lighting/infrastructure/HidppNodeLocator.hpp"
+#include "platform/hidpp/HidppNodeLocator.hpp"
 #include "platform/hidpp/HidppTrace.hpp"
 #include "shared_kernel/Clock.hpp"
 
@@ -12,7 +12,7 @@ namespace ghub::lighting::infrastructure {
 class G915HidppLighting final : public application::KeyboardLighting {
 public:
     // `trace` (opcional) é repassado a cada canal HID++ criado em open().
-    G915HidppLighting(HidppNodeLocator locator, const shared_kernel::Clock& clock,
+    G915HidppLighting(platform::hidpp::HidppNodeLocator locator, const shared_kernel::Clock& clock,
                       platform::hidpp::HidppTraceSink trace = {})
         : locator_(std::move(locator)), clock_(&clock), trace_(std::move(trace))
     {
@@ -21,7 +21,7 @@ public:
     [[nodiscard]] shared_kernel::Result<std::unique_ptr<application::KeyboardLightingSession>> open() override;
 
 private:
-    HidppNodeLocator locator_;
+    platform::hidpp::HidppNodeLocator locator_;
     const shared_kernel::Clock* clock_; // não nulo
     platform::hidpp::HidppTraceSink trace_;
 };

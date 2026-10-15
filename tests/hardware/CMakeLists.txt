@@ -4,9 +4,10 @@ target_link_libraries(ghub_hardware_battery_tests PRIVATE ghub_battery_infrastru
 ghub_set_warnings(ghub_hardware_battery_tests)
 gtest_discover_tests(ghub_hardware_battery_tests TEST_PREFIX "hardware.battery." PROPERTIES LABELS hardware)
 
-add_executable(ghub_hardware_device_inventory_tests device_inventory/SysfsHidDiscoveryHardwareTest.cpp)
+add_executable(ghub_hardware_device_inventory_tests device_inventory/SysfsHidDiscoveryHardwareTest.cpp
+    device_inventory/HidppIdentityHardwareTest.cpp)
 target_link_libraries(ghub_hardware_device_inventory_tests PRIVATE
-    ghub_device_inventory_infrastructure GTest::gtest_main)
+    ghub_device_inventory_infrastructure ghub_device_access_infrastructure GTest::gtest_main)
 ghub_set_warnings(ghub_hardware_device_inventory_tests)
 gtest_discover_tests(ghub_hardware_device_inventory_tests TEST_PREFIX "hardware.device_inventory." PROPERTIES LABELS hardware)
 

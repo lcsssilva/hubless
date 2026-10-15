@@ -5,10 +5,10 @@
 // O diagnóstico dos perfis onboard do G915 exige GHUB_HW_TESTS=1 e GHUB_HW_LIGHTING_ONBOARD=1.
 #include "modules/device_access/infrastructure/ProcExternalProcessProbe.hpp"
 #include "modules/device_access/infrastructure/SteadyClock.hpp"
-#include "modules/lighting/infrastructure/HidppNodeLocator.hpp"
 #include "modules/lighting/infrastructure/LightingHidppPolicy.hpp"
 #include "platform/hidpp/HidppCapabilities.hpp"
 #include "platform/hidpp/HidppChannel.hpp"
+#include "platform/hidpp/HidppNodeLocator.hpp"
 #include "platform/hidpp/HidrawDevice.hpp"
 
 #include <gtest/gtest.h>
@@ -28,6 +28,8 @@
 #include <vector>
 
 using namespace ghub::lighting::infrastructure; // NOLINT(google-build-using-namespace)
+using ghub::platform::hidpp::HidppNode;
+using ghub::platform::hidpp::HidppNodeLocator;
 
 namespace {
 

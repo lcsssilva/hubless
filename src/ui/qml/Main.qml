@@ -58,6 +58,10 @@ ApplicationWindow {
     // clique (ADR-0020). Nada é aplicado na abertura.
     required property QtObject profilesController
 
+    // DeviceIdentityViewModel (módulo device_inventory), fornecido pelo composition root: a identidade HID++ de
+    // G915, G703 e G733 só é lida por clique na aba Informações (INC-015, ADR-0024).
+    required property QtObject deviceIdentityViewModel
+
     // Nome do perfil à espera da confirmação de remoção; estado de UI apenas.
     property string profilePendingRemoval: ""
     // Nome do perfil à espera da confirmação de atualização; estado de UI apenas.
@@ -164,6 +168,14 @@ ApplicationWindow {
         property string deviceName: ""
         property var inventoryDevices: []
         property var batteryDevices: []
+        // Chave do dispositivo no DeviceIdentityViewModel ("g915", "g703", "g733"); vazia = sem leitura HID++.
+        property string identityKey: ""
+        readonly property var identity: identityKey !== "" && window.deviceIdentityViewModel.identities[identityKey]
+                                        ? window.deviceIdentityViewModel.identities[identityKey]
+                                        : ({state: "idle"})
+        readonly property bool identityOk: identity.state === "ok"
+        // Estado de UI apenas: lista de IDs das features recolhida por padrão.
+        property bool featureIdsExpanded: false
 
         SectionTitle { text: qsTr("Conexão") }
 
@@ -186,6 +198,93 @@ ApplicationWindow {
                 required property var modelData
                 objectName: "batteryDeviceLabel"
                 text: modelData.name + ": " + modelData.summary
+            }
+        }
+
+        // Identidade por HID++ (INC-015): só leitura, só por clique; o QML apenas encaminha ao ViewModel.
+        // A Brio 100 não fala HID++: sem chave, a seção nem é criada.
+        Loader {
+            Layout.fillWidth: true
+            active: infoTab.identityKey !== ""
+            visible: active
+            sourceComponent: identitySection
+        }
+
+        Component {
+            id: identitySection
+
+            ColumnLayout {
+                spacing: 12
+
+                SectionTitle { text: qsTr("Identidade (HID++)") }
+
+                Button {
+                    objectName: "readIdentityButton"
+                    enabled: infoTab.identity.state !== "reading"
+                    text: infoTab.identity.state === "reading" ? qsTr("Lendo…") : qsTr("Ler identidade")
+                    onClicked: window.deviceIdentityViewModel.read(infoTab.identityKey)
+                }
+
+                Label {
+                    objectName: "identityErrorLabel"
+                    Layout.maximumWidth: window.width - 340
+                    wrapMode: Text.WordWrap
+                    visible: infoTab.identity.state === "error"
+                    color: Theme.error
+                    text: infoTab.identity.error || ""
+                }
+
+                Label {
+                    objectName: "identityNameLabel"
+                    visible: infoTab.identityOk
+                    text: qsTr("Nome: %1").arg(infoTab.identity.name)
+                }
+
+                Label {
+                    objectName: "identityTypeLabel"
+                    visible: infoTab.identityOk
+                    text: qsTr("Tipo: %1").arg(infoTab.identity.type)
+                }
+
+                Label {
+                    objectName: "identityFirmwareLabel"
+                    Layout.maximumWidth: window.width - 340
+                    wrapMode: Text.WordWrap
+                    visible: infoTab.identityOk
+                    text: qsTr("Firmware: %1").arg(infoTab.identityOk && infoTab.identity.firmwares.length > 0
+                                                   ? infoTab.identity.firmwares.join("\n") : qsTr("não informado"))
+                }
+
+                Label {
+                    objectName: "identityFeatureCountLabel"
+                    visible: infoTab.identityOk
+                    text: qsTr("Features: %1").arg(infoTab.identity.featureCount)
+                }
+
+                Label {
+                    objectName: "identityTruncationLabel"
+                    Layout.maximumWidth: window.width - 340
+                    wrapMode: Text.WordWrap
+                    visible: infoTab.identityOk && infoTab.identity.truncationNote !== ""
+                    color: Theme.foregroundMedium
+                    text: infoTab.identity.truncationNote || ""
+                }
+
+                Button {
+                    objectName: "toggleFeatureIdsButton"
+                    flat: true
+                    visible: infoTab.identityOk && infoTab.identity.featureCount > 0
+                    text: infoTab.featureIdsExpanded ? qsTr("Ocultar IDs das features") : qsTr("Mostrar IDs das features")
+                    onClicked: infoTab.featureIdsExpanded = !infoTab.featureIdsExpanded
+                }
+
+                Label {
+                    objectName: "identityFeatureIdsLabel"
+                    Layout.maximumWidth: window.width - 340
+                    wrapMode: Text.WordWrap
+                    visible: infoTab.identityOk && infoTab.identity.featureCount > 0 && infoTab.featureIdsExpanded
+                    text: infoTab.identityOk ? infoTab.identity.featureIds.join(", ") : ""
+                }
             }
         }
     }
@@ -425,6 +524,7 @@ ApplicationWindow {
 
             InfoTab {
                 deviceName: "G915"
+                identityKey: "g915"
                 inventoryDevices: window.deviceInventoryViewModel.devices
                 batteryDevices: window.batteryViewModel.devices
             }
@@ -680,6 +780,7 @@ ApplicationWindow {
 
             InfoTab {
                 deviceName: "G703"
+                identityKey: "g703"
                 inventoryDevices: window.deviceInventoryViewModel.devices
                 batteryDevices: window.batteryViewModel.devices
             }
@@ -908,6 +1009,7 @@ ApplicationWindow {
 
             InfoTab {
                 deviceName: "G733"
+                identityKey: "g733"
                 inventoryDevices: window.deviceInventoryViewModel.devices
                 batteryDevices: window.batteryViewModel.devices
             }

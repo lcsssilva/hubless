@@ -2,7 +2,6 @@
 add_library(ghub_lighting_infrastructure STATIC)
 target_sources(ghub_lighting_infrastructure PRIVATE
     infrastructure/LightingHidppPolicy.cpp
-    infrastructure/HidppNodeLocator.cpp
     infrastructure/G915PerKeyFrames.cpp
     infrastructure/G915EffectFrames.cpp
     infrastructure/G915HidppSession.cpp

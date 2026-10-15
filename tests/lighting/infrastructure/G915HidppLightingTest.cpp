@@ -12,7 +12,7 @@
 namespace {
 
 using ghub::lighting::infrastructure::G915HidppLighting;
-using ghub::lighting::infrastructure::HidppNodeLocator;
+using ghub::platform::hidpp::HidppNodeLocator;
 using ghub::shared_kernel::ErrorCode;
 
 class G915HidppLightingTest : public ::testing::Test {

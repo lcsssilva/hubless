@@ -1,4 +1,4 @@
-#include "modules/lighting/infrastructure/HidppNodeLocator.hpp"
+#include "platform/hidpp/HidppNodeLocator.hpp"
 
 #include <gtest/gtest.h>
 
@@ -6,8 +6,7 @@
 #include <fstream>
 #include <string>
 
-using ghub::lighting::infrastructure::HidppNode;
-using ghub::lighting::infrastructure::HidppNodeLocator;
+using ghub::platform::hidpp::HidppNodeLocator;
 using ghub::shared_kernel::ErrorCode;
 
 namespace {
@@ -17,7 +16,7 @@ protected:
     void SetUp() override
     {
         root = std::filesystem::temp_directory_path() /
-               ("ghub_lighting_sysfs_" + std::to_string(::testing::UnitTest::GetInstance()->random_seed()) + "_" +
+               ("ghub_platform_sysfs_" + std::to_string(::testing::UnitTest::GetInstance()->random_seed()) + "_" +
                 ::testing::UnitTest::GetInstance()->current_test_info()->name());
         std::filesystem::remove_all(root);
         std::filesystem::create_directories(root / "class" / "hidraw");
@@ -129,4 +128,64 @@ TEST_F(HidppNodeLocatorTest, UsesTheInjectedDevRoot)
     const HidppNodeLocator custom{root, "/tmp/fakedev"};
 
     EXPECT_EQ(custom.locateG733()->devicePath, "/tmp/fakedev/hidraw3");
+}
+
+TEST_F(HidppNodeLocatorTest, FindsG703ThroughItsReceiverAndTheDeviceIndex)
+{
+    addNode("hidraw10", "0003:0000046D:0000C539", "usb-0000:11:00.4-1.2/input0");
+    addNode("hidraw12", "0003:0000046D:0000C539", "usb-0000:11:00.4-1.2/input2");
+    addNode("hidraw13", "0003:0000046D:00004086", "usb-0000:11:00.4-1.2/input2:2");
+
+    const auto node = locator().locateG703();
+
+    ASSERT_TRUE(node.has_value()) << node.error().detail;
+    EXPECT_EQ(node->devicePath, "/dev/hidraw12");
+    EXPECT_EQ(node->deviceIndex, 2);
+}
+
+TEST_F(HidppNodeLocatorTest, G703ReceiverMustShareTheUsbPortWithTheMouse)
+{
+    addNode("hidraw2", "0003:0000046D:0000C539", "usb-0000:11:00.4-1/input2");
+    addNode("hidraw7", "0003:0000046D:0000C539", "usb-0000:11:00.4-1.2/input2");
+    addNode("hidraw9", "0003:0000046D:00004086", "usb-0000:11:00.4-1.2/input2:5");
+
+    const auto node = locator().locateG703();
+
+    ASSERT_TRUE(node.has_value());
+    EXPECT_EQ(node->devicePath, "/dev/hidraw7");
+    EXPECT_EQ(node->deviceIndex, 5);
+}
+
+TEST_F(HidppNodeLocatorTest, G703IgnoresTheG915ReceiverGeneration)
+{
+    // O receptor do G915 é c547; o do G703 é c539. Um não serve de nó para o outro.
+    addNode("hidraw7", "0003:0000046D:0000C547", "usb-0000:11:00.4-2.4/input2");
+    addNode("hidraw8", "0003:0000046D:00004086", "usb-0000:11:00.4-2.4/input2:2");
+
+    const auto node = locator().locateG703();
+
+    ASSERT_FALSE(node.has_value());
+    EXPECT_EQ(node.error().code, ErrorCode::BackendUnavailable);
+}
+
+TEST_F(HidppNodeLocatorTest, G703WithoutReceiverNodeIsNotFound)
+{
+    addNode("hidraw9", "0003:0000046D:00004086", "usb-0000:11:00.4-1.2/input2:1");
+
+    EXPECT_FALSE(locator().locateG703().has_value());
+}
+
+TEST_F(HidppNodeLocatorTest, G703DeviceIndexOutOfRangeIsRejected)
+{
+    addNode("hidraw7", "0003:0000046D:0000C539", "usb-0000:11:00.4-1.2/input2");
+    addNode("hidraw9", "0003:0000046D:00004086", "usb-0000:11:00.4-1.2/input2:7");
+
+    EXPECT_FALSE(locator().locateG703().has_value());
+}
+
+TEST_F(HidppNodeLocatorTest, MissingSysfsTreeMakesG703BackendUnavailable)
+{
+    const HidppNodeLocator missing{root / "nao_existe", "/dev"};
+
+    EXPECT_EQ(missing.locateG703().error().code, ErrorCode::BackendUnavailable);
 }

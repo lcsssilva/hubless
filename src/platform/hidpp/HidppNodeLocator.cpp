@@ -1,4 +1,4 @@
-#include "modules/lighting/infrastructure/HidppNodeLocator.hpp"
+#include "platform/hidpp/HidppNodeLocator.hpp"
 
 #include <algorithm>
 #include <charconv>
@@ -8,12 +8,14 @@
 #include <string_view>
 #include <vector>
 
-namespace ghub::lighting::infrastructure {
+namespace ghub::platform::hidpp {
 
 namespace {
 
 constexpr std::uint16_t logitechVendor = 0x046D;
 constexpr std::uint16_t receiverProduct = 0xC547;
+constexpr std::uint16_t g703ReceiverProduct = 0xC539;
+constexpr std::uint16_t g703Product = 0x4086;
 constexpr std::uint16_t g915Product = 0x407C;
 constexpr std::uint16_t g733Product = 0x0AFE;
 constexpr std::uint8_t headsetDeviceIndex = 0xFF;
@@ -28,8 +30,11 @@ struct HidrawEntry {
 template <typename T> std::optional<T> parseNumber(std::string_view text, int base)
 {
     T value{};
+    // NOLINTBEGIN(cppcoreguidelines-pro-bounds-pointer-arithmetic,bugprone-suspicious-stringview-data-usage):
+    // from_chars exige o par de ponteiros [data, data+size) do string_view, sem terminador nulo.
     const auto* end = text.data() + text.size();
     const auto [ptr, error] = std::from_chars(text.data(), end, value, base);
+    // NOLINTEND(cppcoreguidelines-pro-bounds-pointer-arithmetic,bugprone-suspicious-stringview-data-usage)
     if (error != std::errc{} || ptr != end || text.empty()) {
         return std::nullopt;
     }
@@ -105,6 +110,37 @@ shared_kernel::Result<std::vector<HidrawEntry>> scan(const std::filesystem::path
     return entries;
 }
 
+// Dispositivo sem fio (`devicePid`) atrás de um receptor (`receiverPid`): o filho tem HID_PHYS ".../input2:N"
+// (N = índice de dispositivo, 1..6) e o nó a abrir é o receptor interface 2 do mesmo hub USB.
+std::optional<HidppNode> findBehindReceiver(const std::vector<HidrawEntry>& entries, std::uint16_t devicePid,
+                                            std::uint16_t receiverPid, const std::filesystem::path& devRoot)
+{
+    constexpr std::string_view marker = "/input2:";
+    for (const auto& child : entries) {
+        if (child.vendor != logitechVendor || child.product != devicePid) {
+            continue;
+        }
+        const auto at = child.phys.rfind(marker);
+        if (at == std::string::npos) {
+            continue;
+        }
+        const auto index = parseNumber<unsigned>(std::string_view{child.phys}.substr(at + marker.size()), 10);
+        if (!index || *index < 1 || *index > 6) {
+            continue;
+        }
+        const std::string receiverPhys = child.phys.substr(0, at) + "/input2";
+        for (const auto& receiver : entries) {
+            if (receiver.vendor == logitechVendor && receiver.product == receiverPid && receiver.phys == receiverPhys) {
+                return HidppNode{
+                    .devicePath = devRoot / receiver.name,
+                    .deviceIndex = static_cast<std::uint8_t>(*index),
+                };
+            }
+        }
+    }
+    return std::nullopt;
+}
+
 } // namespace
 
 shared_kernel::Result<HidppNode> HidppNodeLocator::locateG915() const
@@ -113,30 +149,24 @@ shared_kernel::Result<HidppNode> HidppNodeLocator::locateG915() const
     if (!entries) {
         return std::unexpected(entries.error());
     }
-    constexpr std::string_view marker = "/input2:";
-    for (const auto& keyboard : *entries) {
-        if (keyboard.vendor != logitechVendor || keyboard.product != g915Product) {
-            continue;
-        }
-        const auto at = keyboard.phys.rfind(marker);
-        if (at == std::string::npos) {
-            continue;
-        }
-        const auto index = parseNumber<unsigned>(std::string_view{keyboard.phys}.substr(at + marker.size()), 10);
-        if (!index || *index < 1 || *index > 6) {
-            continue;
-        }
-        const std::string receiverPhys = keyboard.phys.substr(0, at) + "/input2";
-        for (const auto& receiver : *entries) {
-            if (receiver.vendor == logitechVendor && receiver.product == receiverProduct &&
-                receiver.phys == receiverPhys) {
-                return HidppNode{.devicePath = devRoot_ / receiver.name,
-                                 .deviceIndex = static_cast<std::uint8_t>(*index)};
-            }
-        }
+    if (auto node = findBehindReceiver(*entries, g915Product, receiverProduct, devRoot_)) {
+        return *node;
     }
     return shared_kernel::fail(shared_kernel::ErrorCode::BackendUnavailable,
                                "G915 (046d:407c) com receptor c547 interface 2 não encontrado");
+}
+
+shared_kernel::Result<HidppNode> HidppNodeLocator::locateG703() const
+{
+    const auto entries = scan(sysRoot_);
+    if (!entries) {
+        return std::unexpected(entries.error());
+    }
+    if (auto node = findBehindReceiver(*entries, g703Product, g703ReceiverProduct, devRoot_)) {
+        return *node;
+    }
+    return shared_kernel::fail(shared_kernel::ErrorCode::BackendUnavailable,
+                               "G703 (046d:4086) com receptor c539 interface 2 não encontrado");
 }
 
 shared_kernel::Result<HidppNode> HidppNodeLocator::locateG733() const
@@ -154,4 +184,4 @@ shared_kernel::Result<HidppNode> HidppNodeLocator::locateG733() const
                                "G733 (046d:0afe) interface 3 não encontrado");
 }
 
-} // namespace ghub::lighting::infrastructure
+} // namespace ghub::platform::hidpp

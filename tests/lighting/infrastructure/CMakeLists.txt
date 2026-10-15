@@ -2,7 +2,6 @@ add_executable(ghub_lighting_infrastructure_tests
     LightingHidppPolicyTest.cpp
     HidppChannelTest.cpp
     HidppCapabilitiesTest.cpp
-    HidppNodeLocatorTest.cpp
     G915PerKeyFramesTest.cpp
     G915EffectFramesTest.cpp
     G915HidppSessionTest.cpp

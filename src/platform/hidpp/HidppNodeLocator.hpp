@@ -6,7 +6,7 @@
 #include <filesystem>
 #include <utility>
 
-namespace ghub::lighting::infrastructure {
+namespace ghub::platform::hidpp {
 
 // Nó hidraw por onde falar HID++ e o índice de dispositivo a usar nos relatórios.
 struct HidppNode {
@@ -28,10 +28,12 @@ public:
     [[nodiscard]] shared_kernel::Result<HidppNode> locateG915() const;
     // G733 (046d:0afe) interface 3; índice de dispositivo 0xFF.
     [[nodiscard]] shared_kernel::Result<HidppNode> locateG733() const;
+    // G703 (046d:4086) sem fio: nó do receptor c539 interface 2 do mesmo hub USB; índice = N de `input2:N`.
+    [[nodiscard]] shared_kernel::Result<HidppNode> locateG703() const;
 
 private:
     std::filesystem::path sysRoot_;
     std::filesystem::path devRoot_;
 };
 
-} // namespace ghub::lighting::infrastructure
+} // namespace ghub::platform::hidpp

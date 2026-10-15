@@ -51,8 +51,7 @@ TEST(LightingG915EffectHardware, SavesTheChosenEffectOnTheKeys)
     ghub::device_access::SteadyClock clock;
     ghub::device_access::AccessRegistry registry{clock};
     ghub::device_access::ProcExternalProcessProbe probe;
-    ghub::lighting::infrastructure::G915HidppLighting keyboard{ghub::lighting::infrastructure::HidppNodeLocator{},
-                                                               clock};
+    ghub::lighting::infrastructure::G915HidppLighting keyboard{ghub::platform::hidpp::HidppNodeLocator{}, clock};
     const ghub::lighting::application::SaveKeyboardEffect useCase{
         keyboard, registry, probe,
         ghub::device_access::PhysicalInterfaceId::create("hidpp:046d:407c").value()}; // NOLINT

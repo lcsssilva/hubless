@@ -5,6 +5,7 @@ target_sources(ghub_platform_hidpp PRIVATE
     HidrawDevice.cpp
     HidppFeatureMap.cpp
     HidppChannel.cpp
-    HidppCapabilities.cpp)
+    HidppCapabilities.cpp
+    HidppNodeLocator.cpp)
 target_link_libraries(ghub_platform_hidpp PUBLIC ghub_shared_kernel)
 ghub_set_warnings(ghub_platform_hidpp)

@@ -194,6 +194,16 @@ TestCase {
         }
     }
 
+    // ViewModel de identidade HID++ falso (INC-015): registra os pedidos de leitura; nada chega a um dispositivo.
+    Component {
+        id: fakeIdentityComponent
+        QtObject {
+            property var identities: ({})
+            property var readCalls: []
+            function read(key) { readCalls = readCalls.concat([key]) }
+        }
+    }
+
     // Controlador de desktop falso (INC-013): registra os pedidos; nada é gravado em disco.
     // `setAutostart` atualiza `autostartEnabled` como o controlador real faria.
     Component {
@@ -250,7 +260,7 @@ TestCase {
     // Carrega o Main.qml real do código-fonte (caminho relativo a este arquivo).
     function createMain(fake, inventoryFake, cameraFake, previewFake, editorFake, pointerFake, lightingFake,
                         headsetFake, equalizerFake, onboardFake, noiseFake, desktopFake, diagnosticsFake,
-                        profilesFake) {
+                        profilesFake, identityFake) {
         const component = Qt.createComponent(Qt.resolvedUrl("../../src/ui/qml/Main.qml"));
         compare(component.status, Component.Ready, component.errorString());
         const window = component.createObject(null, {batteryViewModel: fake,
@@ -266,7 +276,8 @@ TestCase {
                                                      g703OnboardController: onboardFake || createOnboardFake(),
                                                      desktopController: desktopFake || createDesktopFake(),
                                                      diagnosticsViewModel: diagnosticsFake || createDiagnosticsFake(),
-                                                     profilesController: profilesFake || createProfilesFake()});
+                                                     profilesController: profilesFake || createProfilesFake(),
+                                                     deviceIdentityViewModel: identityFake || createIdentityFake()});
         verify(window !== null, "Main.qml deve instanciar");
         windows.push(window);
         return window;
@@ -324,6 +335,22 @@ TestCase {
         const fake = fakeNoiseSuppressionComponent.createObject(null, props || {});
         fakes.push(fake);
         return fake;
+    }
+
+    function identityEntry(state, extra) {
+        return Object.assign({state: state, name: "", type: "", firmwares: [], featureCount: 0, featureIds: [],
+                              truncationNote: "", error: ""}, extra || {});
+    }
+
+    function createIdentityFake(entries) {
+        const identities = {g915: identityEntry("idle"), g703: identityEntry("idle"), g733: identityEntry("idle")};
+        const fake = fakeIdentityComponent.createObject(null, {identities: Object.assign(identities, entries || {})});
+        fakes.push(fake);
+        return fake;
+    }
+
+    function visibleByName(window, objectName) {
+        return allItems(window).filter(i => i.objectName === objectName && i.visible && i.width > 0);
     }
 
     function createMainWithNoiseSuppression(noise) {
@@ -687,7 +714,8 @@ TestCase {
     }
 
     // Fora dos controles há dois botões na janela: o de pré-visualização e o de leitura do mouse (INC-007);
-    // os demais são os "Padrão" (um por controle).
+    // os demais são os "Padrão" (um por controle). Desde o INC-015 as abas Informações de G915, G703 e G733 (não a
+    // da Brio 100) têm "Ler identidade" e o botão que expande os IDs das features.
     function test_cameraSectionButtons_ArePreviewToggleAndOneDefaultPerControl() {
         const window = createMain(createFake([]), null, createCameraFake("Brio 100",
             [{text: "MJPG: até 1920×1080 a 30 fps"}], [integerControl(), booleanControl()]));
@@ -702,7 +730,9 @@ TestCase {
                 + "eqFlatButton,headsetLightsOffButton,"
                 + "headsetLightsOnButton,headsetSidetoneApplyButton,lightingCustomColorButton,"
                 + "lightingLiveButton,noiseDisableButton,noiseEnableButton,onboardAddStageButton,onboardReadButton,onboardRemoveStageButton,"
-                + "onboardRestoreButton,onboardWriteButton,pointerReadButton,profileSaveButton"); // amostras: delegates de tipo próprio, testadas à parte
+                + "onboardRestoreButton,onboardWriteButton,pointerReadButton,profileSaveButton,"
+                + "readIdentityButton,readIdentityButton,readIdentityButton,"
+                + "toggleFeatureIdsButton,toggleFeatureIdsButton,toggleFeatureIdsButton"); // amostras: delegates de tipo próprio, testadas à parte
     }
 
     function test_onboardSectionWarnsAndDoesNotTouchTheMouseOnLoad() {
@@ -1894,5 +1924,116 @@ TestCase {
         const window = createMainWithProfiles(createProfilesFake({loadFailed: true}));
         const warning = findItem(window, "profilesLoadFailedLabel");
         verify(Qt.colorEqual(warning.color, Theme.error), String(warning.color));
+    }
+
+    // INC-015: identidade HID++ na aba Informações de G915, G703 e G733; nada é lido ao navegar.
+    function test_identityButtonCallsReadWithTheDeviceKeyOnly_OnClick() {
+        const identity = createIdentityFake();
+        const window = createMain(createFake([]), sampleInventory(), null, null, null, null, null, null, null, null,
+                                  null, null, null, null, identity);
+        const expected = {"G915": "g915", "G703": "g703", "G733": "g733"};
+        for (const name of Object.keys(expected)) {
+            openDeviceTab(window, name, "info");
+            tryVerify(() => visibleByName(window, "readIdentityButton").length === 1);
+            compare(identity.readCalls.length, Object.keys(expected).indexOf(name), "nada é lido ao navegar");
+            const button = visibleByName(window, "readIdentityButton")[0];
+            verify(button.enabled);
+            mouseClick(button);
+            compare(identity.readCalls[identity.readCalls.length - 1], expected[name]);
+            clickButton(window, "backButton");
+        }
+        compare(identity.readCalls, ["g915", "g703", "g733"]);
+    }
+
+    function test_identitySectionIsAbsentFromTheBrioInfoTab() {
+        const identity = createIdentityFake();
+        const window = createMain(createFake([]), sampleInventory(), null, null, null, null, null, null, null, null,
+                                  null, null, null, null, identity);
+        openDeviceTab(window, "Brio 100", "info");
+        tryVerify(() => visibleByName(window, "inventoryDeviceLabel").length === 1);
+        compare(visibleByName(window, "readIdentityButton").length, 0);
+        compare(identity.readCalls.length, 0);
+    }
+
+    function test_identityButtonIsDisabledWhileReading() {
+        const identity = createIdentityFake({g915: identityEntry("reading")});
+        const window = createMain(createFake([]), sampleInventory(), null, null, null, null, null, null, null, null,
+                                  null, null, null, null, identity);
+        openDeviceTab(window, "G915", "info");
+        tryVerify(() => visibleByName(window, "readIdentityButton").length === 1);
+        compare(visibleByName(window, "readIdentityButton")[0].enabled, false);
+        identity.identities = Object.assign({}, identity.identities, {g915: identityEntry("ok")});
+        tryCompare(visibleByName(window, "readIdentityButton")[0], "enabled", true);
+    }
+
+    function test_identityShowsTheResultOfTheDeviceOnly() {
+        const identity = createIdentityFake({
+            g915: identityEntry("ok", {name: "G915 X LIGHTSPEED", type: "teclado",
+                                       firmwares: ["MPK 09.04 b0042 — aplicação (ativo)", "BLK 01.00 b0001 — bootloader"],
+                                       featureCount: 3, featureIds: ["0x0001", "0x0003", "0x1b04"]}),
+            g703: identityEntry("ok", {name: "G703 LIGHTSPEED", type: "mouse", featureCount: 1, featureIds: ["0x0001"]})});
+        const window = createMain(createFake([]), sampleInventory(), null, null, null, null, null, null, null, null,
+                                  null, null, null, null, identity);
+        openDeviceTab(window, "G915", "info");
+        const texts = name => visibleByName(window, name).map(i => i.text);
+        tryVerify(() => texts("identityNameLabel").length === 1);
+        compare(texts("identityNameLabel"), ["Nome: G915 X LIGHTSPEED"]);
+        compare(texts("identityTypeLabel"), ["Tipo: teclado"]);
+        compare(texts("identityFirmwareLabel"),
+                ["Firmware: MPK 09.04 b0042 — aplicação (ativo)\nBLK 01.00 b0001 — bootloader"]);
+        compare(texts("identityFeatureCountLabel"), ["Features: 3"]);
+        compare(visibleByName(window, "identityErrorLabel").length, 0);
+        compare(visibleByName(window, "identityTruncationLabel").length, 0);
+    }
+
+    function test_identityShowsNotInformedWhenTheDeviceHasNoFirmware() {
+        const identity = createIdentityFake({g733: identityEntry("ok", {name: "não informado", type: "não informado"})});
+        const window = createMain(createFake([]), sampleInventory(), null, null, null, null, null, null, null, null,
+                                  null, null, null, null, identity);
+        openDeviceTab(window, "G733", "info");
+        tryVerify(() => visibleByName(window, "identityFirmwareLabel").length === 1);
+        compare(visibleByName(window, "identityFirmwareLabel")[0].text, "Firmware: não informado");
+        compare(visibleByName(window, "toggleFeatureIdsButton").length, 0, "sem features, sem lista para expandir");
+    }
+
+    function test_identityShowsTheErrorAndNoResult() {
+        const identity = createIdentityFake({g733: identityEntry("error", {error: "headset desligado ou fora de alcance"})});
+        const window = createMain(createFake([]), sampleInventory(), null, null, null, null, null, null, null, null,
+                                  null, null, null, null, identity);
+        openDeviceTab(window, "G733", "info");
+        tryVerify(() => visibleByName(window, "identityErrorLabel").length === 1);
+        compare(visibleByName(window, "identityErrorLabel")[0].text, "headset desligado ou fora de alcance");
+        compare(visibleByName(window, "identityNameLabel").length, 0);
+        compare(visibleByName(window, "identityFirmwareLabel").length, 0);
+    }
+
+    function test_identityFeatureIdsExpandOnDemand() {
+        const identity = createIdentityFake({
+            g915: identityEntry("ok", {name: "G915", type: "teclado", featureCount: 3,
+                                       featureIds: ["0x0001", "0x0003", "0x1b04"]})});
+        const window = createMain(createFake([]), sampleInventory(), null, null, null, null, null, null, null, null,
+                                  null, null, null, null, identity);
+        openDeviceTab(window, "G915", "info");
+        tryVerify(() => visibleByName(window, "toggleFeatureIdsButton").length === 1);
+        compare(visibleByName(window, "identityFeatureIdsLabel").length, 0, "recolhida por padrão");
+        const toggle = visibleByName(window, "toggleFeatureIdsButton")[0];
+        reveal(toggle);
+        mouseClick(toggle);
+        tryVerify(() => visibleByName(window, "identityFeatureIdsLabel").length === 1);
+        compare(visibleByName(window, "identityFeatureIdsLabel")[0].text, "0x0001, 0x0003, 0x1b04");
+        mouseClick(visibleByName(window, "toggleFeatureIdsButton")[0]);
+        tryVerify(() => visibleByName(window, "identityFeatureIdsLabel").length === 0);
+    }
+
+    function test_identityShowsTheTruncationNote() {
+        const identity = createIdentityFake({
+            g703: identityEntry("ok", {name: "G703", type: "mouse", featureCount: 64,
+                                       truncationNote: "o dispositivo tem mais features do que as 64 lidas"})});
+        const window = createMain(createFake([]), sampleInventory(), null, null, null, null, null, null, null, null,
+                                  null, null, null, null, identity);
+        openDeviceTab(window, "G703", "info");
+        tryVerify(() => visibleByName(window, "identityTruncationLabel").length === 1);
+        compare(visibleByName(window, "identityTruncationLabel")[0].text,
+                "o dispositivo tem mais features do que as 64 lidas");
     }
 }

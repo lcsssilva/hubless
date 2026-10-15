@@ -55,8 +55,11 @@
 #include "modules/device_access/infrastructure/ProcExternalProcessProbe.hpp"
 #include "modules/device_access/infrastructure/SteadyClock.hpp"
 #include "modules/device_inventory/application/ListDetectedDevices.hpp"
+#include "modules/device_inventory/application/ReadDeviceIdentity.hpp"
+#include "modules/device_inventory/infrastructure/HidppIdentitySource.hpp"
 #include "modules/device_inventory/infrastructure/SysfsHidDiscovery.hpp"
 #include "modules/device_inventory/infrastructure/SysfsVideoDiscovery.hpp"
+#include "modules/device_inventory/presentation/DeviceIdentityViewModel.hpp"
 #include "modules/device_inventory/presentation/DeviceInventoryViewModel.hpp"
 #include "modules/diagnostics/application/DiagnosticLog.hpp"
 #include "modules/diagnostics/application/ExportDiagnosticReport.hpp"
@@ -69,7 +72,6 @@
 #include "modules/headset/presentation/HeadsetSettingsController.hpp"
 #include "modules/lighting/application/LiveKeyboardSession.hpp"
 #include "modules/lighting/infrastructure/G915HidppLighting.hpp"
-#include "modules/lighting/infrastructure/HidppNodeLocator.hpp"
 #include "modules/lighting/presentation/KeyboardLightingController.hpp"
 #include "modules/pointer/application/G703OnboardSettings.hpp"
 #include "modules/pointer/application/ReadPointerConfiguration.hpp"
@@ -87,6 +89,7 @@
 #include "modules/profiles/infrastructure/JsonProfileRepository.hpp"
 #include "modules/profiles/infrastructure/KWinActiveApplicationSource.hpp"
 #include "modules/profiles/presentation/ProfilesController.hpp"
+#include "platform/hidpp/HidppNodeLocator.hpp"
 
 #include <QApplication>
 #include <QCommandLineParser>
@@ -210,6 +213,13 @@ int main(int argc, char* argv[])
     ghub::device_inventory::SysfsVideoDiscovery videoDiscovery;
     const ghub::device_inventory::ListDetectedDevices listDetectedDevices{{&hidDiscovery, &videoDiscovery}};
     ghub::device_inventory::DeviceInventoryViewModel deviceInventoryViewModel{listDetectedDevices, 5s};
+    // Identidade HID++ (ADR-0024): nome, tipo, firmware e mapa de features de G915, G703 e G733, só leitura, só por
+    // clique em DeviceIdentityViewModel::read(); nada é aberto nem lido na construção. Ordem de destruição (inversa à
+    // declaração): ViewModel (espera a leitura em andamento), caso de uso, fonte e, por fim, o registro de leases.
+    ghub::device_inventory::HidppIdentitySource hidppIdentitySource{ghub::platform::hidpp::HidppNodeLocator{},
+                                                                    steadyClock};
+    const ghub::device_inventory::ReadDeviceIdentity readDeviceIdentity{hidppIdentitySource, accessRegistry};
+    ghub::device_inventory::DeviceIdentityViewModel deviceIdentityViewModel{readDeviceIdentity};
     // Câmera (ADR-0008): Brio 100 lida por V4L2 só com ioctls de consulta, numa thread de trabalho,
     // ao iniciar e a cada 60 s (os ioctls de controle acordam a câmera; não reler mais que isso).
     // O ViewModel só lê o cache: é atualizado quando uma leitura termina; o timer dele é reserva.
@@ -282,7 +292,7 @@ int main(int argc, char* argv[])
     // nada é aberto nem escrito na construção. Ordem de destruição (inversa à declaração): o controlador primeiro
     // (espera a operação em andamento e devolve o controle ao firmware), depois o caso de uso, o adaptador e,
     // por fim, o registro de leases e o relógio (declarados acima).
-    ghub::lighting::infrastructure::G915HidppLighting g915Lighting{ghub::lighting::infrastructure::HidppNodeLocator{},
+    ghub::lighting::infrastructure::G915HidppLighting g915Lighting{ghub::platform::hidpp::HidppNodeLocator{},
                                                                    steadyClock, traceHidppCommand};
     auto keyboardInterface = ghub::device_access::PhysicalInterfaceId::create("hidpp:046d:407c");
     if (!keyboardInterface) {
@@ -388,6 +398,7 @@ int main(int argc, char* argv[])
     engine.setInitialProperties({
         {QStringLiteral("batteryViewModel"), QVariant::fromValue(&batteryViewModel)},
         {QStringLiteral("deviceInventoryViewModel"), QVariant::fromValue(&deviceInventoryViewModel)},
+        {QStringLiteral("deviceIdentityViewModel"), QVariant::fromValue(&deviceIdentityViewModel)},
         {QStringLiteral("cameraViewModel"), QVariant::fromValue(&cameraViewModel)},
         {QStringLiteral("cameraPreviewViewModel"), QVariant::fromValue(&cameraPreviewViewModel)},
         {QStringLiteral("cameraControlEditor"), QVariant::fromValue(&cameraControlEditor)},
