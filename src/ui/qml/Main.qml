@@ -982,6 +982,11 @@ ApplicationWindow {
                 minimumGain: window.hostEqualizerController.minimumGain
                 maximumGain: window.hostEqualizerController.maximumGain
                 busy: window.hostEqualizerController.busy
+                presetNames: window.hostEqualizerController.presetNames ?? []
+                bass: window.hostEqualizerController.bass ?? 0
+                treble: window.hostEqualizerController.treble ?? 0
+                onPresetRequested: index => window.hostEqualizerController.applyPreset(index)
+                onBassTrebleMoved: (bass, treble) => window.hostEqualizerController.setBassTreble(bass, treble)
                 onBandMoved: (band, gain) => window.hostEqualizerController.setBand(band, gain)
                 onResetRequested: window.hostEqualizerController.flat()
             }

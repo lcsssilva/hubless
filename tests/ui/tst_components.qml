@@ -495,6 +495,49 @@ TestCase {
         compare(reset.enabled, false);
     }
 
+    function test_equalizerView_advancedCheckSwitchesBetweenTenBandsAndBassTreble() {
+        const view = make("EqualizerView", eqProps() + "; bass: 3; treble: -2");
+        const check = named(view, "eqAdvancedCheck");
+        compare(check.text, "Ativar EQ avançado");
+        compare(check.checked, true);
+        const bands = () => descendants(view).filter(i => i.objectName === "eqBandSlider");
+        compare(bands()[0].visible, true);
+        compare(named(view, "eqBassSlider").visible, false);
+        check.checked = false;
+        check.toggled();
+        compare(view.advanced, false);
+        compare(bands()[0].visible, false);
+        compare(named(view, "eqBassSlider").visible, true);
+        compare(named(view, "eqBassSlider").value, 3);
+        compare(named(view, "eqTrebleSlider").value, -2);
+        compare(named(view, "eqBassSlider").from, -12);
+        compare(named(view, "eqTrebleSlider").to, 12);
+    }
+
+    function test_equalizerView_bassTrebleSlidersEmitBothValues() {
+        const view = make("EqualizerView", eqProps() + "; bass: 3; treble: -2; advanced: false");
+        const sent = [];
+        view.bassTrebleMoved.connect((b, t) => sent.push([b, t]));
+        named(view, "eqBassSlider").value = 8;
+        compare(sent.length, 0);
+        named(view, "eqBassSlider").moved();
+        named(view, "eqTrebleSlider").value = 5;
+        named(view, "eqTrebleSlider").moved();
+        compare(sent, [[8, -2], [3, 5]]);
+    }
+
+    function test_equalizerView_presetListEmitsTheIndexAndHidesWhenEmpty() {
+        const view = make("EqualizerView", eqProps() + "; presetNames: [\"Plano\", \"Aumento de grave\"]");
+        const items = descendants(view).filter(i => i.objectName === "eqPresetItem");
+        compare(items.map(i => i.text), ["Plano", "Aumento de grave"]);
+        const got = [];
+        view.presetRequested.connect(i => got.push(i));
+        view.presetRequested(1);
+        compare(got, [1]);
+        const empty = make("EqualizerView", eqProps());
+        compare(descendants(empty).filter(i => i.objectName === "eqPresetItem").length, 0);
+    }
+
     function test_equalizerView_railsFollowGainsWithoutEmitting() {
         const view = make("EqualizerView", eqProps());
         const moved = [];

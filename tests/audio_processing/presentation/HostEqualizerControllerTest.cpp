@@ -255,6 +255,100 @@ private slots:
         QCOMPARE(access.currentGains(), (std::array<int, 10>{0, 0, 0, 0, 6, 0, 0, 0, 0, 0}));
     }
 
+    void presetNames_ListsOnlyTheKnownPresets()
+    {
+        const HostEqualizerController controller{fixture->equalizer, fixture->graph};
+
+        QCOMPARE(controller.presetNames(), (QStringList{QStringLiteral("Plano"), QStringLiteral("Aumento de grave")}));
+    }
+
+    void applyPreset_BassBoost_AppliesThroughTheQueueOnlyWhenCalled()
+    {
+        HostEqualizerController controller{fixture->equalizer, fixture->graph};
+        controller.enable();
+        QTRY_VERIFY(controller.enabled() && !controller.busy());
+        const auto callsBefore = fixture->graph.inner.calls.size();
+
+        controller.applyPreset(1);
+        QCOMPARE(controller.gains(), (QList<int>{4, 3, 2, 1, 1, 0, 0, 0, 0, 0}));
+        QTRY_VERIFY(!controller.busy());
+
+        QCOMPARE(fixture->graph.inner.equalizerCurve->gainsDb(), (std::array<int, 10>{4, 3, 2, 1, 1, 0, 0, 0, 0, 0}));
+        QVERIFY(fixture->graph.inner.calls.size() > callsBefore);
+    }
+
+    void applyPreset_WhileDisabled_OnlyKeepsTheCurve()
+    {
+        HostEqualizerController controller{fixture->equalizer, fixture->graph};
+
+        controller.applyPreset(1);
+        QTRY_VERIFY(!controller.busy() && fixture->equalizer.curve().gainsDb()[0] == 4);
+
+        QVERIFY(fixture->graph.inner.calls.empty());
+    }
+
+    void applyPreset_OutOfRange_ReportsFailureAndRunsNothing()
+    {
+        HostEqualizerController controller{fixture->equalizer, fixture->graph};
+
+        for (const int index : {-1, 2}) {
+            controller.applyPreset(index);
+            QVERIFY(!controller.busy());
+            QVERIFY(controller.status().startsWith(QStringLiteral("Falha: ")));
+        }
+        QCOMPARE(controller.gains(), (QList<int>(10, 0)));
+    }
+
+    void setBassTreble_AppliesTheMappingAndKeepsTheKnobs()
+    {
+        HostEqualizerController controller{fixture->equalizer, fixture->graph};
+        controller.enable();
+        QTRY_VERIFY(controller.enabled() && !controller.busy());
+
+        controller.setBassTreble(8, -4);
+        QCOMPARE(controller.bass(), 8);
+        QCOMPARE(controller.treble(), -4);
+        QCOMPARE(controller.gains(), (QList<int>{8, 8, 6, 4, 0, 0, -2, -3, -4, -4}));
+        QTRY_VERIFY(!controller.busy());
+
+        QCOMPARE(fixture->graph.inner.equalizerCurve->gainsDb(),
+                 (std::array<int, 10>{8, 8, 6, 4, 0, 0, -2, -3, -4, -4}));
+    }
+
+    void bassTrebleKnobs_ReturnToZeroWhenTheCurveChangesByOtherMeans()
+    {
+        HostEqualizerController controller{fixture->equalizer, fixture->graph};
+
+        controller.setBassTreble(5, 5);
+        controller.setBand(0, 1);
+        QCOMPARE(controller.bass(), 0);
+        QCOMPARE(controller.treble(), 0);
+
+        controller.setBassTreble(5, 5);
+        controller.flat();
+        QCOMPARE(controller.bass(), 0);
+        QCOMPARE(controller.treble(), 0);
+
+        controller.setBassTreble(5, 5);
+        controller.applyPreset(1);
+        QCOMPARE(controller.bass(), 0);
+        QCOMPARE(controller.treble(), 0);
+    }
+
+    void setBassTreble_OutOfRange_ReportsFailureAndKeepsTheCurve()
+    {
+        HostEqualizerController controller{fixture->equalizer, fixture->graph};
+
+        controller.setBassTreble(13, 0);
+        controller.setBassTreble(0, -13);
+
+        QVERIFY(!controller.busy());
+        QVERIFY(controller.status().startsWith(QStringLiteral("Falha: ")));
+        QCOMPARE(controller.gains(), (QList<int>(10, 0)));
+        QCOMPARE(controller.bass(), 0);
+        QCOMPARE(controller.treble(), 0);
+    }
+
     void flat_ResetsEveryBand()
     {
         HostEqualizerController controller{fixture->equalizer, fixture->graph};

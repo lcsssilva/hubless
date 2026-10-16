@@ -2,6 +2,7 @@
 add_library(ghub_audio_processing_domain STATIC)
 target_sources(ghub_audio_processing_domain PRIVATE
     domain/EqualizerCurve.cpp
+    domain/EqualizerPresets.cpp
     domain/VoiceThreshold.cpp)
 target_link_libraries(ghub_audio_processing_domain PUBLIC ghub_shared_kernel)
 ghub_set_warnings(ghub_audio_processing_domain)

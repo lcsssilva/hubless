@@ -1,5 +1,6 @@
 add_executable(ghub_audio_processing_domain_tests
     domain/EqualizerCurveTest.cpp
+    domain/EqualizerPresetsTest.cpp
     domain/VoiceThresholdTest.cpp)
 target_link_libraries(ghub_audio_processing_domain_tests PRIVATE ghub_audio_processing_domain GTest::gtest_main)
 ghub_set_warnings(ghub_audio_processing_domain_tests)

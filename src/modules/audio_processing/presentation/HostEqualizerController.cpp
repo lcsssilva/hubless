@@ -59,6 +59,16 @@ QStringList HostEqualizerController::bandFrequencies() const
     return labels;
 }
 
+// NOLINTNEXTLINE(readability-convert-member-functions-to-static): leitor de Q_PROPERTY.
+QStringList HostEqualizerController::presetNames() const
+{
+    QStringList names;
+    for (const auto& preset : EqualizerPresets::all()) {
+        names.push_back(QString::fromUtf8(preset.name.data(), static_cast<qsizetype>(preset.name.size())));
+    }
+    return names;
+}
+
 void HostEqualizerController::enable()
 {
     submitToggle(Op::Enable);
@@ -79,6 +89,33 @@ void HostEqualizerController::setBand(int band, int gainDb)
         return;
     }
     submitCurve(*next);
+}
+
+void HostEqualizerController::applyPreset(int index)
+{
+    const auto presets = EqualizerPresets::all();
+    if (index < 0 || static_cast<std::size_t>(index) >= presets.size()) {
+        status_ = tr("Falha: predefinição inexistente");
+        emit stateChanged();
+        return;
+    }
+    submitCurve(presets[static_cast<std::size_t>(index)].curve);
+}
+
+void HostEqualizerController::setBassTreble(int bassDb, int trebleDb)
+{
+    const auto inRange = [](int db) {
+        return db >= EqualizerCurve::minimumGainDb && db <= EqualizerCurve::maximumGainDb;
+    };
+    if (!inRange(bassDb) || !inRange(trebleDb)) {
+        status_ = tr("Falha: grave/agudos fora de -12..12 dB");
+        emit stateChanged();
+        return;
+    }
+    submitCurve(EqualizerPresets::fromBassTreble(bassDb, trebleDb));
+    bass_ = bassDb;
+    treble_ = trebleDb;
+    emit stateChanged();
 }
 
 void HostEqualizerController::flat()
@@ -107,6 +144,8 @@ HostEqualizerController::requestGains(const std::array<int, EqualizerCurve::band
 void HostEqualizerController::submitCurve(const EqualizerCurve& curve)
 {
     desired_ = curve;
+    bass_ = 0;
+    treble_ = 0;
     pendingCurve_ = curve;
     emit stateChanged();
     startNext();

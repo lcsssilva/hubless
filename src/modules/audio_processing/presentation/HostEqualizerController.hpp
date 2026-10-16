@@ -3,6 +3,7 @@
 #include "modules/audio_processing/api/EqualizerCurveAccess.hpp"
 #include "modules/audio_processing/application/AudioGraph.hpp"
 #include "modules/audio_processing/application/HostEqualizer.hpp"
+#include "modules/audio_processing/domain/EqualizerPresets.hpp"
 
 #include <QFutureWatcher>
 #include <QList>
@@ -41,6 +42,9 @@ class HostEqualizerController final : public QObject, public EqualizerCurveAcces
     Q_PROPERTY(int minimumGain READ minimumGain CONSTANT)
     Q_PROPERTY(int maximumGain READ maximumGain CONSTANT)
     Q_PROPERTY(QString status READ status NOTIFY stateChanged)
+    Q_PROPERTY(QStringList presetNames READ presetNames CONSTANT)
+    Q_PROPERTY(int bass READ bass NOTIFY stateChanged)
+    Q_PROPERTY(int treble READ treble NOTIFY stateChanged)
 
 public:
     HostEqualizerController(HostEqualizer& equalizer, AudioGraph& graph, QObject* parent = nullptr);
@@ -61,6 +65,10 @@ public:
     // NOLINTNEXTLINE(readability-convert-member-functions-to-static): leitor de Q_PROPERTY.
     [[nodiscard]] int maximumGain() const { return EqualizerCurve::maximumGainDb; }
     [[nodiscard]] QString status() const { return status_; }
+    // NOLINTNEXTLINE(readability-convert-member-functions-to-static): leitor de Q_PROPERTY.
+    [[nodiscard]] QStringList presetNames() const;
+    [[nodiscard]] int bass() const { return bass_; }
+    [[nodiscard]] int treble() const { return treble_; }
 
     Q_INVOKABLE void enable();
     Q_INVOKABLE void disable();
@@ -68,6 +76,10 @@ public:
     Q_INVOKABLE void setBand(int band, int gainDb);
     // Curva plana (todas as bandas em 0 dB).
     Q_INVOKABLE void flat();
+    // Predefinição pelo índice de presetNames (INC-018 R6); índice inválido: status de falha. Segue a mesma fila.
+    Q_INVOKABLE void applyPreset(int index);
+    // EQ simples Grave/Agudos (INC-018 R7), -12..12 dB cada; fora da faixa: status de falha. Mesma fila.
+    Q_INVOKABLE void setBassTreble(int bassDb, int trebleDb);
 
     // EqualizerCurveAccess (ADR-0020): mesma fila e mesmo caminho do setBand; nunca liga nem desliga o EQ.
     [[nodiscard]] std::array<int, EqualizerCurve::bandCount> currentGains() const override;
@@ -113,6 +125,8 @@ private:
     std::optional<EqualizerCurve> pendingCurve_;
     std::optional<QString> pendingLost_;
     QString status_;
+    int bass_ = 0;
+    int treble_ = 0;
     bool enabled_ = false;
     bool running_ = false;
 };
