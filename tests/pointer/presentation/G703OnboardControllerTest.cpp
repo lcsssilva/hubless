@@ -275,15 +275,17 @@ private slots:
                  ghub::onboard_memory::OnboardSector::fromBytes(raw)->withCrc().bytes());
     }
 
-    void writeToMouse_ShiftMinusOneMeansNoShift()
+    // -1 = "sem shift", que ainda não tem formato confirmado: com o shift válido no setor, nada é gravado e o status
+    // explica.
+    void writeToMouse_ShiftMinusOneIsRefusedWhileTheNoShiftFormatIsUnconfirmed()
     {
         G703OnboardController controller{fixture->useCase};
 
         controller.writeToMouse(1000, stages({400, 800}), 0, -1, offLed(), offLed());
         QTRY_VERIFY(!controller.busy());
 
-        QCOMPARE(fixture->connector.state.count("write:1"), 1);
-        QCOMPARE(controller.dpiShiftStage(), -1);
+        QCOMPARE(fixture->connector.state.count("write:1"), 0);
+        QVERIFY2(controller.status().contains(QStringLiteral("DPI shift")), qPrintable(controller.status()));
     }
 
     void writeToMouse_InvalidShiftOrLedDoesNotCallThePortAndExplainsInStatus()
