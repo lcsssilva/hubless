@@ -2,6 +2,7 @@
 add_library(ghub_headset_domain STATIC)
 target_sources(ghub_headset_domain PRIVATE
     domain/SidetoneLevel.cpp
+    domain/HeadsetLighting.cpp
     domain/HeadsetStatus.cpp)
 target_link_libraries(ghub_headset_domain PUBLIC ghub_shared_kernel)
 ghub_set_warnings(ghub_headset_domain)
@@ -10,6 +11,7 @@ ghub_set_warnings(ghub_headset_domain)
 add_library(ghub_headset_application STATIC)
 target_sources(ghub_headset_application PRIVATE
     application/ChangeHeadsetSetting.cpp
+    application/ChangeHeadsetLighting.cpp
     application/ReadHeadsetStatus.cpp)
 target_link_libraries(ghub_headset_application PUBLIC ghub_headset_domain ghub_device_access_api)
 ghub_set_warnings(ghub_headset_application)
@@ -19,8 +21,12 @@ add_library(ghub_headset_hidpp STATIC)
 target_sources(ghub_headset_hidpp PRIVATE
     infrastructure/G733StatusPolicy.hpp
     infrastructure/G733StatusPolicy.cpp
+    infrastructure/HidppHeadsetErrors.hpp
+    infrastructure/HidppHeadsetErrors.cpp
     infrastructure/HidppHeadsetStatusSource.hpp
-    infrastructure/HidppHeadsetStatusSource.cpp)
+    infrastructure/HidppHeadsetStatusSource.cpp
+    infrastructure/HidppHeadsetSettingsWriter.hpp
+    infrastructure/HidppHeadsetSettingsWriter.cpp)
 target_link_libraries(ghub_headset_hidpp PUBLIC ghub_headset_application ghub_platform_hidpp)
 ghub_set_warnings(ghub_headset_hidpp)
 
@@ -42,6 +48,8 @@ if(GHUB_BUILD_APP)
     find_package(Qt6 6.12 REQUIRED COMPONENTS Core Concurrent GLOBAL)
     add_library(ghub_headset_presentation STATIC)
     target_sources(ghub_headset_presentation PRIVATE
+        presentation/HeadsetLightingController.hpp
+        presentation/HeadsetLightingController.cpp
         presentation/HeadsetSettingsController.hpp
         presentation/HeadsetSettingsController.cpp
         presentation/HeadsetStatusViewModel.hpp

@@ -38,6 +38,10 @@ ApplicationWindow {
     // são gravados por clique (ADR-0015).
     required property QtObject headsetSettingsController
 
+    // HeadsetLightingController (módulo headset), fornecido pelo composition root: cor e efeito por zona do G733
+    // só são enviados por clique em "Aplicar" (INC-018).
+    required property QtObject headsetLightingController
+
     // HostEqualizerController (módulo audio_processing), fornecido pelo composition root: o EQ do G733 roda no PC
     // (PipeWire) e só é ligado por clique (ADR-0016).
     required property QtObject hostEqualizerController
@@ -817,7 +821,7 @@ ApplicationWindow {
                 // Grava só pelo botão "Aplicar"; mover o controle não grava nada.
                 SectionHeader {
                     text: qsTr("Sidetone")
-                    help: qsTr("Ajustes enviados pelo HeadsetControl. O headset não informa o valor atual. O sidetone fica gravado no headset e só é ouvido enquanto algum programa usa o microfone; as luzes voltam ao padrão ao desligar o headset. “Ligar luzes” aplica o efeito respiração do HeadsetControl.")
+                    help: qsTr("Ajustes enviados direto ao headset. O headset não informa o valor atual. O sidetone fica gravado no headset e só é ouvido enquanto algum programa usa o microfone; as luzes voltam ao padrão ao desligar o headset. “Ligar luzes” aplica o efeito ciclo (período de 5000 ms, brilho 100) nas duas zonas.")
                     helpObjectName: "headsetNoticeLabel"
                 }
 
@@ -862,6 +866,10 @@ ApplicationWindow {
                     text: qsTr("Desligar luzes")
                     enabled: !window.headsetSettingsController.busy
                     onClicked: window.headsetSettingsController.setLights(false)
+                }
+
+                HeadsetLightingSection {
+                    controller: window.headsetLightingController
                 }
 
                 BodyLabel {
