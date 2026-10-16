@@ -36,6 +36,8 @@ class KeyboardLightingController final : public QObject {
     Q_PROPERTY(bool live READ live NOTIFY controllerChanged)
     Q_PROPERTY(bool busy READ busy NOTIFY controllerChanged)
     Q_PROPERTY(QString status READ status NOTIFY controllerChanged)
+    // INC-019 R1: brilho (1..100 %) dos efeitos de prévia seguintes. Só guarda o valor: nada é enviado ao mudar.
+    Q_PROPERTY(int brightness READ brightness WRITE setBrightness NOTIFY brightnessChanged)
 
 public:
     explicit KeyboardLightingController(const application::StartLiveKeyboardSession& start,
@@ -52,14 +54,18 @@ public:
     // A sondagem periódica é interna e não conta como ocupado.
     [[nodiscard]] bool busy() const { return running_ && runningKind_ != Kind::Check; }
     [[nodiscard]] QString status() const { return status_; }
+    [[nodiscard]] int brightness() const { return brightness_; }
+    // Fora de 1..100 é limitado à faixa (EffectBrightness). Vale para os próximos applyEffect (wave, cycle,
+    // breathing); static e ripple não têm campo de brilho no SetEffect.
+    void setBrightness(int percent);
 
     Q_INVOKABLE void startLive();
     Q_INVOKABLE void stopLive();
     Q_INVOKABLE void paintAll(const QColor& color);
     // R14: prévia de efeito de hardware nas teclas e, em seguida, o efeito correspondente no logo (logoCompanion)
-    // enquanto o modo ao vivo está ligado. `kind`: wave, cycle, breathing, ripple ou static; parâmetros fixos (5 s,
-    // brilho 100%, ripple 20); `color` vale para breathing, ripple e static. O efeito some ao desligar o modo ao vivo.
-    // `kind` desconhecido não envia nada.
+    // enquanto o modo ao vivo está ligado. `kind`: wave, cycle, breathing, ripple ou static; parâmetros: 5 s, brilho
+    // de `brightness` (padrão 100%), ripple 20; `color` vale para breathing, ripple e static. O efeito some ao desligar
+    // o modo ao vivo. `kind` desconhecido não envia nada.
     Q_INVOKABLE void applyEffect(const QString& kind, const QColor& color);
     // R16: chamado da thread de UI antes da suspensão do sistema. Síncrono: descarta o pedido pendente, espera a
     // operação em andamento e devolve o controle ao firmware (sem sessão, não faz nada além de desligar o modo).
@@ -67,6 +73,7 @@ public:
 
 signals:
     void controllerChanged();
+    void brightnessChanged();
 
 private:
     enum class Kind : std::uint8_t { Start, Stop, Paint, Effect, Check };
@@ -98,6 +105,7 @@ private:
     Kind runningKind_ = Kind::Start;
     QString status_;
     bool live_ = false;
+    int brightness_ = 100;
     bool running_ = false;
 };
 

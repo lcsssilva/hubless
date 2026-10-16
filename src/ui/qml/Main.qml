@@ -38,6 +38,10 @@ ApplicationWindow {
     // começam por clique (INC-021).
     required property QtObject softwareAnimationController
 
+    // KeyboardControlsController (módulo lighting), fornecido pelo composition root: modo de jogo e troca de slot
+    // M1–M3 do G915 só por clique (INC-019).
+    required property QtObject keyboardControlsController
+
     // HeadsetSettingsController (módulo headset), fornecido pelo composition root: sidetone e luzes do G733 só
     // são gravados por clique (ADR-0015).
     required property QtObject headsetSettingsController
@@ -484,7 +488,7 @@ ApplicationWindow {
                 InnerTabs {
                     id: lightingTabs
                     objectName: "lightingTabs"
-                    model: [qsTr("Cores"), qsTr("Efeitos"), qsTr("Animações")]
+                    model: [qsTr("Cores"), qsTr("Efeitos"), qsTr("Animações"), qsTr("Jogo")]
                 }
 
                 SectionHeader {
@@ -559,6 +563,35 @@ ApplicationWindow {
                                                                                          window.lightingEffectColor)
                 }
 
+                SectionHeader {
+                    text: qsTr("Brilho")
+                    help: qsTr("Brilho (1 a 100 %) das próximas prévias de onda, ciclo e respiração. Volátil, como a prévia: nada é gravado. Estático e ondulação não têm campo de brilho no comando. Solte o controle para reenviar o efeito já escolhido.")
+                    visible: lightingTabs.currentIndex === 1
+                }
+
+                GHubSlider {
+                    id: lightingBrightnessSlider
+                    objectName: "lightingBrightnessSlider"
+                    Layout.fillWidth: true
+                    visible: lightingTabs.currentIndex === 1
+                    from: 1
+                    to: 100
+                    stepSize: 1
+                    showValue: true
+                    value: window.keyboardLightingController.brightness
+                    enabled: window.keyboardLightingController.live && !window.keyboardLightingController.busy
+                    Accessible.name: qsTr("Brilho do efeito")
+                    onMoved: window.keyboardLightingController.brightness = Math.round(value)
+                    onPressedChanged: {
+                        // Ao soltar, reenvia o efeito já escolhido com o novo brilho (um pedido por soltar).
+                        if (!pressed && lightingEffectCombo.currentIndex >= 0) {
+                            window.keyboardLightingController.applyEffect(
+                                lightingEffectCombo.effects[lightingEffectCombo.currentIndex].kind,
+                                window.lightingEffectColor)
+                        }
+                    }
+                }
+
                 BodyLabel {
                     objectName: "lightingEffectPreviewNote"
                     visible: lightingTabs.currentIndex === 1
@@ -573,6 +606,14 @@ ApplicationWindow {
                     controller: window.softwareAnimationController
                     accent: window.lightingEffectColor
                     liveModeOn: window.keyboardLightingController.live
+                }
+
+                KeyboardControlsPanel {
+                    objectName: "keyboardControlsPanel"
+                    visible: lightingTabs.currentIndex === 3
+                    controller: window.keyboardControlsController
+                    liveModeOn: window.keyboardLightingController.live
+                    animationRunning: window.softwareAnimationController.running
                 }
 
                 BodyLabel {

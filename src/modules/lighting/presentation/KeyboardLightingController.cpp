@@ -10,6 +10,7 @@
 #include <QDebug>
 #include <QtConcurrent>
 
+#include <algorithm>
 #include <cstdint>
 #include <utility>
 
@@ -52,13 +53,13 @@ domain::KeyColorMap wholeKeyboard(const QColor& color)
     return map;
 }
 
-// Parâmetros fixos da prévia (R14); nulo para `kind` desconhecido.
-std::optional<domain::KeyboardEffect> previewEffect(const QString& kind, const QColor& color)
+// Parâmetros da prévia (R14; brilho do R1 do INC-019, já limitado a 1..100); nulo para `kind` desconhecido.
+std::optional<domain::KeyboardEffect> previewEffect(const QString& kind, const QColor& color, int brightnessPercent)
 {
     // Constantes dentro das faixas válidas: create() não falha.
     // NOLINTBEGIN(bugprone-unchecked-optional-access)
     const auto period = *domain::EffectPeriod::create(5000);
-    const auto brightness = *domain::EffectBrightness::create(100);
+    const auto brightness = *domain::EffectBrightness::create(static_cast<std::uint32_t>(brightnessPercent));
     // NOLINTEND(bugprone-unchecked-optional-access)
     const domain::RgbColor rgb{static_cast<std::uint8_t>(color.red()), static_cast<std::uint8_t>(color.green()),
                                static_cast<std::uint8_t>(color.blue())};
@@ -131,9 +132,20 @@ void KeyboardLightingController::paintAll(const QColor& color)
     submit({.kind = Kind::Paint, .color = color, .effect = std::nullopt});
 }
 
+void KeyboardLightingController::setBrightness(int percent)
+{
+    const int clamped = std::clamp(percent, static_cast<int>(domain::EffectBrightness::kMinPercent),
+                                   static_cast<int>(domain::EffectBrightness::kMaxPercent));
+    if (clamped == brightness_) {
+        return;
+    }
+    brightness_ = clamped;
+    emit brightnessChanged();
+}
+
 void KeyboardLightingController::applyEffect(const QString& kind, const QColor& color)
 {
-    const auto effect = previewEffect(kind, color);
+    const auto effect = previewEffect(kind, color, brightness_);
     if (!effect.has_value()) {
         status_ = tr("efeito desconhecido");
         emit controllerChanged();
