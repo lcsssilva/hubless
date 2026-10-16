@@ -2024,7 +2024,7 @@ TestCase {
     function test_topBarGearOpensSettingsAndIsA20pxThemeIcon() {
         const window = createMain(createFake([]), sampleInventory());
         const gear = findItem(window, "settingsPageButton");
-        compare(gear.icon.name, "applications-system");
+        verify(String(gear.icon.source).endsWith("icons/gear.svg"), String(gear.icon.source));
         compare(gear.icon.width, 20);
         compare(gear.icon.height, 20);
         compare(gear.text, "");
@@ -2158,7 +2158,7 @@ TestCase {
             compare(b.height, 48, b.tabKey);
             compare(b.icon.width, 24, b.tabKey);
             compare(b.icon.height, 24, b.tabKey);
-            verify(b.icon.name !== "", "ícone de " + b.tabKey);
+            verify(String(b.icon.source).endsWith(".svg"), "ícone de " + b.tabKey);
             compare(b.mapToItem(null, 0, 0).x, 13, b.tabKey);
         });
         const ys = buttons.map(b => b.mapToItem(null, 0, 0).y);
@@ -2169,7 +2169,7 @@ TestCase {
         const rail = visibleByName(window, "tabRail")[0];
         const bottom = buttons[3].mapToItem(rail, 0, 48).y;
         verify(bottom <= rail.height && bottom >= rail.height - 8, bottom + " de " + rail.height);
-        compare(new Set(buttons.map(b => b.icon.name)).size, 4);
+        compare(new Set(buttons.map(b => String(b.icon.source))).size, 4);
     }
 
     function test_railSelectedButtonIsPrimaryWithWhiteIconAndOthersAreDim() {
@@ -2986,5 +2986,91 @@ TestCase {
         tryVerify(() => visibleByName(window, "identityTruncationLabel").length === 1);
         compare(visibleByName(window, "identityTruncationLabel")[0].text,
                 "o dispositivo tem mais features do que as 64 lidas");
+    }
+
+    // INC-014 parte 5: ícones próprios em SVG empacotados com o QML; não dependem do tema do sistema.
+    function test_ownSvgIconsLoadWithoutTheSystemTheme() {
+        const names = ["gear", "sun", "speedometer", "refresh", "headset", "equalizer", "microphone", "camera",
+                       "video", "grid", "list"];
+        for (const name of names) {
+            const image = Qt.createQmlObject("import QtQuick; Image { asynchronous: false }", testCase);
+            image.source = Qt.resolvedUrl("../../src/ui/qml/icons/" + name + ".svg");
+            compare(image.status, Image.Ready, name);
+            verify(image.implicitWidth > 0, name);
+            image.destroy();
+        }
+    }
+
+    function test_everyDeviceTabUsesAnOwnSvgIcon() {
+        const window = createMain(createFake([]), sampleInventory());
+        for (const device of ["G915", "G703", "G733", "Brio 100"]) {
+            openDevice(window, device);
+            for (const b of railButtons(window)) {
+                verify(String(b.icon.source).indexOf("/icons/") >= 0, device + " " + b.tabKey);
+                compare(b.icon.name, "", device + " " + b.tabKey);
+            }
+            clickButton(window, "backButton");
+        }
+    }
+
+    function test_dialogOpensAndClosesWithPrimaryAndSecondaryButtons() {
+        const component = Qt.createComponent(Qt.resolvedUrl("../../src/ui/qml/GHubDialog.qml"));
+        compare(component.status, Component.Ready, component.errorString());
+        const window = createMain(createFake([]), sampleInventory());
+        window.show();
+        waitForRendering(window.contentItem);
+        const dialog = component.createObject(window.contentItem, {title: "Título", message: "Mensagem",
+                                                     primaryText: "Entendi", secondaryText: "Cancelar"});
+        let accepted = 0, rejected = 0;
+        dialog.accepted.connect(() => accepted++);
+        dialog.rejected.connect(() => rejected++);
+        compare(dialog.opened, false);
+        dialog.open();
+        tryCompare(dialog, "opened", true);
+        compare(dialog.modal, true);
+        dialog.primaryButton.clicked();
+        tryCompare(dialog, "opened", false);
+        compare(accepted, 1);
+        dialog.open();
+        tryCompare(dialog, "opened", true);
+        dialog.secondaryButton.clicked();
+        tryCompare(dialog, "opened", false);
+        compare(rejected, 1);
+    }
+
+    function test_loadingIndicatorSpinsOnlyWhileVisible() {
+        const component = Qt.createComponent(Qt.resolvedUrl("../../src/ui/qml/GHubBusyRing.qml"));
+        compare(component.status, Component.Ready, component.errorString());
+        const window = createMain(createFake([]), sampleInventory());
+        window.show();
+        waitForRendering(window.contentItem);
+        const ring = component.createObject(window.contentItem, {running: true});
+        compare(ring.width, 30);
+        tryVerify(() => ring.rotationValue !== 0);
+        ring.running = false;
+        compare(ring.visible, false);
+    }
+
+    function test_cardShowsLoadingStateWithRingAndDimTexts() {
+        const window = createMain(createFake([]), sampleInventory());
+        const card = deviceCards(window)[1];
+        compare(descendants(card).find(i => i.objectName === "cardBusyRing").visible, false);
+        card.loading = true;
+        compare(descendants(card).find(i => i.objectName === "cardBusyRing").visible, true);
+        tryVerify(() => Qt.colorEqual(card.color, "#37383b"));
+    }
+
+    function test_homeShowsNoDeviceMessageWhenNothingIsDetected() {
+        const none = createFake([{name: "G915", summary: "não detectado"}, {name: "G703", summary: "não detectado"},
+                                 {name: "G733", summary: "não detectado"}, {name: "Brio 100", summary: "não detectado"}]);
+        const window = createMain(createFake([]), none);
+        window.show();
+        waitForRendering(window.contentItem);
+        const message = findItem(window, "noDeviceMessage");
+        compare(message.visible, true);
+        compare(message.text, "Conecte seu equipamento Logitech");
+        const detected = createMain(createFake([]), sampleInventory());
+        detected.show();
+        compare(findItem(detected, "noDeviceMessage").visible, false);
     }
 }

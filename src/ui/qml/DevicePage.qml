@@ -53,7 +53,7 @@ Item {
                 Layout.preferredHeight: 48
                 tabKey: modelData.key
                 text: modelData.text
-                icon.name: modelData.icon
+                icon.source: Qt.resolvedUrl("icons/" + modelData.icon + ".svg")
                 selected: page.currentTab === modelData.key
                 onClicked: page.tabSelected(modelData.key)
             }
@@ -70,7 +70,7 @@ Item {
                 Layout.preferredHeight: 48
                 tabKey: modelData.key
                 text: modelData.text
-                icon.name: modelData.icon
+                icon.source: Qt.resolvedUrl("icons/" + modelData.icon + ".svg")
                 selected: page.currentTab === modelData.key
                 onClicked: page.tabSelected(modelData.key)
             }

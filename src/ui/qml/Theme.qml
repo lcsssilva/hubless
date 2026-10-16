@@ -24,6 +24,7 @@ QtObject {
     readonly property color sliderFill: "#afb1b4"       // trecho cheio do trilho do slider
     readonly property color sliderTrack: "#393939"      // trecho vazio do trilho do slider
     readonly property color cardHover: "#2e2f31"       // fundo do cartão com o mouse em cima
+    readonly property color cardLoading: "#37383b"      // cartão em "Baixando recursos…"
     readonly property color buttonDisabledSurface: "#222222"
     readonly property color buttonDisabledText: "#999999"
     readonly property color tabForeground: "#c8cdd7"    // abas inativas da barra do topo

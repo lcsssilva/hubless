@@ -20,6 +20,8 @@ Rectangle {
     property bool wide: false
     // Dispositivo não detectado fica esmaecido, mas continua clicável.
     property bool detected: true
+    // Carregando (como "Baixando recursos…" no G HUB): fundo mais claro, textos esmaecidos e anel de progresso.
+    property bool loading: false
 
     signal clicked()
 
@@ -28,7 +30,7 @@ Rectangle {
     width: wide ? 616 : 296
     height: 450
     radius: Theme.cardRadius
-    color: highlighted ? Theme.cardHover : Theme.surface
+    color: loading ? Theme.cardLoading : (highlighted ? Theme.cardHover : Theme.surface)
     border.width: highlighted ? 1 : 0
     border.color: Theme.foreground
     opacity: detected ? 1.0 : 0.5
@@ -59,6 +61,7 @@ Rectangle {
             width: parent.width
             elide: Text.ElideRight
             text: card.deviceName
+            opacity: card.loading ? 0.4 : 1
             font.pixelSize: 24
             font.bold: true
         }
@@ -95,10 +98,17 @@ Rectangle {
 
             DeviceDrawing {
                 kind: card.deviceKind
+                opacity: card.loading ? 0.4 : 1
                 anchors.centerIn: parent
                 boxWidth: parent.width
                 boxHeight: parent.height
             }
+        }
+
+        GHubBusyRing {
+            objectName: "cardBusyRing"
+            anchors.centerIn: parent
+            running: card.loading
         }
 
         Label {
@@ -109,6 +119,7 @@ Rectangle {
             maximumLineCount: 3
             elide: Text.ElideRight
             text: card.connectionText
+            opacity: card.loading ? 0.5 : 1
             font.pixelSize: 13
             color: Theme.foregroundMedium
         }

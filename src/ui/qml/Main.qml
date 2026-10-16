@@ -295,7 +295,7 @@ ApplicationWindow {
                 anchors.rightMargin: 40
                 anchors.verticalCenter: parent.verticalCenter
                 display: AbstractButton.IconOnly
-                icon.name: "applications-system"
+                icon.source: Qt.resolvedUrl("icons/gear.svg")
                 icon.width: 20
                 icon.height: 20
                 icon.color: window.currentPage === window.settingsPage ? Theme.primary : Theme.tabForeground
@@ -328,12 +328,29 @@ ApplicationWindow {
             id: homeScroll
             objectName: "homeScroll"
             contentWidth: availableWidth
-            contentHeight: cardGrid.height + 2 * 32
+            contentHeight: cardGrid.y + cardGrid.height + 32
+
+            // Nenhum dispositivo detectado: a mensagem do G HUB fica acima dos cartões, que continuam abertos
+            // (cada página explica o que falta). Só leitura do inventário; nada é consultado a mais.
+            readonly property bool noDevice: window.deviceCatalog.every(
+                entry => !window.isDetected(window.entryFor(window.deviceInventoryViewModel.devices, entry.name)))
+
+            Label {
+                objectName: "noDeviceMessage"
+                visible: homeScroll.noDevice
+                y: 32
+                width: homeScroll.availableWidth
+                horizontalAlignment: Text.AlignHCenter
+                text: qsTr("Conecte seu equipamento Logitech")
+                font.pixelSize: 24
+                font.bold: true
+                color: Theme.foreground
+            }
 
             Flow {
                 id: cardGrid
                 objectName: "cardGrid"
-                y: 32
+                y: homeScroll.noDevice ? 32 + 56 : 32
                 spacing: 24
                 // Largura da maior linha ao empacotar os cartões na largura disponível; assim a grade fica
                 // centralizada mesmo com linhas incompletas.
@@ -382,8 +399,8 @@ ApplicationWindow {
             deviceKind: "keyboard"
             batteryText: window.batteryTextOf("G915")
             batteryPercent: window.batteryPercentOf("G915")
-            tabs: [{key: "lighting", text: qsTr("Iluminação"), icon: "brightness-high"},
-                   {key: "info", text: qsTr("Informações"), icon: "applications-system"}]
+            tabs: [{key: "lighting", text: qsTr("Iluminação"), icon: "sun"},
+                   {key: "info", text: qsTr("Informações"), icon: "gear"}]
             currentTab: window.g915Tab
             onTabSelected: key => window.g915Tab = key
 
@@ -516,8 +533,8 @@ ApplicationWindow {
             batteryText: window.batteryTextOf("G703")
             batteryPercent: window.batteryPercentOf("G703")
             tabs: [{key: "onboard", text: qsTr("Sensibilidade (DPI)"), icon: "speedometer"},
-                   {key: "ratbag", text: qsTr("Leitura (ratbagd)"), icon: "view-refresh"},
-                   {key: "info", text: qsTr("Informações"), icon: "applications-system"}]
+                   {key: "ratbag", text: qsTr("Leitura (ratbagd)"), icon: "refresh"},
+                   {key: "info", text: qsTr("Informações"), icon: "gear"}]
             currentTab: window.g703Tab
             onTabSelected: key => window.g703Tab = key
 
@@ -806,10 +823,10 @@ ApplicationWindow {
             deviceKind: "headset"
             batteryText: window.batteryTextOf("G733")
             batteryPercent: window.batteryPercentOf("G733")
-            tabs: [{key: "headset", text: qsTr("Headset"), icon: "audio-headset"},
-                   {key: "equalizer", text: qsTr("Equalizador"), icon: "view-media-equalizer"},
-                   {key: "microphone", text: qsTr("Microfone"), icon: "audio-input-microphone"},
-                   {key: "info", text: qsTr("Informações"), icon: "applications-system"}]
+            tabs: [{key: "headset", text: qsTr("Headset"), icon: "headset"},
+                   {key: "equalizer", text: qsTr("Equalizador"), icon: "equalizer"},
+                   {key: "microphone", text: qsTr("Microfone"), icon: "microphone"},
+                   {key: "info", text: qsTr("Informações"), icon: "gear"}]
             currentTab: window.g733Tab
             onTabSelected: key => window.g733Tab = key
 
@@ -994,9 +1011,9 @@ ApplicationWindow {
             deviceKind: "camera"
             batteryText: window.batteryTextOf("Brio 100")
             batteryPercent: window.batteryPercentOf("Brio 100")
-            tabs: [{key: "image", text: qsTr("Imagem"), icon: "camera-photo"},
-                   {key: "modes", text: qsTr("Modos de vídeo"), icon: "camera-video"},
-                   {key: "info", text: qsTr("Informações"), icon: "applications-system"}]
+            tabs: [{key: "image", text: qsTr("Imagem"), icon: "camera"},
+                   {key: "modes", text: qsTr("Modos de vídeo"), icon: "video"},
+                   {key: "info", text: qsTr("Informações"), icon: "gear"}]
             currentTab: window.brioTab
             onTabSelected: key => window.brioTab = key
 

@@ -25,17 +25,27 @@ qt_add_executable(ghub-linux main.cpp)
 set(GHUB_QML_DIR "${PROJECT_SOURCE_DIR}/src/ui/qml")
 set(GHUB_QML_FILES Main.qml DeviceCard.qml DeviceDrawing.qml BatteryIcon.qml DevicePage.qml PanelCard.qml PanelPage.qml SideTab.qml TopBarTab.qml SectionTitle.qml GHubButton.qml GHubSlider.qml GHubCheckBox.qml
     GHubSwitch.qml GHubComboBox.qml GHubSpinBox.qml GHubRadioButton.qml GHubTextField.qml ColorSwatch.qml InnerTabs.qml
-    HelpIcon.qml SectionHeader.qml SwitchRow.qml BatteryBlock.qml EqualizerView.qml InfoPage.qml Theme.qml)
+    HelpIcon.qml SectionHeader.qml SwitchRow.qml BatteryBlock.qml EqualizerView.qml InfoPage.qml GHubDialog.qml
+    GHubBusyRing.qml Theme.qml)
 set(GHUB_QML_PATHS)
 foreach(qml_file IN LISTS GHUB_QML_FILES)
     set_source_files_properties("${GHUB_QML_DIR}/${qml_file}" PROPERTIES QT_RESOURCE_ALIAS ${qml_file})
     list(APPEND GHUB_QML_PATHS "${GHUB_QML_DIR}/${qml_file}")
 endforeach()
 set_source_files_properties("${GHUB_QML_DIR}/Theme.qml" PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
+# Ícones SVG próprios (INC-014 parte 5): ficam em icons/ dentro do módulo, ao lado dos QML que os usam.
+file(GLOB GHUB_ICON_FILES CONFIGURE_DEPENDS "${GHUB_QML_DIR}/icons/*.svg")
+set(GHUB_ICON_PATHS)
+foreach(icon_file IN LISTS GHUB_ICON_FILES)
+    get_filename_component(icon_name "${icon_file}" NAME)
+    set_source_files_properties("${icon_file}" PROPERTIES QT_RESOURCE_ALIAS "icons/${icon_name}")
+    list(APPEND GHUB_ICON_PATHS "${icon_file}")
+endforeach()
 qt_add_qml_module(ghub-linux
     URI GHub
     VERSION 1.0
-    QML_FILES ${GHUB_QML_PATHS})
+    QML_FILES ${GHUB_QML_PATHS}
+    RESOURCES ${GHUB_ICON_PATHS})
 
 # Estilo Material escuro lido pelo Qt Quick Controls na raiz do recurso (INC-014 R1); as cores vêm do singleton Theme.qml.
 qt_add_resources(ghub-linux "controls_conf"
