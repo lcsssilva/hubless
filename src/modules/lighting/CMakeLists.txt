@@ -18,6 +18,7 @@ target_sources(ghub_lighting_domain PRIVATE
     domain/HeadsetEffect.cpp
     domain/G915KeyCatalog.cpp
     domain/KeyColorMap.cpp
+    domain/AnimationFrames.cpp
     domain/KeyboardStatus.cpp)
 target_link_libraries(ghub_lighting_domain PUBLIC ghub_shared_kernel)
 ghub_set_warnings(ghub_lighting_domain)
@@ -28,8 +29,10 @@ target_sources(ghub_lighting_application PRIVATE
     application/KeyboardAccess.cpp
     application/LiveKeyboardSession.cpp
     application/SaveKeyboardEffect.cpp
+    application/RunSoftwareAnimation.cpp
+    application/AudioVisualizer.cpp
     application/ReadKeyboardStatus.cpp)
-target_link_libraries(ghub_lighting_application PUBLIC ghub_lighting_domain ghub_device_access_api)
+target_link_libraries(ghub_lighting_application PUBLIC ghub_lighting_domain ghub_device_access_api ghub_audio_processing_api)
 ghub_set_warnings(ghub_lighting_application)
 
 # INC-008 parte C (apresentação): controlador do modo ao vivo do G915 para a janela. Só depende da camada
@@ -41,7 +44,9 @@ if(GHUB_BUILD_APP)
         presentation/KeyboardLightingController.hpp
         presentation/KeyboardLightingController.cpp
         presentation/KeyboardStatusViewModel.hpp
-        presentation/KeyboardStatusViewModel.cpp)
+        presentation/KeyboardStatusViewModel.cpp
+        presentation/SoftwareAnimationController.hpp
+        presentation/SoftwareAnimationController.cpp)
     set_target_properties(ghub_lighting_presentation PROPERTIES AUTOMOC ON)
     target_link_libraries(ghub_lighting_presentation PUBLIC ghub_lighting_application Qt6::Core Qt6::Gui
                                                       PRIVATE Qt6::Concurrent)

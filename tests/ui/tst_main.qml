@@ -86,6 +86,26 @@ TestCase {
         }
     }
 
+    // Controlador de animações falso: registra os pedidos; nada chega ao teclado nem ao áudio.
+    Component {
+        id: fakeAnimationComponent
+        QtObject {
+            property bool running: false
+            property bool busy: false
+            property string status: ""
+            property int framesSent: 0
+            property int framesPerSecond: 10
+            property var startCalls: []
+            property int stopCalls: 0
+            function start(kind, color, color2, periodSeconds, reverse, density, fps) {
+                startCalls = startCalls.concat([{kind: kind, color: String(color), color2: String(color2),
+                                                 period: periodSeconds, reverse: reverse, density: density,
+                                                 fps: fps}])
+            }
+            function stop() { stopCalls++ }
+        }
+    }
+
     // Controlador do headset falso: registra os pedidos; nada chega ao HeadsetControl.
     Component {
         id: fakeHeadsetComponent
@@ -285,7 +305,8 @@ TestCase {
     // Carrega o Main.qml real do código-fonte (caminho relativo a este arquivo).
     function createMain(fake, inventoryFake, cameraFake, previewFake, editorFake, pointerFake, lightingFake,
                         headsetFake, equalizerFake, onboardFake, noiseFake, desktopFake, diagnosticsFake,
-                        profilesFake, identityFake, keyboardStatusFake, pointerStatusFake, headsetStatusFake, lightingColorFake) {
+                        profilesFake, identityFake, keyboardStatusFake, pointerStatusFake, headsetStatusFake,
+                        lightingColorFake, animationFake) {
         const component = Qt.createComponent(Qt.resolvedUrl("../../src/ui/qml/Main.qml"));
         compare(component.status, Component.Ready, component.errorString());
         const window = component.createObject(null, {batteryViewModel: fake,
@@ -295,6 +316,7 @@ TestCase {
                                                      cameraControlEditor: editorFake || createEditorFake(),
                                                      pointerViewModel: pointerFake || createPointerFake(),
                                                      keyboardLightingController: lightingFake || createLightingFake(),
+                                                     softwareAnimationController: animationFake || createAnimationFake(),
                                                      headsetSettingsController: headsetFake || createHeadsetFake(),
                                                      headsetLightingController: lightingColorFake || createHeadsetLightingFake(),
                                                      hostEqualizerController: equalizerFake || createEqualizerFake(),
@@ -344,6 +366,12 @@ TestCase {
 
     function createLightingFake(props) {
         const fake = fakeLightingComponent.createObject(null, props || {});
+        fakes.push(fake);
+        return fake;
+    }
+
+    function createAnimationFake(props) {
+        const fake = fakeAnimationComponent.createObject(null, props || {});
         fakes.push(fake);
         return fake;
     }
@@ -761,7 +789,8 @@ TestCase {
 
     // Fora dos controles há dois botões na janela: o de pré-visualização e o de leitura do mouse (INC-007);
     // os demais são os "Padrão" (um por controle). Desde o INC-015 as abas Informações de G915, G703 e G733 (não a
-    // da Brio 100) têm "Ler identidade" e o botão que expande os IDs das features.
+    // da Brio 100) têm "Ler identidade" e o botão que expande os IDs das features. O painel de animações do G915
+    // (INC-021) soma "Iniciar" e "Parar".
     function test_cameraSectionButtons_ArePreviewToggleAndOneDefaultPerControl() {
         const window = createMain(createFake([]), null, createCameraFake("Brio 100",
             [{text: "MJPG: até 1920×1080 a 30 fps"}], [integerControl(), booleanControl()]));
@@ -772,7 +801,8 @@ TestCase {
         // Desde a parte 3 do INC-014 os botões do painel são GHubButton (o estilo reto do G HUB).
         const buttons = items.filter(item => /^(GHubButton|Button|QQuickButton)(_QMLTYPE_\d+)?\(/.test(item.toString()));
         compare(buttons.map(b => b.objectName).sort().join(","),
-                "cameraControlDefault,cameraControlDefault,cameraPreviewToggle,diagnosticsExportButton,"
+                "animationStartButton,animationStopButton,cameraControlDefault,cameraControlDefault,"
+                + "cameraPreviewToggle,diagnosticsExportButton,"
                 + "diagnosticsRefreshButton,eqFlatButton,headsetLightingApplyButton,headsetLightsOffButton,"
                 + "headsetLightsOnButton,headsetSidetoneApplyButton,"
                 + "onboardAddStageButton,onboardReadButton,onboardRemoveStageButton,"
@@ -1258,7 +1288,7 @@ TestCase {
         showMinimum(window);
         openDevice(window, "G915");
         const tabs = findItem(window, "lightingTabs");
-        compare(tabs.model.join(","), "Cores,Efeitos");
+        compare(tabs.model.join(","), "Cores,Efeitos,Animações");
         compare(tabs.currentIndex, 0);
         const colorsVisible = () => swatches(window)[0].visible;
         const effectsVisible = () => effectCombo(window).visible;
@@ -3303,5 +3333,125 @@ TestCase {
         window.openPage(window.profilesPage);
         verify(stack.opacity < 1, "começa a esmaecer: " + stack.opacity);
         tryCompare(stack, "opacity", 1);
+    }
+
+    // ---- Animações do G915 (INC-021) ----
+
+
+    function createAnimationMain(animation, lighting) {
+        const window = createMain(createFake([]), sampleInventory(), null, null, null, null,
+                                  lighting || createLightingFake(), null, null, null, null, null, null, null, null,
+                                  null, null, null, null, animation);
+        showMinimum(window);
+        openDevice(window, "G915");
+        const tabs = findItem(window, "lightingTabs");
+        const animationsTab = descendants(tabs).filter(i => i.objectName === "innerTab")[2];
+        mouseClick(animationsTab);
+        tryVerify(() => findItem(window, "animationKindCombo").visible);
+        return window;
+    }
+
+    function test_animationsPanelDoesNothingOnLoad() {
+        const animation = createAnimationFake();
+        const window = createMain(createFake([]), null, null, null, null, null, null, null, null, null, null, null,
+                                  null, null, null, null, null, null, null, animation);
+        compare(animation.startCalls.length, 0);
+        compare(animation.stopCalls, 0);
+        verify(window !== null);
+    }
+
+    function test_animationsCombosListsTheFiveAnimations() {
+        const window = createAnimationMain(createAnimationFake());
+        const combo = findItem(window, "animationKindCombo");
+        compare(combo.count, 5);
+        compare([0, 1, 2, 3, 4].map(i => combo.textAt(i)).join(","),
+                "Ciclo de cores,Onda,Estrelas,Degradê,Visualizador de áudio");
+    }
+
+    function test_animationsStartSendsTheChosenKindAndParameters() {
+        const animation = createAnimationFake();
+        const window = createAnimationMain(animation);
+        const combo = findItem(window, "animationKindCombo");
+        combo.currentIndex = 1; // Onda
+        findItem(window, "animationReverseCheck").checked = true;
+        findItem(window, "animationPeriodSpin").value = 8;
+        findItem(window, "animationFpsSpin").value = 15;
+        const start = findItem(window, "animationStartButton");
+        tryVerify(() => start.enabled);
+
+        start.clicked();
+
+        compare(animation.startCalls.length, 1);
+        const call = animation.startCalls[0];
+        compare(call.kind, "wave");
+        compare(call.reverse, true);
+        compare(call.period, 8);
+        compare(call.fps, 15);
+    }
+
+    function test_animationsStartUsesTheColorChosenInTheColorsTab() {
+        const animation = createAnimationFake();
+        const window = createAnimationMain(animation);
+        window.lightingEffectColor = "#ff8000";
+        findItem(window, "animationKindCombo").currentIndex = 2; // Estrelas
+        findItem(window, "animationDensitySlider").value = 40;
+
+        findItem(window, "animationStartButton").clicked();
+
+        compare(animation.startCalls[0].kind, "stars");
+        compare(animation.startCalls[0].color, "#ff8000");
+        compare(animation.startCalls[0].density, 40);
+    }
+
+    function test_animationsStartIsDisabledWhileLiveModeIsOnAndExplainsWhy() {
+        const window = createAnimationMain(createAnimationFake(), createLightingFake({live: true}));
+        compare(findItem(window, "animationStartButton").enabled, false);
+        verify(findItem(window, "animationLiveNotice").visible);
+    }
+
+    function test_animationsRunningEnablesStopAndLocksTheControls() {
+        const animation = createAnimationFake({running: true});
+        const window = createAnimationMain(animation);
+        compare(findItem(window, "animationStartButton").enabled, false);
+        compare(findItem(window, "animationKindCombo").enabled, false);
+        const stop = findItem(window, "animationStopButton");
+        verify(stop.enabled);
+
+        stop.clicked();
+
+        compare(animation.stopCalls, 1);
+    }
+
+    function test_animationsStopIsDisabledWhenIdleOrBusy() {
+        const idle = createAnimationMain(createAnimationFake());
+        compare(findItem(idle, "animationStopButton").enabled, false);
+        const busy = createAnimationMain(createAnimationFake({running: true, busy: true}));
+        compare(findItem(busy, "animationStopButton").enabled, false);
+    }
+
+    function test_animationsAudioKindShowsThePrivacyNoticeOnlyForTheVisualizer() {
+        const window = createAnimationMain(createAnimationFake());
+        const combo = findItem(window, "animationKindCombo");
+        compare(findItem(window, "animationAudioNotice").visible, false);
+        combo.currentIndex = 4;
+        tryVerify(() => findItem(window, "animationAudioNotice").visible);
+        verify(findItem(window, "animationAudioNotice").text.indexOf("áudio") >= 0);
+        window.lightingEffectColor = "#00ff00";
+        findItem(window, "animationStartButton").clicked();
+        compare(window.softwareAnimationController.startCalls[0].kind, "audio");
+    }
+
+    function test_animationsStatusFollowsController() {
+        const animation = createAnimationFake({status: "animação em andamento"});
+        const window = createAnimationMain(animation);
+        const label = findItem(window, "animationStatusLabel");
+        compare(label.text, "animação em andamento");
+        animation.status = "teclado ocupado: openrgb";
+        tryCompare(label, "text", "teclado ocupado: openrgb");
+    }
+
+    function test_animationsLiveSwitchIsDisabledWhileAnAnimationRuns() {
+        const window = createAnimationMain(createAnimationFake({running: true}));
+        compare(findItem(window, "lightingLiveSwitch").enabled, false);
     }
 }

@@ -25,3 +25,13 @@ if(GHUB_BUILD_APP)
     add_test(NAME lighting.KeyboardStatusViewModelTest COMMAND ghub_lighting_status_viewmodel_tests)
     set_tests_properties(lighting.KeyboardStatusViewModelTest PROPERTIES TIMEOUT 30)
 endif()
+
+if(GHUB_BUILD_APP)
+    add_executable(ghub_lighting_animation_controller_tests presentation/SoftwareAnimationControllerTest.cpp)
+    set_target_properties(ghub_lighting_animation_controller_tests PROPERTIES AUTOMOC ON)
+    target_link_libraries(ghub_lighting_animation_controller_tests PRIVATE
+        ghub_lighting_presentation ghub_test_fakes Qt6::Test)
+    ghub_set_warnings(ghub_lighting_animation_controller_tests)
+    add_test(NAME lighting.SoftwareAnimationControllerTest COMMAND ghub_lighting_animation_controller_tests)
+    set_tests_properties(lighting.SoftwareAnimationControllerTest PROPERTIES TIMEOUT 60)
+endif()

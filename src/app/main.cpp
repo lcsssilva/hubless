@@ -27,6 +27,7 @@
 #include "modules/audio_processing/application/HostEqualizer.hpp"
 #include "modules/audio_processing/application/HostNoiseSuppression.hpp"
 #include "modules/audio_processing/infrastructure/PipeWireAudioGraph.hpp"
+#include "modules/audio_processing/infrastructure/PipeWireAudioLevelSource.hpp"
 #include "modules/audio_processing/presentation/HostEqualizerController.hpp"
 #include "modules/audio_processing/presentation/NoiseSuppressionController.hpp"
 #include "modules/battery/application/GetBatteryStatus.hpp"
@@ -81,6 +82,7 @@
 #include "modules/lighting/infrastructure/HidppKeyboardStatusSource.hpp"
 #include "modules/lighting/presentation/KeyboardLightingController.hpp"
 #include "modules/lighting/presentation/KeyboardStatusViewModel.hpp"
+#include "modules/lighting/presentation/SoftwareAnimationController.hpp"
 #include "modules/pointer/application/G703OnboardSettings.hpp"
 #include "modules/pointer/application/ReadPointerConfiguration.hpp"
 #include "modules/pointer/application/ReadPointerSensorStatus.hpp"
@@ -111,6 +113,7 @@
 #include <QIcon>
 #include <QLoggingCategory>
 #include <QQmlApplicationEngine>
+#include <QRandomGenerator>
 #include <QStandardPaths>
 #include <QSysInfo>
 #include <QtQml/qqml.h>
@@ -329,6 +332,12 @@ int main(int argc, char* argv[])
     const ghub::lighting::application::StartLiveKeyboardSession startLiveKeyboardSession{
         g915Lighting, accessRegistry, externalProcessProbe, *keyboardInterface};
     ghub::lighting::presentation::KeyboardLightingController keyboardLightingController{startLiveKeyboardSession};
+    // Animações por software do G915 (INC-021, ADR-0030): só por clique em SoftwareAnimationController::start(); a
+    // captura de áudio do visualizador só existe enquanto a animação "audio" roda (nada é aberto na construção). A fonte
+    // de áudio é declarada antes do controlador, que é destruído primeiro (devolve o controle e fecha a captura).
+    ghub::audio_processing::PipeWireAudioLevelSource audioLevelSource;
+    ghub::lighting::presentation::SoftwareAnimationController softwareAnimationController{
+        startLiveKeyboardSession, steadyClock, audioLevelSource, QRandomGenerator::global()->generate()};
     // Headset (ADR-0026): sidetone, luzes liga/desliga e cor/efeito por zona do G733 por HID++ próprio, só por clique
     // nos controladores; nada é aberto nem enviado na construção. Ordem de destruição: controladores (esperam a
     // escrita em andamento), casos de uso, writer e, por fim, o registro de leases e o probe (declarados acima).
@@ -435,6 +444,7 @@ int main(int argc, char* argv[])
         {QStringLiteral("pointerViewModel"), QVariant::fromValue(&pointerViewModel)},
         {QStringLiteral("g703OnboardController"), QVariant::fromValue(&g703OnboardController)},
         {QStringLiteral("keyboardLightingController"), QVariant::fromValue(&keyboardLightingController)},
+        {QStringLiteral("softwareAnimationController"), QVariant::fromValue(&softwareAnimationController)},
         {QStringLiteral("headsetSettingsController"), QVariant::fromValue(&headsetSettingsController)},
         {QStringLiteral("headsetLightingController"), QVariant::fromValue(&headsetLightingController)},
         {QStringLiteral("hostEqualizerController"), QVariant::fromValue(&hostEqualizerController)},
@@ -479,6 +489,8 @@ int main(int argc, char* argv[])
     ghub::device_access::LogindSleepMonitor sleepMonitor{QDBusConnection::systemBus()};
     QObject::connect(&sleepMonitor, &ghub::device_access::LogindSleepMonitor::aboutToSleep, &keyboardLightingController,
                      &ghub::lighting::presentation::KeyboardLightingController::releaseForSleep);
+    QObject::connect(&sleepMonitor, &ghub::device_access::LogindSleepMonitor::aboutToSleep, &softwareAnimationController,
+                     &ghub::lighting::presentation::SoftwareAnimationController::releaseForSleep);
     if (!sleepMonitor.start()) {
         qWarning("app: aviso de suspensão do logind indisponível (%s); o modo ao vivo não é desligado antes de "
                  "suspender",

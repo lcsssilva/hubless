@@ -34,6 +34,10 @@ ApplicationWindow {
     // só é ligado por clique.
     required property QtObject keyboardLightingController
 
+    // SoftwareAnimationController (módulo lighting), fornecido pelo composition root: as animações do G915 só
+    // começam por clique (INC-021).
+    required property QtObject softwareAnimationController
+
     // HeadsetSettingsController (módulo headset), fornecido pelo composition root: sidetone e luzes do G733 só
     // são gravados por clique (ADR-0015).
     required property QtObject headsetSettingsController
@@ -443,7 +447,7 @@ ApplicationWindow {
                     helpObjectName: "lightingNoticeLabel"
                     switchObjectName: "lightingLiveSwitch"
                     checked: window.keyboardLightingController.live
-                    switchEnabled: !window.keyboardLightingController.busy
+                    switchEnabled: !window.keyboardLightingController.busy && !window.softwareAnimationController.running
                     onToggleRequested: wanted => wanted ? window.keyboardLightingController.startLive()
                                                         : window.keyboardLightingController.stopLive()
                 }
@@ -451,7 +455,7 @@ ApplicationWindow {
                 InnerTabs {
                     id: lightingTabs
                     objectName: "lightingTabs"
-                    model: [qsTr("Cores"), qsTr("Efeitos")]
+                    model: [qsTr("Cores"), qsTr("Efeitos"), qsTr("Animações")]
                 }
 
                 SectionHeader {
@@ -532,6 +536,14 @@ ApplicationWindow {
                     font.pixelSize: 12
                     color: Theme.foregroundMedium
                     text: qsTr("Prévia: some ao desligar o modo ao vivo.")
+                }
+
+                AnimationPanel {
+                    objectName: "animationPanel"
+                    visible: lightingTabs.currentIndex === 2
+                    controller: window.softwareAnimationController
+                    accent: window.lightingEffectColor
+                    liveModeOn: window.keyboardLightingController.live
                 }
 
                 BodyLabel {

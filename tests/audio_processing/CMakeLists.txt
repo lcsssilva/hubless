@@ -1,4 +1,5 @@
 add_executable(ghub_audio_processing_domain_tests
+    domain/BandMeterTest.cpp
     domain/EqualizerCurveTest.cpp
     domain/EqualizerPresetsTest.cpp
     domain/VoiceThresholdTest.cpp)

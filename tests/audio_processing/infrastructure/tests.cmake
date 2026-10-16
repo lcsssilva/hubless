@@ -33,3 +33,12 @@ add_test(NAME audio_processing.allowed_writes_source_selftest
     COMMAND Python3::Interpreter -I "${PROJECT_SOURCE_DIR}/tests/audio_processing/allowed_writes_source.py" --self-test)
 set_tests_properties(audio_processing.allowed_writes_source audio_processing.allowed_writes_source_selftest
     PROPERTIES TIMEOUT 30)
+
+# INC-021 R3: captura de níveis para o visualizador, só contra o daemon PipeWire privado.
+add_executable(ghub_audio_processing_level_integration_tests
+    ${CMAKE_CURRENT_LIST_DIR}/PipeWireAudioLevelSourceIntegrationTest.cpp)
+target_link_libraries(ghub_audio_processing_level_integration_tests PRIVATE
+    ghub_audio_processing_infrastructure GTest::gtest_main)
+ghub_set_warnings(ghub_audio_processing_level_integration_tests)
+gtest_discover_tests(ghub_audio_processing_level_integration_tests
+    TEST_PREFIX "audio_processing.LevelIntegration." PROPERTIES TIMEOUT 60)
