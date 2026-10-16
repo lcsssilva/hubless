@@ -2,7 +2,8 @@ add_executable(ghub_battery_domain_tests
     domain/BatteryLevelTest.cpp
     domain/BatteryReadingTest.cpp
     domain/AdcMeasurementTest.cpp
-    domain/LowBatteryAlertTest.cpp)
+    domain/LowBatteryAlertTest.cpp
+    domain/HeadsetBroadcastTest.cpp)
 target_link_libraries(ghub_battery_domain_tests PRIVATE ghub_battery_domain GTest::gtest_main)
 ghub_set_warnings(ghub_battery_domain_tests)
 gtest_discover_tests(ghub_battery_domain_tests TEST_PREFIX "battery.")
@@ -66,4 +67,13 @@ if(GHUB_BUILD_APP)
     ghub_set_warnings(ghub_battery_hidpp_source_tests)
     add_test(NAME battery.HidppBatterySourceTest COMMAND ghub_battery_hidpp_source_tests)
     set_tests_properties(battery.HidppBatterySourceTest PROPERTIES TIMEOUT 60)
+endif()
+
+if(GHUB_BUILD_APP)
+    add_executable(ghub_battery_hidpp_watcher_tests infrastructure/HidppHeadsetEventWatcherTest.cpp)
+    set_target_properties(ghub_battery_hidpp_watcher_tests PROPERTIES AUTOMOC ON)
+    target_link_libraries(ghub_battery_hidpp_watcher_tests PRIVATE ghub_battery_hidpp_watcher Qt6::Test)
+    ghub_set_warnings(ghub_battery_hidpp_watcher_tests)
+    add_test(NAME battery.HidppHeadsetEventWatcherTest COMMAND ghub_battery_hidpp_watcher_tests)
+    set_tests_properties(battery.HidppHeadsetEventWatcherTest PROPERTIES TIMEOUT 60)
 endif()

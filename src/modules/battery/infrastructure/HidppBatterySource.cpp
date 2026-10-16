@@ -38,14 +38,18 @@ shared_kernel::Result<BatteryReading> readUnderLease(const HidppBatterySource::R
 
 HidppBatterySource::HidppBatterySource(Reader reader, device_access::AccessRegistry& registry,
                                        device_access::PhysicalInterfaceId interfaceId,
-                                       std::chrono::milliseconds pollInterval, QObject* parent)
+                                       std::chrono::milliseconds pollInterval, std::chrono::milliseconds followUpDelay,
+                                       QObject* parent)
     : QObject(parent), reader_(std::move(reader)), registry_(registry), interfaceId_(std::move(interfaceId)),
-      pollTimer_(this)
+      pollTimer_(this), followUpTimer_(this)
 {
     connect(&watcher_, &QFutureWatcher<Outcome>::finished, this, &HidppBatterySource::onFinished);
     pollTimer_.setInterval(pollInterval);
     connect(&pollTimer_, &QTimer::timeout, this, &HidppBatterySource::requestUpdate);
     pollTimer_.start();
+    followUpTimer_.setSingleShot(true);
+    followUpTimer_.setInterval(followUpDelay);
+    connect(&followUpTimer_, &QTimer::timeout, this, &HidppBatterySource::requestUpdate);
     QTimer::singleShot(0, this, &HidppBatterySource::requestUpdate);
 }
 
@@ -69,6 +73,12 @@ void HidppBatterySource::requestUpdate()
     }
     running_ = true;
     watcher_.setFuture(QtConcurrent::run([this] { return readUnderLease(reader_, registry_, interfaceId_); }));
+}
+
+void HidppBatterySource::onHeadsetEvent()
+{
+    requestUpdate();
+    followUpTimer_.start();
 }
 
 void HidppBatterySource::onFinished()

@@ -37,6 +37,7 @@
 #include "modules/battery/application/GetBatteryStatus.hpp"
 #include "modules/battery/infrastructure/HidppBatteryReader.hpp"
 #include "modules/battery/infrastructure/HidppBatterySource.hpp"
+#include "modules/battery/infrastructure/HidppHeadsetEventWatcher.hpp"
 #include "modules/battery/infrastructure/KernelUevent.hpp"
 #include "modules/battery/infrastructure/SysfsBatterySource.hpp"
 #include "modules/battery/infrastructure/UeventBatteryMonitor.hpp"
@@ -72,6 +73,7 @@
 #include "modules/diagnostics/infrastructure/QtMessageLogSink.hpp"
 #include "modules/diagnostics/infrastructure/XdgReportWriter.hpp"
 #include "modules/diagnostics/presentation/DiagnosticsViewModel.hpp"
+#include "modules/headset/api/HeadsetProfileSettings.hpp"
 #include "modules/headset/application/ChangeHeadsetLighting.hpp"
 #include "modules/headset/application/ChangeHeadsetSetting.hpp"
 #include "modules/headset/application/ReadHeadsetStatus.hpp"
@@ -80,26 +82,28 @@
 #include "modules/headset/presentation/HeadsetLightingController.hpp"
 #include "modules/headset/presentation/HeadsetSettingsController.hpp"
 #include "modules/headset/presentation/HeadsetStatusViewModel.hpp"
+#include "modules/lighting/api/KeyboardEffectSettings.hpp"
 #include "modules/lighting/application/ControlKeyboard.hpp"
+#include "modules/lighting/application/G915OnboardSettings.hpp"
 #include "modules/lighting/application/LiveKeyboardSession.hpp"
 #include "modules/lighting/application/ReadKeyboardStatus.hpp"
+#include "modules/lighting/application/SyncColorTargets.hpp"
 #include "modules/lighting/infrastructure/G915HidppControl.hpp"
 #include "modules/lighting/infrastructure/G915HidppLighting.hpp"
+#include "modules/lighting/infrastructure/G915OnboardConnector.hpp"
 #include "modules/lighting/infrastructure/HidppKeyboardStatusSource.hpp"
 #include "modules/lighting/infrastructure/PipeWireScreenStream.hpp"
 #include "modules/lighting/infrastructure/PortalScreenColorSource.hpp"
 #include "modules/lighting/infrastructure/QtDBusScreenCastPortal.hpp"
+#include "modules/lighting/presentation/G915OnboardController.hpp"
 #include "modules/lighting/presentation/KeyboardControlsController.hpp"
 #include "modules/lighting/presentation/KeyboardLightingController.hpp"
 #include "modules/lighting/presentation/KeyboardStatusViewModel.hpp"
 #include "modules/lighting/presentation/SoftwareAnimationController.hpp"
-#include "modules/lighting/application/SyncColorTargets.hpp"
 #include "modules/lighting/presentation/SyncColorController.hpp"
-#include "modules/pointer/api/G703LedSettings.hpp"
-#include "modules/lighting/application/G915OnboardSettings.hpp"
-#include "modules/lighting/infrastructure/G915OnboardConnector.hpp"
-#include "modules/lighting/presentation/G915OnboardController.hpp"
 #include "modules/onboard_memory/api/FileOnboardBackupStore.hpp"
+#include "modules/pointer/api/G703DpiSettings.hpp"
+#include "modules/pointer/api/G703LedSettings.hpp"
 #include "modules/pointer/application/G703OnboardSettings.hpp"
 #include "modules/pointer/application/ReadPointerConfiguration.hpp"
 #include "modules/pointer/application/ReadPointerSensorStatus.hpp"
@@ -112,12 +116,9 @@
 #include "modules/pointer/presentation/PointerViewModel.hpp"
 #include "modules/profiles/application/ApplyProfile.hpp"
 #include "modules/profiles/application/ProfileBook.hpp"
-#include "modules/headset/api/HeadsetProfileSettings.hpp"
-#include "modules/lighting/api/KeyboardEffectSettings.hpp"
-#include "modules/pointer/api/G703DpiSettings.hpp"
 #include "modules/profiles/infrastructure/CameraSettingsAdapter.hpp"
-#include "modules/profiles/infrastructure/HardwareSettingsAdapters.hpp"
 #include "modules/profiles/infrastructure/EqualizerSettingsAdapter.hpp"
+#include "modules/profiles/infrastructure/HardwareSettingsAdapters.hpp"
 #include "modules/profiles/infrastructure/InactiveApplicationSource.hpp"
 #include "modules/profiles/infrastructure/JsonProfileRepository.hpp"
 #include "modules/profiles/infrastructure/JsonProfileTransfer.hpp"
@@ -247,6 +248,17 @@ int main(int argc, char* argv[])
     ghub::battery::HidppBatteryReader headsetBatteryReader{ghub::platform::hidpp::HidppNodeLocator{}, steadyClock};
     ghub::battery::HidppBatterySource headsetBatterySource{
         [&headsetBatteryReader] { return headsetBatteryReader.read(); }, accessRegistry, *headsetInterface, 60s};
+    // ADR-0026 (adendo): escuta passiva (hidraw O_RDONLY) do evento espontâneo da 0x1f20; ao ligar/desligar o
+    // headset a bateria é relida na hora. Declarado depois da fonte: é destruído antes dela.
+    ghub::battery::HidppHeadsetEventWatcher headsetEventWatcher{
+        [] {
+            return ghub::platform::hidpp::HidppNodeLocator{}.locateG733().transform(
+                [](const ghub::platform::hidpp::HidppNode& node) { return node.devicePath; });
+        },
+        ghub::battery::openReadOnlyReportSource, 5s};
+    QObject::connect(&headsetEventWatcher, &ghub::battery::HidppHeadsetEventWatcher::headsetEvent,
+                     &headsetBatterySource, &ghub::battery::HidppBatterySource::onHeadsetEvent);
+    headsetEventWatcher.start();
     const ghub::battery::GetBatteryStatus getBatteryStatus{{&batterySource, &headsetBatterySource}};
     ghub::battery::BatteryViewModel batteryViewModel{getBatteryStatus, 30s};
     QObject::connect(&headsetBatterySource, &ghub::battery::HidppBatterySource::readingsChanged, &batteryViewModel,
@@ -378,8 +390,8 @@ int main(int argc, char* argv[])
                                QStringLiteral("/ghub-linux/backup"))
                                   .toStdString()},
         "g915-407c-sector-");
-    const ghub::lighting::application::G915OnboardSettings g915OnboardSettings{
-        externalProcessProbe, accessRegistry, g915OnboardConnector, *g915BackupStore};
+    const ghub::lighting::application::G915OnboardSettings g915OnboardSettings{externalProcessProbe, accessRegistry,
+                                                                               g915OnboardConnector, *g915BackupStore};
     ghub::lighting::presentation::G915OnboardController g915OnboardController{g915OnboardSettings};
     // Animações por software do G915 (INC-021, ADR-0030): só por clique em SoftwareAnimationController::start(); a
     // captura de áudio do visualizador só existe enquanto a animação "audio" roda (nada é aberto na construção). A
@@ -435,8 +447,13 @@ int main(int argc, char* argv[])
         [&headsetProfileSettings](int level) { headsetProfileSettings.rememberSidetone(level); });
     headsetLightingController.setAppliedObserver(
         [&headsetProfileSettings](int zone, int effect, int red, int green, int blue, int periodMs, int brightness) {
-            headsetProfileSettings.rememberLight({.zone = zone, .effect = effect, .red = red, .green = green,
-                                                  .blue = blue, .periodMs = periodMs, .brightness = brightness});
+            headsetProfileSettings.rememberLight({.zone = zone,
+                                                  .effect = effect,
+                                                  .red = red,
+                                                  .green = green,
+                                                  .blue = blue,
+                                                  .periodMs = periodMs,
+                                                  .brightness = brightness});
         });
     // O efeito do G915 só vale com o modo ao vivo ligado pelo usuário (volátil); sem ele, a seção falha.
     class LiveKeyboardEffectApplier final : public ghub::lighting::KeyboardEffectApplier {
@@ -465,8 +482,11 @@ int main(int argc, char* argv[])
     ghub::profiles::KeyboardEffectAdapter profilesKeyboardAdapter{keyboardEffectSettings};
     keyboardLightingController.setEffectObserver(
         [&keyboardEffectSettings](const QString& kind, const QColor& color, int brightness) {
-            keyboardEffectSettings.remember({.kind = kind.toStdString(), .red = color.red(), .green = color.green(),
-                                             .blue = color.blue(), .brightness = brightness});
+            keyboardEffectSettings.remember({.kind = kind.toStdString(),
+                                             .red = color.red(),
+                                             .green = color.green(),
+                                             .blue = color.blue(),
+                                             .brightness = brightness});
         });
     const ghub::pointer::G703DpiSettings g703DpiSettings{g703OnboardSettings};
     // "Sincronizar cor" (INC-021 R5, ADR-0030): só pelas api/ dos módulos donos; nada é enviado antes do clique em

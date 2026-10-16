@@ -124,6 +124,35 @@ private slots:
         QCOMPARE(reads.load(), 2);
     }
 
+    void headsetEvent_ReadsNowAndOnceMoreAfterTheFollowUpDelay()
+    {
+        HidppBatterySource source{reader(), *registry, interfaceId(), 1h, 150ms};
+        QSignalSpy changed(&source, &HidppBatterySource::readingsChanged);
+        QTRY_COMPARE(changed.count(), 1);
+
+        source.onHeadsetEvent();
+
+        QTRY_COMPARE(changed.count(), 2);
+        QCOMPARE(reads.load(), 2);
+        QTRY_COMPARE_WITH_TIMEOUT(changed.count(), 3, 5000);
+        QCOMPARE(reads.load(), 3);
+    }
+
+    void headsetEventBurst_YieldsOneImmediateAndOneFollowUpRead()
+    {
+        HidppBatterySource source{reader(), *registry, interfaceId(), 1h, 150ms};
+        QSignalSpy changed(&source, &HidppBatterySource::readingsChanged);
+        QTRY_COMPARE(changed.count(), 1);
+
+        source.onHeadsetEvent();
+        source.onHeadsetEvent();
+        source.onHeadsetEvent();
+
+        QTRY_COMPARE_WITH_TIMEOUT(changed.count(), 3, 5000);
+        QTest::qWait(400);
+        QCOMPARE(reads.load(), 3);
+    }
+
 private:
     [[nodiscard]] std::function<ghub::shared_kernel::Result<BatteryReading>()> reader()
     {
