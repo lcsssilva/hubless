@@ -4,7 +4,8 @@ target_sources(ghub_battery_domain PRIVATE
     domain/BatteryLevel.cpp
     domain/BatteryReading.cpp
     domain/AdcMeasurement.cpp
-    domain/LowBatteryAlert.cpp)
+    domain/LowBatteryAlert.cpp
+    domain/HeadsetBroadcast.cpp)
 target_link_libraries(ghub_battery_domain PUBLIC ghub_shared_kernel)
 ghub_set_warnings(ghub_battery_domain)
 
@@ -76,4 +77,17 @@ if(GHUB_BUILD_APP)
     target_link_libraries(ghub_battery_headsetcontrol PUBLIC
         ghub_battery_application ghub_device_access_api Qt6::Core)
     ghub_set_warnings(ghub_battery_headsetcontrol)
+endif()
+
+# Escuta passiva do evento espontâneo do G733 (ADR-0026, adendo): hidraw só leitura, QSocketNotifier, sem thread.
+if(GHUB_BUILD_APP)
+    add_library(ghub_battery_hidpp_watcher STATIC)
+    target_sources(ghub_battery_hidpp_watcher PRIVATE
+        infrastructure/PassiveReportSource.hpp
+        infrastructure/PassiveReportSource.cpp
+        infrastructure/HidppHeadsetEventWatcher.hpp
+        infrastructure/HidppHeadsetEventWatcher.cpp)
+    set_target_properties(ghub_battery_hidpp_watcher PROPERTIES AUTOMOC ON)
+    target_link_libraries(ghub_battery_hidpp_watcher PUBLIC ghub_battery_domain Qt6::Core)
+    ghub_set_warnings(ghub_battery_hidpp_watcher)
 endif()

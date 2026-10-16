@@ -60,7 +60,7 @@ qt_add_resources(ghub-linux "controls_conf"
 target_link_libraries(ghub-linux PRIVATE
     Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Widgets
     ghub_app_support ghub_app_tray
-    ghub_battery_infrastructure ghub_battery_uevent ghub_battery_hidpp_polling ghub_battery_presentation
+    ghub_battery_infrastructure ghub_battery_uevent ghub_battery_hidpp_polling ghub_battery_hidpp_watcher ghub_battery_presentation
     ghub_camera_infrastructure ghub_camera_background ghub_camera_preview ghub_camera_presentation
     ghub_device_access_infrastructure ghub_device_access_logind
     ghub_device_inventory_infrastructure ghub_device_inventory_presentation
