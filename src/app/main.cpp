@@ -93,6 +93,9 @@
 #include "modules/lighting/presentation/KeyboardLightingController.hpp"
 #include "modules/lighting/presentation/KeyboardStatusViewModel.hpp"
 #include "modules/lighting/presentation/SoftwareAnimationController.hpp"
+#include "modules/lighting/application/SyncColorTargets.hpp"
+#include "modules/lighting/presentation/SyncColorController.hpp"
+#include "modules/pointer/api/G703LedSettings.hpp"
 #include "modules/lighting/application/G915OnboardSettings.hpp"
 #include "modules/lighting/infrastructure/G915OnboardConnector.hpp"
 #include "modules/lighting/presentation/G915OnboardController.hpp"
@@ -466,6 +469,15 @@ int main(int argc, char* argv[])
                                              .blue = color.blue(), .brightness = brightness});
         });
     const ghub::pointer::G703DpiSettings g703DpiSettings{g703OnboardSettings};
+    // "Sincronizar cor" (INC-021 R5, ADR-0030): só pelas api/ dos módulos donos; nada é enviado antes do clique em
+    // "Aplicar". Declarado depois dos alvos que usa (o controlador espera a operação em andamento ao ser destruído).
+    const ghub::pointer::G703LedSettings g703LedSettings{g703OnboardSettings};
+    ghub::lighting::application::KeyboardEffectTarget syncKeyboardTarget{
+        keyboardEffectSettings, [&keyboardLightingController] { return keyboardLightingController.live(); }};
+    ghub::lighting::application::HeadsetFixedTarget syncHeadsetTarget{headsetProfileSettings};
+    ghub::lighting::application::MouseLedTarget syncMouseTarget{g703LedSettings};
+    const ghub::lighting::application::SyncColor syncColor{syncKeyboardTarget, syncHeadsetTarget, syncMouseTarget};
+    ghub::lighting::presentation::SyncColorController syncColorController{syncColor};
     ghub::profiles::PointerSettingsAdapter profilesPointerAdapter{g703DpiSettings};
     const ghub::profiles::HardwarePorts hardwarePorts{
         .headset = &profilesHeadsetAdapter, .keyboard = &profilesKeyboardAdapter, .pointer = &profilesPointerAdapter};
@@ -571,6 +583,7 @@ int main(int argc, char* argv[])
         {QStringLiteral("g915OnboardController"), QVariant::fromValue(&g915OnboardController)},
         {QStringLiteral("keyboardLightingController"), QVariant::fromValue(&keyboardLightingController)},
         {QStringLiteral("softwareAnimationController"), QVariant::fromValue(&softwareAnimationController)},
+        {QStringLiteral("syncColorController"), QVariant::fromValue(&syncColorController)},
         {QStringLiteral("keyboardControlsController"), QVariant::fromValue(&keyboardControlsController)},
         {QStringLiteral("headsetSettingsController"), QVariant::fromValue(&headsetSettingsController)},
         {QStringLiteral("headsetLightingController"), QVariant::fromValue(&headsetLightingController)},

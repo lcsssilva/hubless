@@ -38,6 +38,10 @@ ApplicationWindow {
     // começam por clique (INC-021).
     required property QtObject softwareAnimationController
 
+    // SyncColorController (módulo lighting), fornecido pelo composition root: "Sincronizar cor" entre G915, G733 e
+    // G703 só aplica por clique (INC-021 R5).
+    required property QtObject syncColorController
+
     // KeyboardControlsController (módulo lighting), fornecido pelo composition root: modo de jogo e troca de slot
     // M1–M3 do G915 só por clique (INC-019).
     required property QtObject keyboardControlsController
@@ -539,6 +543,12 @@ ApplicationWindow {
                         enabled: window.keyboardLightingController.live && !window.keyboardLightingController.busy
                         onClicked: lightingColorDialog.open()
                     }
+                }
+
+                SyncColorPanel {
+                    objectName: "syncColorPanel"
+                    visible: lightingTabs.currentIndex === 0
+                    controller: window.syncColorController
                 }
 
                 // Prévia de efeito de hardware: só enquanto o modo ao vivo está ligado; escolher o item faz o mesmo

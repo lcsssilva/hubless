@@ -43,9 +43,11 @@ target_sources(ghub_lighting_application PRIVATE
     application/AudioVisualizer.cpp
     application/ScreenSampler.cpp
     application/ReadKeyboardStatus.cpp
-    application/G915OnboardSettings.cpp)
+    application/G915OnboardSettings.cpp
+    application/SyncColor.cpp
+    application/SyncColorTargets.cpp)
 target_link_libraries(ghub_lighting_application PUBLIC ghub_lighting_domain ghub_device_access_api ghub_audio_processing_api
-                                                    ghub_onboard_memory_api)
+                                                    ghub_onboard_memory_api ghub_lighting_api ghub_headset_api ghub_pointer_api)
 ghub_set_warnings(ghub_lighting_application)
 
 # API pública (INC-017 parte 2, ADR-0028): fachada do efeito de prévia do G915 para o módulo profiles.
@@ -69,7 +71,9 @@ if(GHUB_BUILD_APP)
         presentation/KeyboardStatusViewModel.hpp
         presentation/KeyboardStatusViewModel.cpp
         presentation/SoftwareAnimationController.hpp
-        presentation/SoftwareAnimationController.cpp)
+        presentation/SoftwareAnimationController.cpp
+        presentation/SyncColorController.hpp
+        presentation/SyncColorController.cpp)
     set_target_properties(ghub_lighting_presentation PROPERTIES AUTOMOC ON)
     target_link_libraries(ghub_lighting_presentation PUBLIC ghub_lighting_application Qt6::Core Qt6::Gui
                                                       PRIVATE Qt6::Concurrent)

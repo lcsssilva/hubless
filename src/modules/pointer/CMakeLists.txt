@@ -28,7 +28,7 @@ ghub_set_warnings(ghub_pointer_application)
 
 # API pública (INC-017 parte 2, ADR-0028): fachada de DPI/estágios/taxa do G703 para o módulo profiles.
 add_library(ghub_pointer_api STATIC)
-target_sources(ghub_pointer_api PRIVATE api/G703DpiSettings.cpp)
+target_sources(ghub_pointer_api PRIVATE api/G703DpiSettings.cpp api/G703LedSettings.cpp)
 target_link_libraries(ghub_pointer_api PUBLIC ghub_pointer_application)
 ghub_set_warnings(ghub_pointer_api)
 

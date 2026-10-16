@@ -151,6 +151,21 @@ TestCase {
         }
     }
 
+    // Controlador de "Sincronizar cor" falso: registra os pedidos; nada chega a nenhum dispositivo.
+    Component {
+        id: fakeSyncComponent
+        QtObject {
+            property bool busy: false
+            property string status: ""
+            property var results: []
+            property var applyCalls: []
+            function apply(color, keyboard, headset, mouse, confirmMouse) {
+                applyCalls = applyCalls.concat([{color: String(color), keyboard: keyboard, headset: headset,
+                                                 mouse: mouse, confirmMouse: confirmMouse}])
+            }
+        }
+    }
+
     // Controlador do headset falso: registra os pedidos; nada chega ao HeadsetControl.
     Component {
         id: fakeHeadsetComponent
@@ -424,7 +439,7 @@ TestCase {
     function createMain(fake, inventoryFake, cameraFake, previewFake, editorFake, pointerFake, lightingFake,
                         headsetFake, equalizerFake, onboardFake, noiseFake, desktopFake, diagnosticsFake,
                         profilesFake, identityFake, keyboardStatusFake, pointerStatusFake, headsetStatusFake,
-                        lightingColorFake, animationFake, appSettingsFake, backupFake, controlsFake) {
+                        lightingColorFake, animationFake, appSettingsFake, backupFake, controlsFake, syncFake) {
         const component = Qt.createComponent(Qt.resolvedUrl("../../src/ui/qml/Main.qml"));
         compare(component.status, Component.Ready, component.errorString());
         const window = component.createObject(null, {batteryViewModel: fake,
@@ -435,6 +450,7 @@ TestCase {
                                                      pointerViewModel: pointerFake || createPointerFake(),
                                                      keyboardLightingController: lightingFake || createLightingFake(),
                                                      softwareAnimationController: animationFake || createAnimationFake(),
+                                                     syncColorController: syncFake || createSyncFake(),
                                                      keyboardControlsController: controlsFake || createControlsFake(),
                                                      headsetSettingsController: headsetFake || createHeadsetFake(),
                                                      headsetLightingController: lightingColorFake || createHeadsetLightingFake(),
@@ -506,6 +522,12 @@ TestCase {
 
     function createAnimationFake(props) {
         const fake = fakeAnimationComponent.createObject(null, props || {});
+        fakes.push(fake);
+        return fake;
+    }
+
+    function createSyncFake(props) {
+        const fake = fakeSyncComponent.createObject(null, props || {});
         fakes.push(fake);
         return fake;
     }
@@ -976,7 +998,7 @@ TestCase {
                 + "onboardAddStageButton,onboardReadButton,onboardRemoveStageButton,"
                 + "onboardRestoreButton,onboardWriteButton,pointerReadButton,profileSaveButton,profilesImportButton,"
                 + "readIdentityButton,readIdentityButton,readIdentityButton,"
-                + "readStatusButton,readStatusButton,readStatusButton,slotRefreshButton,"
+                + "readStatusButton,readStatusButton,readStatusButton,slotRefreshButton,syncApplyButton,"
                 + "toggleFeatureIdsButton,toggleFeatureIdsButton,toggleFeatureIdsButton"); // amostras: delegates de tipo próprio, testadas à parte
     }
 
@@ -3589,6 +3611,66 @@ TestCase {
         mouseClick(animationsTab);
         tryVerify(() => findItem(window, "animationKindCombo").visible);
         return window;
+    }
+
+    // INC-021 R5: "Sincronizar cor" fica na aba Cores do G915.
+    function createSyncMain(sync) {
+        const window = createMain(createFake([]), sampleInventory(), null, null, null, null,
+                                  createLightingFake(), null, null, null, null, null, null, null, null,
+                                  null, null, null, null, null, null, null, null, sync);
+        showMinimum(window);
+        openDevice(window, "G915");
+        tryVerify(() => findItem(window, "syncApplyButton").visible);
+        return window;
+    }
+
+    function test_syncColorDoesNothingOnLoad() {
+        const sync = createSyncFake();
+        createSyncMain(sync);
+        compare(sync.applyCalls.length, 0);
+    }
+
+    function test_syncColorApplyForwardsTheChosenColorAndDevices() {
+        const sync = createSyncFake();
+        const window = createSyncMain(sync);
+        const swatches = allItems(window).filter(i => i.objectName === "syncSwatch");
+        compare(swatches.length, 8);
+        mouseClick(swatches[0]); // vermelho
+        compare(sync.applyCalls.length, 0); // escolher a cor não envia nada
+        findItem(window, "syncApplyButton").clicked();
+        compare(sync.applyCalls.length, 1);
+        compare(sync.applyCalls[0].color, "#ff0000");
+        compare(sync.applyCalls[0].keyboard, true);
+        compare(sync.applyCalls[0].headset, true);
+        compare(sync.applyCalls[0].mouse, false); // o G703 é persistente: começa desmarcado
+        compare(sync.applyCalls[0].confirmMouse, false);
+    }
+
+    function test_syncColorMouseNeedsTheExplicitConfirmationCheckbox() {
+        const sync = createSyncFake();
+        const window = createSyncMain(sync);
+        compare(findItem(window, "syncMouseConfirmCheck").visible, false);
+        findItem(window, "syncMouseCheck").checked = true;
+        tryVerify(() => findItem(window, "syncMouseConfirmCheck").visible);
+        findItem(window, "syncMouseConfirmCheck").checked = true;
+        findItem(window, "syncApplyButton").clicked();
+        compare(sync.applyCalls[0].mouse, true);
+        compare(sync.applyCalls[0].confirmMouse, true);
+    }
+
+    function test_syncColorShowsStatusAndOneLinePerDevice() {
+        const sync = createSyncFake({status: "1 aplicado(s), 1 pulado(s), 0 com falha.",
+                                     results: ["G733: aplicado", "G703: pulado (confirme)"]});
+        const window = createSyncMain(sync);
+        compare(findItem(window, "syncStatusLabel").text, "1 aplicado(s), 1 pulado(s), 0 com falha.");
+        const lines = allItems(window).filter(i => i.objectName === "syncResultLabel").map(i => i.text);
+        compare(lines.join("|"), "G733: aplicado|G703: pulado (confirme)");
+    }
+
+    function test_syncColorBusyDisablesApply() {
+        const sync = createSyncFake({busy: true});
+        const window = createSyncMain(sync);
+        compare(findItem(window, "syncApplyButton").enabled, false);
     }
 
     function test_animationsPanelDoesNothingOnLoad() {
