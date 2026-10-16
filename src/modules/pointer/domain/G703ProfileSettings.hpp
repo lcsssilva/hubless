@@ -17,7 +17,7 @@ namespace ghub::pointer {
 // Formato do setor: byte 0 = taxa em ms; byte 1 = índice do DPI padrão; byte 2 = índice do estágio do DPI shift;
 // bytes 3..12 = 5 DPI little-endian (o primeiro 0 encerra a lista); offset 0xD0 = entradas de LED de 11 bytes
 // (0 = primário, 1 = logotipo; as entradas 2 e 3 são cópias com brilho menor e não são editadas).
-// "Sem DPI shift" é gravado como 0xFF no byte 2 — convenção ainda não confirmada em hardware.
+// "Sem DPI shift" não tem formato confirmado: tirar um shift válido é recusado (só se mantém um byte já fora da lista).
 // Objeto de valor imutável; só existe válido.
 class G703ProfileSettings {
 public:

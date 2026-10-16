@@ -29,11 +29,10 @@ Bytes sector0002()
     return {fixtures::kSector0002.begin(), fixtures::kSector0002.end()};
 }
 
-// Atalho dos testes: sem shift de DPI e com os dois LEDs desligados.
+// Atalho dos testes: shift no estágio 0 (o byte 2 é 00 em todas as cópias reais) e os dois LEDs desligados.
 shared_kernel::Result<G703ProfileSettings> plain(std::uint32_t hz, Dpis stages, std::uint32_t defaultStage)
 {
-    return G703ProfileSettings::make(hz, std::move(stages), defaultStage, std::nullopt, LedSetting::off(),
-                                     LedSetting::off());
+    return G703ProfileSettings::make(hz, std::move(stages), defaultStage, 0, LedSetting::off(), LedSetting::off());
 }
 
 // Índices dos bytes que um perfil de G703 pode alterar: taxa, padrão, shift, 5 DPIs e as duas entradas de LED.
@@ -212,6 +211,20 @@ TEST(G703ProfileSettingsMakeTest, RejectsDefaultStageEqualToStageCount)
     EXPECT_EQ(settings.error().code, ErrorCode::InvalidArgument);
 }
 
+// "Sem DPI shift" não tem formato confirmado (todas as cópias reais têm 00 no byte 2): enquanto não houver evidência,
+// tirar o shift de um setor em que ele vale é recusado sem tocar em nada, em vez de gravar 0xFF por hipótese.
+TEST(G703ProfileSettingsApplyTest, RefusesToRemoveAValidShiftUntilTheNoShiftFormatIsConfirmed)
+{
+    const auto settings =
+        G703ProfileSettings::make(1000, {7050, 1600}, 0, std::nullopt, LedSetting::off(), LedSetting::off());
+    ASSERT_TRUE(settings.has_value());
+
+    const auto written = settings->applyTo(sector0001());
+
+    ASSERT_FALSE(written.has_value());
+    EXPECT_EQ(written.error().code, ErrorCode::InvalidArgument);
+}
+
 TEST(G703ProfileSettingsMakeTest, RejectsShiftStageBeyondTheStages)
 {
     const auto settings = G703ProfileSettings::make(1000, {400, 800}, 0, 2, LedSetting::off(), LedSetting::off());
@@ -327,13 +340,15 @@ TEST(G703ProfileSettingsApplyTest, LogoLedUsesTheSecondEntryAndTheDimmedCopiesSt
     }
 }
 
-TEST(G703ProfileSettingsApplyTest, ShiftNoneWritesFfOnlyWhenTheOriginalByteWouldPointToAStage)
+// Sem shift só é aceito quando o byte original já não aponta para nenhum estágio da lista nova: aí ele é mantido.
+TEST(G703ProfileSettingsApplyTest, ShiftNoneKeepsAnOutOfRangeByteAndRefusesWhenItWouldPointToAStage)
 {
-    const auto none = plain(1000, {400, 800}, 0);
+    const auto none =
+        G703ProfileSettings::make(1000, {400, 800}, 0, std::nullopt, LedSetting::off(), LedSetting::off());
     ASSERT_TRUE(none.has_value());
     auto pointing = sector0002();
     pointing[2] = 1;
-    EXPECT_EQ((*none->applyTo(pointing))[2], 0xff);
+    EXPECT_FALSE(none->applyTo(pointing).has_value());
     auto outOfRange = sector0002();
     outOfRange[2] = 3; // fora dos 2 estágios novos: o byte original é mantido
     EXPECT_EQ((*none->applyTo(outOfRange))[2], 3);

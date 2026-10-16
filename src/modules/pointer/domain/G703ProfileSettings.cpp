@@ -17,7 +17,6 @@ constexpr std::size_t kMaxStages = 5;
 constexpr std::size_t kPrimaryLedOffset = 0xD0;
 constexpr std::size_t kLogoLedOffset = kPrimaryLedOffset + LedSetting::kEntrySize;
 constexpr std::size_t kMinSectorSize = kLogoLedOffset + LedSetting::kEntrySize;
-constexpr std::uint8_t kNoShiftByte = 0xFF;
 constexpr std::uint16_t kMinDpi = 100;
 constexpr std::uint16_t kMaxDpi = 25600;
 constexpr std::uint16_t kDpiStep = 50;
@@ -110,12 +109,14 @@ G703ProfileSettings::applyTo(std::span<const std::uint8_t> original) const
     std::vector<std::uint8_t> raw{original.begin(), original.end()};
     raw.at(kReportRateByte) = static_cast<std::uint8_t>(1000U / reportRateHz_);
     raw.at(kDefaultStageByte) = static_cast<std::uint8_t>(defaultStage_);
-    // Shift: mantém o byte quando ele já vale o pedido; "nenhum" só escreve 0xFF se o byte original passaria a
-    // apontar para um estágio da lista nova.
+    // Shift: o índice pedido é gravado. "Nenhum" não tem formato confirmado (todas as cópias reais têm 00): ele só é
+    // aceito quando o byte original já fica fora da lista nova (e então é mantido); tirar um shift válido é recusado.
     if (dpiShiftStage_.has_value()) {
         raw.at(kShiftStageByte) = static_cast<std::uint8_t>(*dpiShiftStage_);
     } else if (original[kShiftStageByte] < dpiStages_.size()) {
-        raw.at(kShiftStageByte) = kNoShiftByte;
+        return shared_kernel::fail(shared_kernel::ErrorCode::InvalidArgument,
+                                   "remover o DPI shift ainda não é suportado: o formato \"sem shift\" não foi "
+                                   "confirmado no G703");
     }
     for (std::size_t i = 0; i < kMaxStages; ++i) {
         const std::uint16_t dpi = i < dpiStages_.size() ? dpiStages_.at(i) : std::uint16_t{0};
