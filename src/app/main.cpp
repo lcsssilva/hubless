@@ -1,6 +1,6 @@
 // Composition root (ADR-0002 §7): monta os módulos e carrega a janela QML.
 // Ligado à UI: módulos device_inventory (ADR-0006), battery (kernel power_supply, ADR-0004/ADR-0005;
-// G733 via HeadsetControl, ADR-0007) e camera (Brio 100 por V4L2: leitura só com ioctls de consulta,
+// G733 por HID++ próprio, ADR-0026) e camera (Brio 100 por V4L2: leitura só com ioctls de consulta,
 // ADR-0008; pré-visualização por streaming V4L2, ADR-0009) e pointer (G703: configuração lida do ratbagd por
 // D-Bus, somente leitura, ADR-0011) e lighting (modo ao vivo do G915 por HID++, ADR-0013).
 // A leitura do G703 só começa por clique (botão "Ler configuração do mouse"): ela ativa o ratbagd (root) e
@@ -11,17 +11,16 @@
 // também só por ação do usuário na janela (ADR-0013): nada é aberto na abertura nem no smoke test, e fechar o
 // modo ou o aplicativo (inclusive por SIGTERM/SIGINT/SIGHUP) devolve o controle ao firmware; SIGKILL não (testes
 // físicos de 2026-10-14). Repouso do teclado (o firmware retoma o controle) desliga o modo na janela sem escrever,
-// e a suspensão do sistema devolve o controle antes de suspender (ADR-0014). Sidetone e luzes do G733 (HeadsetControl,
-// ADR-0015): só por clique na janela, nunca na abertura nem na reconexão. EQ de saída do G733 no host (PipeWire
-// filter-chain dentro do processo, ADR-0016) e redução de ruído do microfone (RNNoise, ADR-0018): só por clique; ao
-// ligar, trocam a saída/entrada padrão e a restauram ao desligar/fechar. Nenhuma outra escrita de configuração.
-// Perfis (INC-012, ADR-0020): salvar, atualizar e aplicar controles da Brio 100 e a curva do EQ só por clique;
-// a abertura só lê ~/.config/ghub-linux/profiles.json.
-// INC-013 (ADR-0019): integração com o desktop — bandeja do sistema (X-03), inicialização automática XDG
-// (X-04) e diagnóstico/logs (X-06). A bandeja só existe fora do smoke test e com uma bandeja disponível;
-// fechar a janela esconde para a bandeja (o processo continua) e só "Sair" encerra. O autostart é opt-in na
-// janela: nada é gravado sem ação explícita; `--autostart` inicia escondido. O diagnóstico vive só em memória
-// e nada é gravado até o usuário exportar o relatório.
+// e a suspensão do sistema devolve o controle antes de suspender (ADR-0014). Sidetone, luzes e cor/efeito por zona do
+// G733 (HID++ próprio, ADR-0026): só por clique na janela, nunca na abertura nem na reconexão. EQ de saída do G733 no
+// host (PipeWire filter-chain dentro do processo, ADR-0016) e redução de ruído do microfone (RNNoise, ADR-0018): só por
+// clique; ao ligar, trocam a saída/entrada padrão e a restauram ao desligar/fechar. Nenhuma outra escrita de
+// configuração. Perfis (INC-012, ADR-0020): salvar, atualizar e aplicar controles da Brio 100 e a curva do EQ só por
+// clique; a abertura só lê ~/.config/ghub-linux/profiles.json. INC-013 (ADR-0019): integração com o desktop — bandeja
+// do sistema (X-03), inicialização automática XDG (X-04) e diagnóstico/logs (X-06). A bandeja só existe fora do smoke
+// test e com uma bandeja disponível; fechar a janela esconde para a bandeja (o processo continua) e só "Sair" encerra.
+// O autostart é opt-in na janela: nada é gravado sem ação explícita; `--autostart` inicia escondido. O diagnóstico vive
+// só em memória e nada é gravado até o usuário exportar o relatório.
 #include "DesktopController.hpp"
 #include "SystemTrayIcon.hpp"
 #include "TerminationSignals.hpp"
@@ -31,7 +30,8 @@
 #include "modules/audio_processing/presentation/HostEqualizerController.hpp"
 #include "modules/audio_processing/presentation/NoiseSuppressionController.hpp"
 #include "modules/battery/application/GetBatteryStatus.hpp"
-#include "modules/battery/infrastructure/HeadsetControlBatterySource.hpp"
+#include "modules/battery/infrastructure/HidppBatteryReader.hpp"
+#include "modules/battery/infrastructure/HidppBatterySource.hpp"
 #include "modules/battery/infrastructure/KernelUevent.hpp"
 #include "modules/battery/infrastructure/SysfsBatterySource.hpp"
 #include "modules/battery/infrastructure/UeventBatteryMonitor.hpp"
@@ -67,10 +67,12 @@
 #include "modules/diagnostics/infrastructure/QtMessageLogSink.hpp"
 #include "modules/diagnostics/infrastructure/XdgReportWriter.hpp"
 #include "modules/diagnostics/presentation/DiagnosticsViewModel.hpp"
+#include "modules/headset/application/ChangeHeadsetLighting.hpp"
 #include "modules/headset/application/ChangeHeadsetSetting.hpp"
 #include "modules/headset/application/ReadHeadsetStatus.hpp"
-#include "modules/headset/infrastructure/HeadsetControlSettingsWriter.hpp"
+#include "modules/headset/infrastructure/HidppHeadsetSettingsWriter.hpp"
 #include "modules/headset/infrastructure/HidppHeadsetStatusSource.hpp"
+#include "modules/headset/presentation/HeadsetLightingController.hpp"
 #include "modules/headset/presentation/HeadsetSettingsController.hpp"
 #include "modules/headset/presentation/HeadsetStatusViewModel.hpp"
 #include "modules/lighting/application/LiveKeyboardSession.hpp"
@@ -201,8 +203,8 @@ int main(int argc, char* argv[])
     const ghub::device_access::SteadyClock steadyClock;
     ghub::device_access::AccessRegistry accessRegistry{steadyClock};
     ghub::battery::SysfsBatterySource batterySource;
-    // G733 (ADR-0007): consulta assíncrona a cada 60 s, timeout de 10 s, só sem software que
-    // disputa o hidraw do headset (DEVICE_ACCESS_POLICY §3) e com o lease do headset (ADR-0015 §5).
+    // G733 (ADR-0026): bateria por HID++ próprio (0x1f20), leitura em thread de trabalho a cada 60 s, prazo de 2 s
+    // por pedido e com o lease do headset. O probe de processos externos segue valendo para as escritas.
     ghub::device_access::ProcExternalProcessProbe externalProcessProbe;
     auto headsetInterface = ghub::device_access::PhysicalInterfaceId::create("hidpp:046d:0afe");
     if (!headsetInterface) {
@@ -210,13 +212,13 @@ int main(int argc, char* argv[])
                   qPrintable(QString::fromStdString(headsetInterface.error().detail)));
         return EXIT_FAILURE;
     }
-    const auto headsetControlExecutable = QStandardPaths::findExecutable(QStringLiteral("headsetcontrol"));
-    ghub::battery::HeadsetControlBatterySource headsetBatterySource{
-        headsetControlExecutable, externalProcessProbe, accessRegistry, *headsetInterface, 60s, 10s};
+    ghub::battery::HidppBatteryReader headsetBatteryReader{ghub::platform::hidpp::HidppNodeLocator{}, steadyClock};
+    ghub::battery::HidppBatterySource headsetBatterySource{
+        [&headsetBatteryReader] { return headsetBatteryReader.read(); }, accessRegistry, *headsetInterface, 60s};
     const ghub::battery::GetBatteryStatus getBatteryStatus{{&batterySource, &headsetBatterySource}};
     ghub::battery::BatteryViewModel batteryViewModel{getBatteryStatus, 30s};
-    QObject::connect(&headsetBatterySource, &ghub::battery::HeadsetControlBatterySource::readingsChanged,
-                     &batteryViewModel, &ghub::battery::BatteryViewModel::refresh);
+    QObject::connect(&headsetBatterySource, &ghub::battery::HidppBatterySource::readingsChanged, &batteryViewModel,
+                     &ghub::battery::BatteryViewModel::refresh);
     // Inventário de dispositivos (ADR-0006 §6): sysfs HID, somente leitura; releitura a cada 5 s.
     ghub::device_inventory::SysfsHidDiscovery hidDiscovery;
     ghub::device_inventory::SysfsVideoDiscovery videoDiscovery;
@@ -327,13 +329,17 @@ int main(int argc, char* argv[])
     const ghub::lighting::application::StartLiveKeyboardSession startLiveKeyboardSession{
         g915Lighting, accessRegistry, externalProcessProbe, *keyboardInterface};
     ghub::lighting::presentation::KeyboardLightingController keyboardLightingController{startLiveKeyboardSession};
-    // Headset (ADR-0015): sidetone e luzes do G733 pelo HeadsetControl, só por clique no controlador; nada é
-    // executado na construção. Ordem de destruição: controlador (espera a escrita em andamento), caso de uso,
-    // writer e, por fim, o registro de leases e o probe (declarados acima).
-    ghub::headset::HeadsetControlSettingsWriter headsetSettingsWriter{headsetControlExecutable, 10s};
+    // Headset (ADR-0026): sidetone, luzes liga/desliga e cor/efeito por zona do G733 por HID++ próprio, só por clique
+    // nos controladores; nada é aberto nem enviado na construção. Ordem de destruição: controladores (esperam a
+    // escrita em andamento), casos de uso, writer e, por fim, o registro de leases e o probe (declarados acima).
+    ghub::headset::infrastructure::HidppHeadsetSettingsWriter headsetSettingsWriter{
+        ghub::platform::hidpp::HidppNodeLocator{}, steadyClock};
     const ghub::headset::ChangeHeadsetSetting changeHeadsetSetting{headsetSettingsWriter, externalProcessProbe,
                                                                    accessRegistry, *headsetInterface};
     ghub::headset::HeadsetSettingsController headsetSettingsController{changeHeadsetSetting};
+    const ghub::headset::ChangeHeadsetLighting changeHeadsetLighting{headsetSettingsWriter, accessRegistry,
+                                                                     *headsetInterface};
+    ghub::headset::HeadsetLightingController headsetLightingController{changeHeadsetLighting};
     // EQ do host (ADR-0016): nada conecta ao PipeWire na construção nem no smoke test. Ordem de destruição:
     // controlador (desliga o EQ e restaura a saída padrão), caso de uso e, por fim, o grafo (desconecta).
     ghub::audio_processing::PipeWireAudioGraph audioGraph;
@@ -397,9 +403,6 @@ int main(int argc, char* argv[])
             const bool uevent = batteryMonitor != nullptr;
             health.push_back({"Notificação por uevent do kernel", uevent,
                               uevent ? "socket netlink aberto" : "socket netlink indisponível"});
-            const bool headsetControl = !headsetControlExecutable.isEmpty();
-            health.push_back({"HeadsetControl (G733)", headsetControl,
-                              headsetControl ? headsetControlExecutable.toStdString() : "não encontrado no PATH"});
             const bool ratbagd = serviceRegistered(QStringLiteral("org.freedesktop.ratbag1"));
             health.push_back(
                 {"ratbagd (G703)", ratbagd, ratbagd ? "serviço presente no barramento de sistema" : "serviço ausente"});
@@ -433,6 +436,7 @@ int main(int argc, char* argv[])
         {QStringLiteral("g703OnboardController"), QVariant::fromValue(&g703OnboardController)},
         {QStringLiteral("keyboardLightingController"), QVariant::fromValue(&keyboardLightingController)},
         {QStringLiteral("headsetSettingsController"), QVariant::fromValue(&headsetSettingsController)},
+        {QStringLiteral("headsetLightingController"), QVariant::fromValue(&headsetLightingController)},
         {QStringLiteral("hostEqualizerController"), QVariant::fromValue(&hostEqualizerController)},
         {QStringLiteral("noiseSuppressionController"), QVariant::fromValue(&noiseSuppressionController)},
         {QStringLiteral("profilesController"), QVariant::fromValue(&profilesController)},

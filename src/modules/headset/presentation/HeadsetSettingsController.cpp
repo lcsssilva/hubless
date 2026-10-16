@@ -76,7 +76,7 @@ void HeadsetSettingsController::onFinished()
     if (outcome.has_value() && finished.has_value()) {
         if (finished->isLights) {
             lightsState_ = finished->lights == HeadsetLights::On ? QStringLiteral("on") : QStringLiteral("off");
-            status_ = finished->lights == HeadsetLights::On ? tr("Luzes ligadas (respiração)") : tr("Luzes desligadas");
+            status_ = finished->lights == HeadsetLights::On ? tr("Luzes ligadas (ciclo)") : tr("Luzes desligadas");
         } else {
             lastSidetone_ = finished->level.value();
             status_ = tr("Sidetone aplicado: %1").arg(lastSidetone_);

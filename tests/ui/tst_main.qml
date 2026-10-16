@@ -101,6 +101,19 @@ TestCase {
         }
     }
 
+    // Controlador de cor/efeito das luzes do G733 falso: registra os pedidos; nada chega ao headset.
+    Component {
+        id: fakeHeadsetLightingComponent
+        QtObject {
+            property bool busy: false
+            property string status: ""
+            property var applyCalls: []
+            function apply(zone, effect, red, green, blue, periodMs, brightness) {
+                applyCalls = applyCalls.concat([[zone, effect, red, green, blue, periodMs, brightness]])
+            }
+        }
+    }
+
     // Controlador do EQ do G733 falso: registra os pedidos; nada chega ao PipeWire.
     Component {
         id: fakeEqualizerComponent
@@ -272,7 +285,7 @@ TestCase {
     // Carrega o Main.qml real do código-fonte (caminho relativo a este arquivo).
     function createMain(fake, inventoryFake, cameraFake, previewFake, editorFake, pointerFake, lightingFake,
                         headsetFake, equalizerFake, onboardFake, noiseFake, desktopFake, diagnosticsFake,
-                        profilesFake, identityFake, keyboardStatusFake, pointerStatusFake, headsetStatusFake) {
+                        profilesFake, identityFake, keyboardStatusFake, pointerStatusFake, headsetStatusFake, lightingColorFake) {
         const component = Qt.createComponent(Qt.resolvedUrl("../../src/ui/qml/Main.qml"));
         compare(component.status, Component.Ready, component.errorString());
         const window = component.createObject(null, {batteryViewModel: fake,
@@ -283,6 +296,7 @@ TestCase {
                                                      pointerViewModel: pointerFake || createPointerFake(),
                                                      keyboardLightingController: lightingFake || createLightingFake(),
                                                      headsetSettingsController: headsetFake || createHeadsetFake(),
+                                                     headsetLightingController: lightingColorFake || createHeadsetLightingFake(),
                                                      hostEqualizerController: equalizerFake || createEqualizerFake(),
                                                      noiseSuppressionController: noiseFake || createNoiseSuppressionFake(),
                                                      g703OnboardController: onboardFake || createOnboardFake(),
@@ -336,6 +350,12 @@ TestCase {
 
     function createHeadsetFake(props) {
         const fake = fakeHeadsetComponent.createObject(null, props || {});
+        fakes.push(fake);
+        return fake;
+    }
+
+    function createHeadsetLightingFake(props) {
+        const fake = fakeHeadsetLightingComponent.createObject(null, props || {});
         fakes.push(fake);
         return fake;
     }
@@ -753,7 +773,7 @@ TestCase {
         const buttons = items.filter(item => /^(GHubButton|Button|QQuickButton)(_QMLTYPE_\d+)?\(/.test(item.toString()));
         compare(buttons.map(b => b.objectName).sort().join(","),
                 "cameraControlDefault,cameraControlDefault,cameraPreviewToggle,diagnosticsExportButton,"
-                + "diagnosticsRefreshButton,eqFlatButton,headsetLightsOffButton,"
+                + "diagnosticsRefreshButton,eqFlatButton,headsetLightingApplyButton,headsetLightsOffButton,"
                 + "headsetLightsOnButton,headsetSidetoneApplyButton,"
                 + "onboardAddStageButton,onboardReadButton,onboardRemoveStageButton,"
                 + "onboardRestoreButton,onboardWriteButton,pointerReadButton,profileSaveButton,"
@@ -1269,7 +1289,8 @@ TestCase {
         verify(notice.text.indexOf("sidetone fica gravado") >= 0, notice.text);
         verify(notice.text.indexOf("luzes voltam ao padrão ao desligar o headset") >= 0, notice.text);
         verify(notice.text.indexOf("microfone") >= 0, notice.text);
-        verify(notice.text.indexOf("respiração") >= 0, notice.text);
+        verify(notice.text.indexOf("ciclo") >= 0, notice.text);
+        verify(notice.text.indexOf("HeadsetControl") < 0, notice.text);
         compare(headset.sidetoneCalls.length, 0);
         compare(headset.lightsCalls.length, 0);
     }
@@ -1313,6 +1334,64 @@ TestCase {
         headset.lightsState = "off";
         tryVerify(() => applied.text.indexOf("30") >= 0 && applied.text.indexOf("desligadas") >= 0, 5000, applied.text);
         verify(applied.text.indexOf("nesta sessão") >= 0, applied.text);
+    }
+
+    function createMainWithLightingColor(fake) {
+        return createMain(createFake([]), null, null, null, null, null, null, null, null, null, null, null, null,
+                          null, null, null, null, null, fake);
+    }
+
+    function test_headsetColorSectionWarnsAndSendsNothingOnLoad() {
+        const fake = createHeadsetLightingFake();
+        const window = createMainWithLightingColor(fake);
+        verify(findItem(window, "headsetLightingVolatileLabel").text.indexOf("volátil") >= 0);
+        verify(findItem(window, "headsetLightingColorNoteLabel").text.indexOf("sem a correção") >= 0);
+        compare(fake.applyCalls.length, 0);
+    }
+
+    function test_headsetColorApplyForwardsTheChosenValues() {
+        const fake = createHeadsetLightingFake();
+        const window = createMainWithLightingColor(fake);
+        findItem(window, "headsetLightingZoneCombo").currentIndex = 1;
+        findItem(window, "headsetLightingEffectCombo").currentIndex = 2;
+        findItem(window, "headsetLightingRedField").value = 10;
+        findItem(window, "headsetLightingGreenField").value = 20;
+        findItem(window, "headsetLightingBlueField").value = 30;
+        findItem(window, "headsetLightingPeriodField").value = 4500;
+        findItem(window, "headsetLightingBrightnessSlider").value = 40;
+        compare(fake.applyCalls.length, 0);
+        findItem(window, "headsetLightingApplyButton").clicked();
+        compare(fake.applyCalls, [[1, 2, 10, 20, 30, 4500, 40]]);
+    }
+
+    function test_headsetColorFieldsFollowTheEffect() {
+        const fake = createHeadsetLightingFake();
+        const window = createMainWithLightingColor(fake);
+        openDeviceTab(window, "G733", "headset");
+        const effect = findItem(window, "headsetLightingEffectCombo");
+        const red = findItem(window, "headsetLightingRedField");
+        const period = findItem(window, "headsetLightingPeriodField");
+        effect.currentIndex = 0; // desligado
+        verify(!red.visible);
+        verify(!period.visible);
+        effect.currentIndex = 1; // fixo: só cor
+        tryVerify(() => red.visible);
+        verify(!period.visible);
+        effect.currentIndex = 2; // respiração: cor e tempo
+        tryVerify(() => period.visible);
+        verify(red.visible);
+        effect.currentIndex = 3; // ciclo: só tempo
+        tryVerify(() => !red.visible);
+        verify(period.visible);
+    }
+
+    function test_headsetColorApplyIsDisabledWhileBusyAndShowsTheStatus() {
+        const fake = createHeadsetLightingFake({busy: true, status: "Falha: headset desligado ou fora de alcance"});
+        const window = createMainWithLightingColor(fake);
+        verify(!findItem(window, "headsetLightingApplyButton").enabled);
+        compare(findItem(window, "headsetLightingStatusLabel").text, "Falha: headset desligado ou fora de alcance");
+        fake.busy = false;
+        tryVerify(() => findItem(window, "headsetLightingApplyButton").enabled);
     }
 
     function test_headsetStatusFollowsController() {

@@ -2,7 +2,8 @@
 add_library(ghub_battery_domain STATIC)
 target_sources(ghub_battery_domain PRIVATE
     domain/BatteryLevel.cpp
-    domain/BatteryReading.cpp)
+    domain/BatteryReading.cpp
+    domain/AdcMeasurement.cpp)
 target_link_libraries(ghub_battery_domain PUBLIC ghub_shared_kernel)
 ghub_set_warnings(ghub_battery_domain)
 
@@ -21,6 +22,16 @@ target_sources(ghub_battery_infrastructure PRIVATE
     infrastructure/KernelUevent.cpp)
 target_link_libraries(ghub_battery_infrastructure PUBLIC ghub_battery_application)
 ghub_set_warnings(ghub_battery_infrastructure)
+
+# Bateria do G733 por HID++ próprio (ADR-0026): leitor bloqueante sobre o canal compartilhado; sem Qt.
+add_library(ghub_battery_hidpp STATIC)
+target_sources(ghub_battery_hidpp PRIVATE
+    infrastructure/G733BatteryPolicy.hpp
+    infrastructure/G733BatteryPolicy.cpp
+    infrastructure/HidppBatteryReader.hpp
+    infrastructure/HidppBatteryReader.cpp)
+target_link_libraries(ghub_battery_hidpp PUBLIC ghub_battery_application ghub_platform_hidpp)
+ghub_set_warnings(ghub_battery_hidpp)
 
 # Apresentação: ViewModels QObject expostos ao QML (só com Qt; o preset tsan não compila Qt).
 if(GHUB_BUILD_APP)
@@ -41,6 +52,17 @@ if(GHUB_BUILD_APP)
     set_target_properties(ghub_battery_uevent PROPERTIES AUTOMOC ON)
     target_link_libraries(ghub_battery_uevent PUBLIC ghub_battery_infrastructure Qt6::Core)
     ghub_set_warnings(ghub_battery_uevent)
+
+    # Bateria do G733 por HID++ próprio (ADR-0026): leitura em thread de trabalho, cache e cadência de 60 s.
+    find_package(Qt6 6.12 REQUIRED COMPONENTS Core Concurrent)
+    add_library(ghub_battery_hidpp_polling STATIC)
+    target_sources(ghub_battery_hidpp_polling PRIVATE
+        infrastructure/HidppBatterySource.hpp
+        infrastructure/HidppBatterySource.cpp)
+    set_target_properties(ghub_battery_hidpp_polling PROPERTIES AUTOMOC ON)
+    target_link_libraries(ghub_battery_hidpp_polling PUBLIC
+        ghub_battery_hidpp ghub_device_access_api Qt6::Core PRIVATE Qt6::Concurrent)
+    ghub_set_warnings(ghub_battery_hidpp_polling)
 
     # Bateria do G733 via HeadsetControl CLI (ADR-0007): QProcess assíncrono + parser do JSON.
     add_library(ghub_battery_headsetcontrol STATIC)

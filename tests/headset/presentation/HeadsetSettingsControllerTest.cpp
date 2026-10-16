@@ -91,7 +91,7 @@ private slots:
         QVERIFY(changed.count() >= 2);
     }
 
-    void setLightsOn_ReportsBreathingEffect()
+    void setLightsOn_ReportsCycleEffect()
     {
         HeadsetSettingsController controller{fixture->useCase};
 
@@ -99,7 +99,7 @@ private slots:
         QTRY_VERIFY(!controller.busy() && !controller.status().isEmpty());
 
         QCOMPARE(fixture->writer.lightsValues(), (std::vector<bool>{true}));
-        QCOMPARE(controller.status(), QStringLiteral("Luzes ligadas (respiração)"));
+        QCOMPARE(controller.status(), QStringLiteral("Luzes ligadas (ciclo)"));
         QCOMPARE(controller.lightsState(), QStringLiteral("on"));
         QCOMPARE(controller.lastSidetone(), -1);
     }

@@ -40,7 +40,7 @@ public:
 
     // Valor fora de 0-100: status de falha, nada é executado.
     Q_INVOKABLE void setSidetone(int level);
-    // true = ligar (efeito respiração do HeadsetControl), false = desligar.
+    // true = ligar (efeito ciclo, período 5000 ms, brilho 100, nas duas zonas), false = desligar.
     Q_INVOKABLE void setLights(bool on);
 
 signals:

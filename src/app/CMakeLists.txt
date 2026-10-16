@@ -25,7 +25,7 @@ qt_add_executable(ghub-linux main.cpp)
 set(GHUB_QML_DIR "${PROJECT_SOURCE_DIR}/src/ui/qml")
 set(GHUB_QML_FILES Main.qml DeviceCard.qml DeviceDrawing.qml BatteryIcon.qml DevicePage.qml PanelCard.qml PanelPage.qml SideTab.qml TopBarTab.qml SectionTitle.qml GHubButton.qml GHubSlider.qml GHubCheckBox.qml
     GHubSwitch.qml GHubComboBox.qml GHubSpinBox.qml GHubRadioButton.qml GHubTextField.qml ColorSwatch.qml InnerTabs.qml
-    HelpIcon.qml SectionHeader.qml SwitchRow.qml BatteryBlock.qml EqualizerView.qml InfoPage.qml Theme.qml)
+    HelpIcon.qml SectionHeader.qml SwitchRow.qml BatteryBlock.qml EqualizerView.qml InfoPage.qml HeadsetLightingSection.qml Theme.qml)
 set(GHUB_QML_PATHS)
 foreach(qml_file IN LISTS GHUB_QML_FILES)
     set_source_files_properties("${GHUB_QML_DIR}/${qml_file}" PROPERTIES QT_RESOURCE_ALIAS ${qml_file})
@@ -46,7 +46,7 @@ qt_add_resources(ghub-linux "controls_conf"
 target_link_libraries(ghub-linux PRIVATE
     Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Widgets
     ghub_app_support ghub_app_tray
-    ghub_battery_infrastructure ghub_battery_uevent ghub_battery_headsetcontrol ghub_battery_presentation
+    ghub_battery_infrastructure ghub_battery_uevent ghub_battery_hidpp_polling ghub_battery_presentation
     ghub_camera_infrastructure ghub_camera_background ghub_camera_preview ghub_camera_presentation
     ghub_device_access_infrastructure ghub_device_access_logind
     ghub_device_inventory_infrastructure ghub_device_inventory_presentation

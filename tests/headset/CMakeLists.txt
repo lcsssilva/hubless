@@ -1,5 +1,6 @@
 add_executable(ghub_headset_domain_tests
     domain/SidetoneLevelTest.cpp
+    domain/HeadsetLightingTest.cpp
     domain/HeadsetStatusTest.cpp)
 target_link_libraries(ghub_headset_domain_tests PRIVATE ghub_headset_domain GTest::gtest_main)
 ghub_set_warnings(ghub_headset_domain_tests)
@@ -7,6 +8,7 @@ gtest_discover_tests(ghub_headset_domain_tests TEST_PREFIX "headset.")
 
 add_executable(ghub_headset_application_tests
     application/ChangeHeadsetSettingTest.cpp
+    application/ChangeHeadsetLightingTest.cpp
     application/ReadHeadsetStatusTest.cpp)
 target_link_libraries(ghub_headset_application_tests PRIVATE
     ghub_headset_application ghub_test_fakes GTest::gtest_main)
@@ -15,7 +17,8 @@ gtest_discover_tests(ghub_headset_application_tests TEST_PREFIX "headset.")
 
 add_executable(ghub_headset_hidpp_tests
     infrastructure/G733StatusPolicyTest.cpp
-    infrastructure/HidppHeadsetStatusSourceTest.cpp)
+    infrastructure/HidppHeadsetStatusSourceTest.cpp
+    infrastructure/HidppHeadsetSettingsWriterTest.cpp)
 target_link_libraries(ghub_headset_hidpp_tests PRIVATE ghub_headset_hidpp ghub_test_fakes GTest::gtest_main)
 ghub_set_warnings(ghub_headset_hidpp_tests)
 gtest_discover_tests(ghub_headset_hidpp_tests TEST_PREFIX "headset.")
@@ -47,6 +50,16 @@ if(GHUB_BUILD_APP)
     ghub_set_warnings(ghub_headset_controller_tests)
     add_test(NAME headset.HeadsetSettingsControllerTest COMMAND ghub_headset_controller_tests)
     set_tests_properties(headset.HeadsetSettingsControllerTest PROPERTIES TIMEOUT 30)
+endif()
+
+if(GHUB_BUILD_APP)
+    add_executable(ghub_headset_lighting_controller_tests presentation/HeadsetLightingControllerTest.cpp)
+    set_target_properties(ghub_headset_lighting_controller_tests PROPERTIES AUTOMOC ON)
+    target_link_libraries(ghub_headset_lighting_controller_tests PRIVATE
+        ghub_headset_presentation ghub_test_fakes Qt6::Test)
+    ghub_set_warnings(ghub_headset_lighting_controller_tests)
+    add_test(NAME headset.HeadsetLightingControllerTest COMMAND ghub_headset_lighting_controller_tests)
+    set_tests_properties(headset.HeadsetLightingControllerTest PROPERTIES TIMEOUT 30)
 endif()
 
 if(GHUB_BUILD_APP)
