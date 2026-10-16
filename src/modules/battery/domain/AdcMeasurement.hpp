@@ -9,14 +9,13 @@
 namespace ghub::battery {
 
 // Medição de bateria da feature HID++ 0x1f20 (ADC measurement): bytes 0-1 = tensão em mV (big-endian), byte 2 =
-// sinalizadores. Conversão e sinalizadores conforme o kernel Linux, drivers/hid/hid-logitech-hidpp.c linhas
-// 1862-1932 (hidpp20_map_adc_measurement_1f20_capacity: tabela e busca; hidpp20_map_adc_measurement_1f20:
-// sinalizadores e tensão big-endian), master
-// 2f2f7eeef8b0a1a9b9ca998231419873ccae8d4e, verificado em 2026-10-15. A curva é uma estimativa (o kernel avisa que
-// pode não servir a todo dispositivo) e pode diferir do que o G HUB mostra.
+// sinalizadores. A conversão mV -> % usa a curva de descarga e o algoritmo do G HUB (ADR-0033; evidência em
+// docs/device-support/evidence/2026-10-16-g733-curva-bateria-ghub.md), não a tabela do kernel. Carregando, o G HUB
+// usa outra curva, que não está implementada: o valor só é confiável descarregando.
 //
-// Nível em % pela tabela de 100 degraus do kernel: o primeiro degrau cuja tensão é <= à medida dá 100 - índice;
-// abaixo do último (3399 mV) ou com tensão 0, 0.
+// Nível em %: round((E_total - E) / E_total * 100), em float, com E a energia da linha da curva escolhida (menor
+// tensão >= à medida; a primeira entre repetidas) e E_total a da menor tensão (3,460 V). Fora da faixa da curva,
+// satura em 0 % / 100 %; tensão 0 dá 0 %.
 [[nodiscard]] int capacityFromMillivolts(int millivolts) noexcept;
 
 // Sinalizadores: 0x01 descarregando, 0x03 carregando, 0x07 cheia, 0x0F e qualquer outro desconhecido (nesse caso o

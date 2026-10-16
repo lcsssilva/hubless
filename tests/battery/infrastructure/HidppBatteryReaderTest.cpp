@@ -75,7 +75,7 @@ TEST_F(HidppBatteryReaderTest, ReadsTheCapturedBytesWithTheExactRequestSequence)
     ASSERT_TRUE(reading.has_value()) << reading.error().detail;
     EXPECT_EQ(reading->chargeState(), ChargeState::Discharging);
     ASSERT_TRUE(reading->currentLevel().has_value());
-    EXPECT_EQ(reading->currentLevel()->percent(), 80);
+    EXPECT_EQ(reading->currentLevel()->percent(), 83) << "3821 mV na curva do G HUB (ADR-0033)";
     EXPECT_EQ(sequence(), (std::vector<std::string>{"root 1f20", "1f20 fn0"}));
     EXPECT_EQ(openedPaths, (std::vector<std::filesystem::path>{"/dev/hidraw3"}));
     for (const auto& frame : io->written()) {
@@ -93,7 +93,7 @@ TEST_F(HidppBatteryReaderTest, ChargingFlagIsCharging)
 
     ASSERT_TRUE(reading.has_value()) << reading.error().detail;
     EXPECT_EQ(reading->chargeState(), ChargeState::Charging);
-    EXPECT_EQ(reading->currentLevel()->percent(), 95) << "4000 mV na tabela do kernel";
+    EXPECT_EQ(reading->currentLevel()->percent(), 100) << "4000 mV acima da curva do G HUB satura em 100 (ADR-0033)";
 }
 
 TEST_F(HidppBatteryReaderTest, ErrorFiveMeansTheHeadsetIsOffOrOutOfRange)

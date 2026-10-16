@@ -9,35 +9,36 @@ using ghub::battery::ChargeState;
 using ghub::battery::readingFromAdc;
 using ghub::shared_kernel::ErrorCode;
 
-// Tabela do kernel Linux (hid-logitech-hidpp.c, hidpp20_map_adc_measurement_1f20_capacity): o primeiro degrau cuja
-// tensão é <= à medida dá 100 - índice.
-TEST(AdcMeasurementTest, CapacityFollowsTheKernelTablePoints)
+// Curva e algoritmo do G HUB (ADR-0033): valores calculados e validados contra telas do G HUB.
+TEST(AdcMeasurementTest, CapacityFollowsTheGHubCurve)
 {
-    EXPECT_EQ(capacityFromMillivolts(4030), 100);
-    EXPECT_EQ(capacityFromMillivolts(4500), 100);
-    EXPECT_EQ(capacityFromMillivolts(4029), 99);
-    EXPECT_EQ(capacityFromMillivolts(3820), 80);
-    EXPECT_EQ(capacityFromMillivolts(3819), 79);
-    EXPECT_EQ(capacityFromMillivolts(3529), 6);
-    EXPECT_EQ(capacityFromMillivolts(3525), 5);
-    EXPECT_EQ(capacityFromMillivolts(3499), 4);
-    EXPECT_EQ(capacityFromMillivolts(3399), 1);
-}
-
-TEST(AdcMeasurementTest, BelowTheLastStepOrZeroIsZeroPercent)
-{
-    EXPECT_EQ(capacityFromMillivolts(3398), 0);
-    EXPECT_EQ(capacityFromMillivolts(3000), 0);
     EXPECT_EQ(capacityFromMillivolts(0), 0);
+    EXPECT_EQ(capacityFromMillivolts(3000), 0);
+    EXPECT_EQ(capacityFromMillivolts(3460), 0);
+    EXPECT_EQ(capacityFromMillivolts(3461), 0);
+    EXPECT_EQ(capacityFromMillivolts(3600), 4);
+    EXPECT_EQ(capacityFromMillivolts(3700), 23);
+    EXPECT_EQ(capacityFromMillivolts(3786), 63);
+    EXPECT_EQ(capacityFromMillivolts(3788), 64);
+    EXPECT_EQ(capacityFromMillivolts(3792), 67);
+    EXPECT_EQ(capacityFromMillivolts(3804), 75);
+    EXPECT_EQ(capacityFromMillivolts(3815), 81);
+    EXPECT_EQ(capacityFromMillivolts(3816), 82);
+    EXPECT_EQ(capacityFromMillivolts(3821), 83);
+    EXPECT_EQ(capacityFromMillivolts(3830), 88);
+    EXPECT_EQ(capacityFromMillivolts(3867), 99);
+    EXPECT_EQ(capacityFromMillivolts(3870), 100);
+    EXPECT_EQ(capacityFromMillivolts(3871), 100);
+    EXPECT_EQ(capacityFromMillivolts(4200), 100);
 }
 
-TEST(AdcMeasurementTest, TheCapturedMeasurementsGiveWhatTheKernelWould)
+// C-00/C-01 do G733: o G HUB mostrou 3792 mV -> 67 %, 3788 -> 64 %, 3786 -> 63 %. O 67 % de 3792 mV só sai usando a
+// primeira linha entre as de tensão repetida (com a segunda daria 66 %).
+TEST(AdcMeasurementTest, MatchesWhatGHubShowedInCapturesC00AndC01)
 {
-    // C-01 do G733: 0e ed 01 = 3821 mV, 0e dc 01 = 3804, 0e ca 01 = 3786, 0e f1 01 = 3825.
-    EXPECT_EQ(capacityFromMillivolts(3821), 80);
-    EXPECT_EQ(capacityFromMillivolts(3804), 77);
-    EXPECT_EQ(capacityFromMillivolts(3786), 75);
-    EXPECT_EQ(capacityFromMillivolts(3825), 80);
+    EXPECT_EQ(capacityFromMillivolts(3792), 67);
+    EXPECT_EQ(capacityFromMillivolts(3788), 64);
+    EXPECT_EQ(capacityFromMillivolts(3786), 63);
 }
 
 TEST(AdcMeasurementTest, ReadingFromTheCapturedBytes)
@@ -47,10 +48,10 @@ TEST(AdcMeasurementTest, ReadingFromTheCapturedBytes)
     ASSERT_TRUE(reading.has_value());
     EXPECT_EQ(reading->chargeState(), ChargeState::Discharging);
     ASSERT_TRUE(reading->currentLevel().has_value());
-    EXPECT_EQ(reading->currentLevel()->percent(), 80);
+    EXPECT_EQ(reading->currentLevel()->percent(), 83);
 }
 
-TEST(AdcMeasurementTest, FlagsMapAsInTheKernel)
+TEST(AdcMeasurementTest, FlagsMapToChargeStates)
 {
     EXPECT_EQ(readingFromAdc(std::vector<std::uint8_t>{0x0F, 0x00, 0x03})->chargeState(), ChargeState::Charging);
     EXPECT_EQ(readingFromAdc(std::vector<std::uint8_t>{0x0F, 0x00, 0x07})->chargeState(), ChargeState::Full);
