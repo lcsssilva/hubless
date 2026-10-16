@@ -3495,12 +3495,29 @@ TestCase {
         verify(window !== null);
     }
 
-    function test_animationsCombosListsTheFiveAnimations() {
+    function test_animationsCombosListsTheSixAnimations() {
         const window = createAnimationMain(createAnimationFake());
         const combo = findItem(window, "animationKindCombo");
-        compare(combo.count, 5);
-        compare([0, 1, 2, 3, 4].map(i => combo.textAt(i)).join(","),
-                "Ciclo de cores,Onda,Estrelas,Degradê,Visualizador de áudio");
+        compare(combo.count, 6);
+        compare([0, 1, 2, 3, 4, 5].map(i => combo.textAt(i)).join(","),
+                "Ciclo de cores,Onda,Estrelas,Degradê,Visualizador de áudio,Amostragem da tela");
+    }
+
+    function test_animationsScreenKindShowsThePrivacyNoticeOnlyForScreenSampling() {
+        const window = createAnimationMain(createAnimationFake());
+        const combo = findItem(window, "animationKindCombo");
+        compare(findItem(window, "animationScreenNotice").visible, false);
+        combo.currentIndex = 4; // visualizador de áudio: não mostra o aviso da tela
+        compare(findItem(window, "animationScreenNotice").visible, false);
+        combo.currentIndex = 5;
+        tryVerify(() => findItem(window, "animationScreenNotice").visible);
+        const notice = findItem(window, "animationScreenNotice").text;
+        verify(notice.indexOf("tela") >= 0);
+        verify(notice.indexOf("permissão") >= 0);
+        verify(notice.indexOf("nenhuma imagem") >= 0 || notice.indexOf("Nenhuma imagem") >= 0);
+        compare(window.softwareAnimationController.startCalls.length, 0); // escolher não inicia nada
+        findItem(window, "animationStartButton").clicked();
+        compare(window.softwareAnimationController.startCalls[0].kind, "screen");
     }
 
     function test_animationsStartSendsTheChosenKindAndParameters() {

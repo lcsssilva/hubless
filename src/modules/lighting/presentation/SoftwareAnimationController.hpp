@@ -4,6 +4,8 @@
 #include "modules/lighting/application/AudioVisualizer.hpp"
 #include "modules/lighting/application/LiveKeyboardSession.hpp"
 #include "modules/lighting/application/RunSoftwareAnimation.hpp"
+#include "modules/lighting/application/ScreenColorSource.hpp"
+#include "modules/lighting/application/ScreenSampler.hpp"
 #include "shared_kernel/Clock.hpp"
 
 #include <QColor>
@@ -22,7 +24,9 @@ namespace ghub::lighting::presentation {
 // por clique do usuário e abre a sua PRÓPRIA sessão ao vivo (o mesmo lease do modo ao vivo: com o modo ao vivo ligado,
 // ou com outro programa no teclado, a abertura falha com "ocupado" e nada é enviado). stop(), a perda de acesso, uma
 // falha de envio, releaseForSleep() e o destrutor devolvem o controle ao firmware. A captura de áudio do visualizador
-// só existe entre o início e o fim da animação "audio". Cada operação (abrir, quadro, fechar) roda numa thread de
+// só existe entre o início e o fim da animação "audio"; a captura de tela ("screen", INC-021 R4) idem, e o sistema
+// pede a permissão ao usuário a cada início (o diálogo bloqueia só a thread de trabalho; parar ou destruir o
+// controlador durante o diálogo cancela o pedido). Cada operação (abrir, quadro, fechar) roda numa thread de
 // trabalho, uma por vez; o QTimer só dispara o próximo quadro quando o anterior terminou (o limite de taxa vem do caso
 // de uso RunSoftwareAnimation com o relógio injetado). A cor nunca é registrada em log. Use sempre a partir da thread
 // que possui o objeto.
@@ -38,8 +42,8 @@ public:
     // `starSeed` alimenta a animação "stars" (injetada: testes determinísticos). Todas as referências precisam
     // sobreviver ao controlador.
     SoftwareAnimationController(const application::StartLiveKeyboardSession& start, const shared_kernel::Clock& clock,
-                                audio_processing::AudioLevelSource& audio, std::uint32_t starSeed,
-                                QObject* parent = nullptr);
+                                audio_processing::AudioLevelSource& audio, application::ScreenColorSource& screen,
+                                std::uint32_t starSeed, QObject* parent = nullptr);
     ~SoftwareAnimationController() override;
 
     SoftwareAnimationController(const SoftwareAnimationController&) = delete;
@@ -53,8 +57,8 @@ public:
     [[nodiscard]] int framesSent() const { return framesSent_; }
     [[nodiscard]] int framesPerSecond() const { return framesPerSecond_; }
 
-    // `kind`: cycle, wave, stars, keyframes ou audio. `color`: matiz inicial dos keyframes, cor das estrelas e das
-    // barras; `color2`: segunda cor dos keyframes. `periodSeconds` (1..60): volta do ciclo/onda ou ida e volta dos
+    // `kind`: cycle, wave, stars, keyframes, audio ou screen. `color`: matiz inicial dos keyframes, cor das estrelas e
+    // das barras; `color2`: segunda cor dos keyframes. `periodSeconds` (1..60): volta do ciclo/onda ou ida e volta dos
     // keyframes; `reverse`: onda da direita para a esquerda; `density` (0..100): estrelas; `framesPerSecond` (1..20,
     // padrão do caso de uso 10). Já em andamento, ocupado ou `kind` desconhecido: não abre nada.
     Q_INVOKABLE void start(const QString& kind, const QColor& color, const QColor& color2, int periodSeconds,
@@ -70,6 +74,7 @@ private:
     enum class Job : std::uint8_t { Start, Tick, Stop };
     struct Plan {
         bool audio = false;
+        bool screen = false;
         domain::RgbColor audioColor{0, 0, 0};
         application::RunSoftwareAnimation::FrameSource source;
         unsigned framesPerSecond = 10;
@@ -91,13 +96,16 @@ private:
     void onFinished();
     void onTimer();
     void releaseResources();
+    void cancelPendingScreenRequest();
 
     const application::StartLiveKeyboardSession* start_; // não nulo
     const shared_kernel::Clock* clock_;                  // não nulo
     audio_processing::AudioLevelSource* audio_;          // não nulo
+    application::ScreenColorSource* screen_;             // não nulo
     std::uint32_t starSeed_;
     // Ordem de destruição (inversa): animação, sessão (devolve o controle), visualizador (fecha a captura).
     std::unique_ptr<application::AudioVisualizer> visualizer_;
+    std::unique_ptr<application::ScreenSampler> sampler_;
     std::unique_ptr<application::LiveKeyboardSession> session_;
     std::unique_ptr<application::RunSoftwareAnimation> animation_;
     QFutureWatcher<Outcome> watcher_;
@@ -110,6 +118,7 @@ private:
     bool running_ = false;
     bool jobRunning_ = false;
     bool stopRequested_ = false;
+    bool screenStartPending_ = false; // Start de "screen" em andamento (diálogo de permissão possivelmente aberto)
 };
 
 } // namespace ghub::lighting::presentation

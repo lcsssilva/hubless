@@ -20,7 +20,8 @@ ColumnLayout {
         {name: qsTr("Onda"), kind: "wave"},
         {name: qsTr("Estrelas"), kind: "stars"},
         {name: qsTr("Degradê"), kind: "keyframes"},
-        {name: qsTr("Visualizador de áudio"), kind: "audio"}
+        {name: qsTr("Visualizador de áudio"), kind: "audio"},
+        {name: qsTr("Amostragem da tela"), kind: "screen"}
     ]
     readonly property string kind: kinds[Math.max(kindCombo.currentIndex, 0)].kind
     property color secondColor: "#0000ff"
@@ -140,6 +141,16 @@ ColumnLayout {
         font.pixelSize: 12
         color: Theme.foregroundMedium
         text: qsTr("O visualizador captura o áudio da saída padrão apenas enquanto estiver ligado. Nenhum áudio é gravado: só os níveis por banda desenham as barras.")
+    }
+
+    Label {
+        objectName: "animationScreenNotice"
+        Layout.fillWidth: true
+        visible: panel.kind === "screen"
+        wrapMode: Text.WordWrap
+        font.pixelSize: 12
+        color: Theme.foregroundMedium
+        text: qsTr("A amostragem captura a tela apenas enquanto estiver ligada, e o sistema pede a sua permissão a cada vez que você inicia. Nenhuma imagem é gravada nem guardada: só a cor média de 10 faixas da tela desenha o teclado.")
     }
 
     Label {
