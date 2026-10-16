@@ -1,7 +1,7 @@
 #pragma once
 
-#include "modules/pointer/application/OnboardBackupStore.hpp"
-#include "modules/pointer/application/OnboardMemory.hpp"
+#include "modules/onboard_memory/application/OnboardBackupStore.hpp"
+#include "modules/onboard_memory/application/OnboardMemory.hpp"
 
 #include <algorithm>
 #include <functional>
@@ -18,7 +18,7 @@ namespace ghub::fakes {
 // injetadas. writeSector guarda os bytes, salvo se `postWriteOverride` estiver definido (simula mouse que
 // devolve dados diferentes na releitura).
 struct FakeOnboardState {
-    pointer::OnboardLayout layout{.sectorSize = 255, .profileCount = 5};
+    onboard_memory::OnboardLayout layout{.sectorSize = 255, .profileCount = 5};
     std::uint8_t mode = 1;
     std::uint16_t currentSector = 1;
     std::map<std::uint16_t, std::vector<std::uint8_t>> sectors;
@@ -35,14 +35,14 @@ struct FakeOnboardState {
     [[nodiscard]] int count(const std::string& call) const { return static_cast<int>(std::ranges::count(calls, call)); }
 };
 
-class FakeOnboardMemory final : public pointer::OnboardMemory {
+class FakeOnboardMemory final : public onboard_memory::OnboardMemory {
 public:
     explicit FakeOnboardMemory(FakeOnboardState& state) : state_(&state) { ++state_->liveMemories; }
     FakeOnboardMemory(const FakeOnboardMemory&) = delete;
     FakeOnboardMemory& operator=(const FakeOnboardMemory&) = delete;
     ~FakeOnboardMemory() override { --state_->liveMemories; }
 
-    shared_kernel::Result<pointer::OnboardLayout> describe() override
+    shared_kernel::Result<onboard_memory::OnboardLayout> describe() override
     {
         state_->calls.emplace_back("describe");
         if (state_->describeError) {
@@ -84,9 +84,9 @@ private:
     FakeOnboardState* state_;
 };
 
-class FakeOnboardMemoryConnector final : public pointer::OnboardMemoryConnector {
+class FakeOnboardMemoryConnector final : public onboard_memory::OnboardMemoryConnector {
 public:
-    shared_kernel::Result<std::unique_ptr<pointer::OnboardMemory>> open() override
+    shared_kernel::Result<std::unique_ptr<onboard_memory::OnboardMemory>> open() override
     {
         ++state.opens;
         state.calls.emplace_back("open");
@@ -100,7 +100,7 @@ public:
 };
 
 // Cópias em memória. `saveIfAbsent` registra a chamada; se já houver cópia, mantém a antiga.
-class FakeOnboardBackupStore final : public pointer::OnboardBackupStore {
+class FakeOnboardBackupStore final : public onboard_memory::OnboardBackupStore {
 public:
     shared_kernel::Result<std::optional<std::vector<std::uint8_t>>> load(std::uint16_t sector) override
     {

@@ -7,7 +7,7 @@
 #include <span>
 #include <vector>
 
-namespace ghub::pointer {
+namespace ghub::onboard_memory {
 
 struct OnboardLayout {
     std::uint16_t sectorSize;
@@ -52,4 +52,4 @@ protected:
     OnboardMemoryConnector& operator=(OnboardMemoryConnector&&) = default;
 };
 
-} // namespace ghub::pointer
+} // namespace ghub::onboard_memory

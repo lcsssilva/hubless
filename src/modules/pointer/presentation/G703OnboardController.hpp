@@ -6,6 +6,7 @@
 #include <QObject>
 #include <QString>
 #include <QVariantList>
+#include <QVariantMap>
 
 #include <memory>
 #include <optional>
@@ -13,7 +14,8 @@
 
 namespace ghub::pointer {
 
-// Lê, grava e restaura o perfil onboard do G703 (DPI e taxa) por ação do usuário, fora da thread de UI
+// Lê, grava e restaura o perfil onboard do G703 (taxa, estágios de DPI, estágio do DPI shift e LEDs primário e
+// logotipo, INC-020) por ação do usuário, fora da thread de UI
 // (ADR-0017 §3, INC-011 R10). Nada é executado na construção. Uma operação por vez: um pedido feito durante uma
 // operação é recusado ("aguarde a operação em andamento"), nunca enfileirado, pois a gravação é persistente.
 // A gravação é validada pelo domínio (G703ProfileSettings::make) antes de iniciar o trabalho. O destrutor espera
@@ -26,6 +28,9 @@ class G703OnboardController final : public QObject {
     Q_PROPERTY(int reportRateHz READ reportRateHz NOTIFY stateChanged)
     Q_PROPERTY(QVariantList dpiStages READ dpiStages NOTIFY stateChanged)
     Q_PROPERTY(int defaultStage READ defaultStage NOTIFY stateChanged)
+    Q_PROPERTY(int dpiShiftStage READ dpiShiftStage NOTIFY stateChanged)
+    Q_PROPERTY(QVariantMap primaryLed READ primaryLed NOTIFY stateChanged)
+    Q_PROPERTY(QVariantMap logoLed READ logoLed NOTIFY stateChanged)
     Q_PROPERTY(bool backupExists READ backupExists NOTIFY stateChanged)
     Q_PROPERTY(int activeSector READ activeSector NOTIFY stateChanged)
 
@@ -44,12 +49,20 @@ public:
     [[nodiscard]] int reportRateHz() const { return reportRateHz_; }
     [[nodiscard]] QVariantList dpiStages() const { return dpiStages_; }
     [[nodiscard]] int defaultStage() const { return defaultStage_; }
+    // Índice do estágio do DPI shift; -1 = nenhum.
+    [[nodiscard]] int dpiShiftStage() const { return dpiShiftStage_; }
+    // Mapas {kind: "off"|"fixed"|"cycle"|"raw", color: "#rrggbb", periodMs, brightness, raw: "xx xx ..."}.
+    [[nodiscard]] QVariantMap primaryLed() const { return primaryLed_; }
+    [[nodiscard]] QVariantMap logoLed() const { return logoLed_; }
     [[nodiscard]] bool backupExists() const { return backupExists_; }
     [[nodiscard]] int activeSector() const { return activeSector_; }
 
     Q_INVOKABLE void readFromMouse();
     // Valores inválidos: status com o motivo, nada é executado.
-    Q_INVOKABLE void writeToMouse(int reportRateHz, const QVariantList& dpiStages, int defaultStage);
+    // `dpiShiftStage` -1 = nenhum. Um LED de tipo "raw" (formato não interpretado, devolvido como foi lido) não é
+    // alterado.
+    Q_INVOKABLE void writeToMouse(int reportRateHz, const QVariantList& dpiStages, int defaultStage, int dpiShiftStage,
+                                  const QVariantMap& primaryLed, const QVariantMap& logoLed);
     Q_INVOKABLE void restoreBackup();
 
 signals:
@@ -79,6 +92,9 @@ private:
     QVariantList dpiStages_;
     int reportRateHz_ = 0;
     int defaultStage_ = 0;
+    int dpiShiftStage_ = -1;
+    QVariantMap primaryLed_;
+    QVariantMap logoLed_;
     int activeSector_ = 0;
     bool loaded_ = false;
     bool backupExists_ = false;

@@ -1,4 +1,4 @@
-#include "modules/pointer/infrastructure/FileOnboardBackupStore.hpp"
+#include "modules/onboard_memory/infrastructure/FileOnboardBackupStore.hpp"
 
 #include <gtest/gtest.h>
 
@@ -11,7 +11,7 @@
 
 #include <sys/stat.h>
 
-using ghub::pointer::infrastructure::FileOnboardBackupStore;
+using ghub::onboard_memory::infrastructure::FileOnboardBackupStore;
 using ghub::shared_kernel::ErrorCode;
 namespace fs = std::filesystem;
 
@@ -22,7 +22,7 @@ protected:
     void SetUp() override
     {
         root = fs::temp_directory_path() /
-               ("ghub_pointer_backup_" + std::to_string(::testing::UnitTest::GetInstance()->random_seed()) + "_" +
+               ("ghub_onboard_backup_" + std::to_string(::testing::UnitTest::GetInstance()->random_seed()) + "_" +
                 ::testing::UnitTest::GetInstance()->current_test_info()->name());
         fs::remove_all(root);
         dir = root / "ghub-linux" / "backup"; // não existe: o repositório cria
@@ -59,7 +59,7 @@ protected:
 
 TEST_F(FileOnboardBackupStoreTest, LoadOfAnAbsentBackupIsEmptyNotAnError)
 {
-    FileOnboardBackupStore store{dir};
+    FileOnboardBackupStore store{dir, "g703-4086-sector-"};
 
     const auto loaded = store.load(1);
 
@@ -69,7 +69,7 @@ TEST_F(FileOnboardBackupStoreTest, LoadOfAnAbsentBackupIsEmptyNotAnError)
 
 TEST_F(FileOnboardBackupStoreTest, SaveCreatesTheDirectoryPrivatelyAndTheFileWithTheExactBytes)
 {
-    FileOnboardBackupStore store{dir};
+    FileOnboardBackupStore store{dir, "g703-4086-sector-"};
     const auto data = bytes(255, 7);
 
     const auto saved = store.saveIfAbsent(1, data);
@@ -87,7 +87,7 @@ TEST_F(FileOnboardBackupStoreTest, SaveCreatesTheDirectoryPrivatelyAndTheFileWit
 
 TEST_F(FileOnboardBackupStoreTest, SaveNeverOverwritesAnExistingBackup)
 {
-    FileOnboardBackupStore store{dir};
+    FileOnboardBackupStore store{dir, "g703-4086-sector-"};
     const auto original = bytes(255, 1);
     ASSERT_TRUE(store.saveIfAbsent(1, original).has_value());
 
@@ -99,7 +99,7 @@ TEST_F(FileOnboardBackupStoreTest, SaveNeverOverwritesAnExistingBackup)
 
 TEST_F(FileOnboardBackupStoreTest, SavingLeavesNoTemporaryFileBehind)
 {
-    FileOnboardBackupStore store{dir};
+    FileOnboardBackupStore store{dir, "g703-4086-sector-"};
     ASSERT_TRUE(store.saveIfAbsent(1, bytes(255, 1)).has_value());
     ASSERT_TRUE(store.saveIfAbsent(1, bytes(255, 2)).has_value());
 
@@ -113,7 +113,7 @@ TEST_F(FileOnboardBackupStoreTest, SavingLeavesNoTemporaryFileBehind)
 
 TEST_F(FileOnboardBackupStoreTest, EachSectorHasItsOwnFile)
 {
-    FileOnboardBackupStore store{dir};
+    FileOnboardBackupStore store{dir, "g703-4086-sector-"};
     ASSERT_TRUE(store.saveIfAbsent(1, bytes(255, 1)).has_value());
     ASSERT_TRUE(store.saveIfAbsent(0x0101, bytes(255, 2)).has_value());
 
@@ -127,7 +127,7 @@ TEST_F(FileOnboardBackupStoreTest, LoadRefusesAFileLargerThanTheSectorLimit)
 {
     fs::create_directories(dir);
     std::ofstream{dir / "g703-4086-sector-0001.bin", std::ios::binary}.write(std::string(4097, 'x').c_str(), 4097);
-    FileOnboardBackupStore store{dir};
+    FileOnboardBackupStore store{dir, "g703-4086-sector-"};
 
     const auto loaded = store.load(1);
 
@@ -137,7 +137,7 @@ TEST_F(FileOnboardBackupStoreTest, LoadRefusesAFileLargerThanTheSectorLimit)
 
 TEST_F(FileOnboardBackupStoreTest, SaveRefusesEmptyOrOversizedData)
 {
-    FileOnboardBackupStore store{dir};
+    FileOnboardBackupStore store{dir, "g703-4086-sector-"};
 
     EXPECT_EQ(store.saveIfAbsent(1, {}).error().code, ErrorCode::InvalidArgument);
     EXPECT_EQ(store.saveIfAbsent(1, bytes(4097, 0)).error().code, ErrorCode::InvalidArgument);
@@ -148,7 +148,7 @@ TEST_F(FileOnboardBackupStoreTest, UnwritableDirectoryIsBackendUnavailable)
 {
     fs::create_directories(root);
     std::ofstream{root / "arquivo"} << "x";
-    FileOnboardBackupStore store{root / "arquivo" / "backup"}; // pai é um arquivo
+    FileOnboardBackupStore store{root / "arquivo" / "backup", "g703-4086-sector-"}; // pai é um arquivo
 
     const auto saved = store.saveIfAbsent(1, bytes(255, 1));
 

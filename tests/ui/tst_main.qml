@@ -181,14 +181,19 @@ TestCase {
             property int reportRateHz: 0
             property var dpiStages: []
             property int defaultStage: 0
+            property int dpiShiftStage: -1
+            property var primaryLed: ({kind: "off", color: "#000000", periodMs: 0, brightness: 0, raw: ""})
+            property var logoLed: ({kind: "off", color: "#000000", periodMs: 0, brightness: 0, raw: ""})
             property bool backupExists: false
             property int activeSector: 0
             property int readCalls: 0
             property int restoreCalls: 0
             property var writeCalls: []
+            property var ledWrites: []
             function readFromMouse() { readCalls++ }
-            function writeToMouse(rate, stages, defaultStage) {
-                writeCalls = writeCalls.concat([[rate, stages.slice(), defaultStage]])
+            function writeToMouse(rate, stages, defaultStage, shift, primary, logo) {
+                writeCalls = writeCalls.concat([[rate, stages.slice(), defaultStage, shift, primary.kind, logo.kind]])
+                ledWrites = ledWrites.concat([[primary, logo]])
             }
             function restoreBackup() { restoreCalls++ }
         }
@@ -793,7 +798,43 @@ TestCase {
         tryVerify(() => allItems(window).filter(item => item.objectName === "onboardDpiField").length === 2);
         compare(allItems(window).filter(item => item.objectName === "onboardDpiField")[0].value, 7050);
         findItem(window, "onboardWriteButton").clicked();
-        compare(JSON.stringify(onboard.writeCalls), JSON.stringify([[1000, [7050, 1600], 1]]));
+        compare(JSON.stringify(onboard.writeCalls), JSON.stringify([[1000, [7050, 1600], 1, -1, "off", "off"]]));
+    }
+
+    // INC-020: estágio do DPI shift e LEDs editados são repassados ao controlador.
+    function test_onboardEditorForwardsShiftAndLedChoices() {
+        const onboard = createOnboardFake({loaded: true, dpiStages: [400, 800], reportRateHz: 1000, dpiShiftStage: 0});
+        const window = createMainWithOnboard(onboard);
+        openDeviceTab(window, "G703", "onboard");
+        const shift = findItem(window, "onboardShiftBox");
+        tryVerify(() => shift.visible && shift.width > 0);
+        compare(shift.currentIndex, 1);
+        shift.activated(0);
+        const kind = findItem(window, "onboardPrimaryLedKindBox");
+        kind.activated(1);
+        const color = findItem(window, "onboardPrimaryLedColorField");
+        tryCompare(color, "visible", true);
+        color.text = "#00ffff";
+        color.textEdited();
+        findItem(window, "onboardLogoLedKindBox").activated(2);
+        tryCompare(findItem(window, "onboardLogoLedPeriodField"), "visible", true);
+        findItem(window, "onboardWriteButton").clicked();
+        compare(onboard.writeCalls[0].slice(3), [-1, "fixed", "cycle"]);
+        compare(onboard.ledWrites[0][0].color, "#00ffff");
+        compare(onboard.ledWrites[0][1].periodMs, 5000);
+        compare(onboard.ledWrites[0][1].brightness, 100);
+    }
+
+    function test_onboardRawLedIsShownNotEditableAndSentBackUnchanged() {
+        const raw = {kind: "raw", color: "#000000", periodMs: 0, brightness: 0, raw: "0b 00 00 00 00 00 14 00 00 00 00"};
+        const onboard = createOnboardFake({loaded: true, dpiStages: [800], reportRateHz: 1000, primaryLed: raw});
+        const window = createMainWithOnboard(onboard);
+        openDeviceTab(window, "G703", "onboard");
+        tryVerify(() => findItem(window, "onboardPrimaryLedRawLabel").visible);
+        compare(findItem(window, "onboardPrimaryLedKindBox").visible, false);
+        findItem(window, "onboardWriteButton").clicked();
+        compare(onboard.ledWrites[0][0].kind, "raw");
+        compare(onboard.ledWrites[0][0].raw, raw.raw);
     }
 
     function test_onboardRestoreEnabledOnlyWithBackupAndButtonsDisabledWhileBusy() {
@@ -2547,7 +2588,7 @@ TestCase {
         mouseClick(plus);
         tryCompare(fields[0], "value", 7100);
         findItem(window, "onboardWriteButton").clicked();
-        compare(JSON.stringify(onboard.writeCalls), JSON.stringify([[1000, [7100, 1600], 0]]));
+        compare(JSON.stringify(onboard.writeCalls), JSON.stringify([[1000, [7100, 1600], 0, -1, "off", "off"]]));
     }
 
     // Item 6/7: sidetone com o valor à direita e os extremos; Brio com controles próprios.

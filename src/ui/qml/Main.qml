@@ -526,7 +526,7 @@ ApplicationWindow {
                 // que valida e grava; nada é lido nem gravado na abertura.
                 SectionHeader {
                     text: qsTr("Memória do mouse")
-                    help: qsTr("Grava na memória do mouse (perfil ativo). Antes da primeira gravação é salva uma cópia do perfil. Feche o Piper e não use o ratbagd ao mesmo tempo: um Commit dele sobrescreve estes valores.")
+                    help: qsTr("Grava na memória do mouse (perfil ativo): taxa, estágios de DPI, estágio do DPI shift e LEDs. Antes da primeira gravação é salva uma cópia do perfil. Feche o Piper e não use o ratbagd ao mesmo tempo: um Commit dele sobrescreve estes valores.")
                     helpObjectName: "onboardNoticeLabel"
                 }
 
@@ -554,6 +554,9 @@ ApplicationWindow {
                     property var editStages: []
                     property int editDefault: 0
                     property int editRate: 1000
+                    property int editShift: -1
+                    property var editPrimaryLed: ({kind: "off"})
+                    property var editLogoLed: ({kind: "off"})
 
                     function syncFromController() {
                         if (window.g703OnboardController.busy) {
@@ -562,6 +565,9 @@ ApplicationWindow {
                         editStages = window.g703OnboardController.dpiStages.slice();
                         editDefault = window.g703OnboardController.defaultStage;
                         editRate = window.g703OnboardController.reportRateHz;
+                        editShift = window.g703OnboardController.dpiShiftStage;
+                        editPrimaryLed = window.g703OnboardController.primaryLed;
+                        editLogoLed = window.g703OnboardController.logoLed;
                     }
 
                     Component.onCompleted: syncFromController()
@@ -572,6 +578,9 @@ ApplicationWindow {
                         function onReportRateHzChanged() { onboardEditor.syncFromController() }
                         function onDpiStagesChanged() { onboardEditor.syncFromController() }
                         function onDefaultStageChanged() { onboardEditor.syncFromController() }
+                        function onDpiShiftStageChanged() { onboardEditor.syncFromController() }
+                        function onPrimaryLedChanged() { onboardEditor.syncFromController() }
+                        function onLogoLedChanged() { onboardEditor.syncFromController() }
                     }
 
                     SectionHeader { text: qsTr("Report rate (por segundo)") }
@@ -634,6 +643,34 @@ ApplicationWindow {
                         }
                     }
 
+                    SectionHeader { text: qsTr("Estágio do DPI shift") }
+
+                    GHubComboBox {
+                        objectName: "onboardShiftBox"
+                        Layout.fillWidth: true
+                        model: [qsTr("Nenhum")].concat(onboardEditor.editStages.map((dpi, i) => qsTr("Estágio ") + (i + 1)))
+                        currentIndex: Math.min(onboardEditor.editShift + 1, onboardEditor.editStages.length)
+                        onActivated: index => onboardEditor.editShift = index - 1
+                    }
+
+                    SectionHeader { text: qsTr("LEDs") }
+
+                    OnboardLedEditor {
+                        id: primaryLedEditor
+                        title: qsTr("Principal")
+                        idPrefix: "onboardPrimaryLed"
+                        value: onboardEditor.editPrimaryLed
+                        onEditedChanged: onboardEditor.editPrimaryLed = edited
+                    }
+
+                    OnboardLedEditor {
+                        id: logoLedEditor
+                        title: qsTr("Logotipo")
+                        idPrefix: "onboardLogoLed"
+                        value: onboardEditor.editLogoLed
+                        onEditedChanged: onboardEditor.editLogoLed = edited
+                    }
+
                     RowLayout {
                         Layout.fillWidth: true
 
@@ -656,6 +693,7 @@ ApplicationWindow {
                                 next.pop();
                                 onboardEditor.editStages = next;
                                 onboardEditor.editDefault = Math.min(onboardEditor.editDefault, next.length - 1);
+                                onboardEditor.editShift = Math.min(onboardEditor.editShift, next.length - 1);
                             }
                         }
                     }
@@ -668,7 +706,8 @@ ApplicationWindow {
                             text: qsTr("Gravar no mouse")
                             enabled: !window.g703OnboardController.busy
                             onClicked: window.g703OnboardController.writeToMouse(
-                                onboardEditor.editRate, onboardEditor.editStages, onboardEditor.editDefault)
+                                onboardEditor.editRate, onboardEditor.editStages, onboardEditor.editDefault,
+                                onboardEditor.editShift, onboardEditor.editPrimaryLed, onboardEditor.editLogoLed)
                         }
                         GHubButton {
                             objectName: "onboardRestoreButton"

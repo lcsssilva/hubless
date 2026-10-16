@@ -256,6 +256,8 @@ private slots:
         QTest::newRow("key") << 3 << 30U << QStringLiteral("tecla 30");
         QTest::newRow("macro") << 4 << 3U << QStringLiteral("macro (3 passos)");
         QTest::newRow("unknown") << 5 << 0U << QStringLiteral("desconhecida");
+        QTest::newRow("keyWithModifiers") << 3 << 0x0106U << QStringLiteral("tecla 6 + modificadores 0x01");
+        QTest::newRow("unrecognizedBytes") << 6 << 0x90050000U << QStringLiteral("não interpretado: 90 05 00 00");
     }
 
     void buttonActionTexts()
@@ -273,6 +275,9 @@ private slots:
             break;
         case 5:
             action = ButtonAction::unknown();
+            break;
+        case 6:
+            action = ButtonAction::unrecognized(value);
             break;
         default:
             break;
@@ -317,6 +322,29 @@ private slots:
         QCOMPARE(leds.at(1).toMap().value("mode").toString(), QStringLiteral("ciclo"));
         QCOMPARE(leds.at(2).toMap().value("mode").toString(), QStringLiteral("respiração"));
         QCOMPARE(leds.at(3).toMap().value("mode").toString(), QStringLiteral("desconhecido (9)"));
+    }
+
+    void ledWithRawBytesShowsThemAsNotInterpreted()
+    {
+        const auto raw =
+            LedState::create({.index = 0,
+                              .mode = LedMode::Unknown,
+                              .rawMode = 0x0b,
+                              .red = 0,
+                              .green = 0,
+                              .blue = 0,
+                              .colorDepth = 8,
+                              .brightness = 0,
+                              .effectDuration = 0,
+                              .supportedModes = {},
+                              .rawBytes = {0x0b, 0x00, 0x00, 0x00, 0x00, 0x00, 0x14, 0x00, 0x00, 0x00, 0x00}})
+                .value();
+        runner->setStatus(readyWith({profile(0, true, true, {}, {}, {raw})}));
+        model->onReadFinished();
+
+        const auto leds = profileMap(model->profiles(), 0).value("leds").toList();
+        QCOMPARE(leds.at(0).toMap().value("mode").toString(),
+                 QStringLiteral("não interpretado: 0b 00 00 00 00 00 14 00 00 00 00"));
     }
 
     void separateXyDpiShowsBothAxes()

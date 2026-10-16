@@ -24,3 +24,4 @@ BatteryBlock 1.0 BatteryBlock.qml
 EqualizerView 1.0 EqualizerView.qml
 InfoPage 1.0 InfoPage.qml
 SwitchRow 1.0 SwitchRow.qml
+OnboardLedEditor 1.0 OnboardLedEditor.qml

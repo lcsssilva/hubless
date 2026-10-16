@@ -5,7 +5,7 @@
 
 // Bytes reais dos setores onboard 0x0001 e 0x0002 do G703, lidos em 2026-10-14
 // (docs/device-support/evidence/2026-10-14-g703-onboard-dump). Gerado; não editar.
-namespace ghub::pointer::fixtures {
+namespace ghub::fixtures {
 
 inline constexpr std::array<std::uint8_t, 255> kSector0001 = {
     0x01, 0x00, 0x00, 0x8a, 0x1b, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0x00, 0xff,
@@ -63,4 +63,4 @@ inline constexpr std::array<std::uint8_t, 255> kDirectory0000 = {
 
 inline constexpr std::uint16_t kDirectory0000Crc = 0x4037;
 
-} // namespace ghub::pointer::fixtures
+} // namespace ghub::fixtures

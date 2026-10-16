@@ -1,11 +1,11 @@
-#include "modules/pointer/domain/OnboardDirectory.hpp"
-#include "G703SectorFixtures.hpp"
+#include "modules/onboard_memory/domain/OnboardDirectory.hpp"
+#include "fakes/G703SectorFixtures.hpp"
 
 #include <gtest/gtest.h>
 
 #include <vector>
 
-namespace ghub::pointer {
+namespace ghub::onboard_memory {
 namespace {
 
 using shared_kernel::ErrorCode;
@@ -72,4 +72,4 @@ TEST(OnboardDirectoryTest, ReadsUntilTheEndWithoutMarker)
 }
 
 } // namespace
-} // namespace ghub::pointer
+} // namespace ghub::onboard_memory

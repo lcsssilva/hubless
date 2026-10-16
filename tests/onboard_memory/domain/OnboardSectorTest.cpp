@@ -1,12 +1,12 @@
-#include "modules/pointer/domain/OnboardSector.hpp"
-#include "G703SectorFixtures.hpp"
+#include "modules/onboard_memory/domain/OnboardSector.hpp"
+#include "fakes/G703SectorFixtures.hpp"
 
 #include <gtest/gtest.h>
 
 #include <string_view>
 #include <vector>
 
-namespace ghub::pointer {
+namespace ghub::onboard_memory {
 namespace {
 
 using shared_kernel::ErrorCode;
@@ -100,4 +100,4 @@ TEST(OnboardSectorTest, EqualityComparesBytes)
 }
 
 } // namespace
-} // namespace ghub::pointer
+} // namespace ghub::onboard_memory

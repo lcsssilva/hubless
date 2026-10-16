@@ -1,24 +1,28 @@
 #include "modules/pointer/application/G703OnboardSettings.hpp"
-#include "../domain/G703SectorFixtures.hpp"
-#include "FakeOnboardMemory.hpp"
 #include "fakes/FakeClock.hpp"
 #include "fakes/FakeExternalProcessProbe.hpp"
+#include "fakes/FakeOnboardMemory.hpp"
+#include "fakes/G703SectorFixtures.hpp"
 
 #include <gtest/gtest.h>
 
 #include <algorithm>
 #include <chrono>
+#include <optional>
 #include <string>
 #include <vector>
 
+// O caminho seguro genérico (recusas, cópia, releitura, restauração) é coberto em
+// tests/onboard_memory/application/ActiveSectorEditorTest.cpp; aqui só o que é do G703: identidade do lease,
+// interpretação do setor e o byte a byte das edições (INC-020 R3).
 namespace ghub::pointer {
 namespace {
 
 using device_access::AccessRegistry;
 using device_access::ExternalOwner;
 using device_access::LeaseHolder;
-using device_access::LeaseRequest;
 using device_access::PhysicalInterfaceId;
+using onboard_memory::OnboardSector;
 using shared_kernel::ErrorCode;
 using Bytes = std::vector<std::uint8_t>;
 
@@ -37,7 +41,7 @@ Bytes directory()
 
 G703ProfileSettings twoStages()
 {
-    return G703ProfileSettings::make(1000, {7050, 1600}, 0).value();
+    return G703ProfileSettings::make(1000, {7050, 1600}, 0, 0, LedSetting::off(), LedSetting::off()).value();
 }
 
 class G703OnboardSettingsTest : public ::testing::Test {
@@ -75,221 +79,61 @@ protected:
     fakes::FakeOnboardBackupStore backup;
 };
 
-// --- recusas antes de tocar no dispositivo ---
-
-TEST_F(G703OnboardSettingsTest, WriteRefusesWhenExternalOwnerRunningWithoutOpeningTheNode)
-{
-    probe.setResult(std::vector<ExternalOwner>{ExternalOwner::Ratbagd});
-    const auto result = useCase().write(twoStages());
-    ASSERT_FALSE(result.has_value());
-    EXPECT_EQ(result.error().code, ErrorCode::DeviceBusy);
-    EXPECT_EQ(result.error().detail, "em uso por ratbagd");
-    EXPECT_EQ(connector.state.opens, 0);
-}
-
-TEST_F(G703OnboardSettingsTest, WriteRefusesWhenProbeFailsWithoutOpeningTheNode)
-{
-    probe.setResult(shared_kernel::fail(ErrorCode::BackendUnavailable, "sem /proc"));
-    const auto result = useCase().write(twoStages());
-    ASSERT_FALSE(result.has_value());
-    EXPECT_EQ(result.error().code, ErrorCode::BackendUnavailable);
-    EXPECT_EQ(result.error().detail, "sem /proc");
-    EXPECT_EQ(connector.state.opens, 0);
-}
-
-TEST_F(G703OnboardSettingsTest, WriteRefusesWhenLeaseIsHeldByAnotherOwner)
+TEST_F(G703OnboardSettingsTest, UsesTheG703ReceiverLeaseSoAnotherHolderBlocksEveryOperation)
 {
     const auto other = holdLease();
-    const auto result = useCase().write(twoStages());
-    ASSERT_FALSE(result.has_value());
-    EXPECT_EQ(result.error().code, ErrorCode::DeviceBusy);
-    EXPECT_EQ(connector.state.opens, 0);
-}
-
-TEST_F(G703OnboardSettingsTest, ReadAndRestoreAlsoRefuseWhenExternalOwnerRunning)
-{
-    probe.setResult(std::vector<ExternalOwner>{ExternalOwner::Piper});
+    EXPECT_EQ(useCase().write(twoStages()).error().code, ErrorCode::DeviceBusy);
     EXPECT_EQ(useCase().read().error().code, ErrorCode::DeviceBusy);
     EXPECT_EQ(useCase().restoreBackup().error().code, ErrorCode::DeviceBusy);
     EXPECT_EQ(connector.state.opens, 0);
 }
 
-TEST_F(G703OnboardSettingsTest, OpensTheNodeOnlyDuringTheOperationAndReleasesTheLease)
+TEST_F(G703OnboardSettingsTest, RefusesWhenExternalOwnerRunningWithoutOpeningTheNode)
 {
-    // Um resultado de sucesso qualquer: a leitura feliz entra no próximo ciclo; aqui só o ciclo de vida.
-    (void)useCase().write(twoStages());
-    EXPECT_EQ(connector.state.opens, 1);
-    EXPECT_EQ(connector.state.liveMemories, 0);
-    EXPECT_TRUE(holdLease().verify().has_value()); // o lease foi liberado
-}
-
-// --- recusas pelo estado do mouse: nenhuma escrita ---
-
-TEST_F(G703OnboardSettingsTest, RefusesWhenSectorSizeIsImplausible)
-{
-    connector.state.layout.sectorSize = 8;
+    probe.setResult(std::vector<ExternalOwner>{ExternalOwner::Ratbagd});
     const auto result = useCase().write(twoStages());
     ASSERT_FALSE(result.has_value());
-    EXPECT_EQ(result.error().code, ErrorCode::MalformedData);
-    EXPECT_TRUE(wroteNothing());
-    EXPECT_EQ(backup.saveCalls, 0);
+    EXPECT_EQ(result.error().detail, "em uso por ratbagd");
+    EXPECT_EQ(connector.state.opens, 0);
 }
 
-TEST_F(G703OnboardSettingsTest, RefusesWhenDescribeFails)
-{
-    connector.state.describeError = shared_kernel::DomainError{ErrorCode::BackendUnavailable, "sem resposta"};
-    const auto result = useCase().write(twoStages());
-    ASSERT_FALSE(result.has_value());
-    EXPECT_EQ(result.error().detail, "sem resposta");
-    EXPECT_TRUE(wroteNothing());
-}
-
-TEST_F(G703OnboardSettingsTest, RefusesWhenMouseIsNotInOnboardMode)
-{
-    connector.state.mode = 2;
-    const auto result = useCase().write(twoStages());
-    ASSERT_FALSE(result.has_value());
-    EXPECT_EQ(result.error().code, ErrorCode::BackendUnavailable);
-    EXPECT_EQ(result.error().detail, "mouse fora do modo onboard");
-    EXPECT_TRUE(wroteNothing());
-    EXPECT_EQ(backup.saveCalls, 0);
-}
-
-TEST_F(G703OnboardSettingsTest, RefusesActiveSectorOutsideOneToProfileCount)
-{
-    for (const std::uint16_t current : {std::uint16_t{0}, std::uint16_t{6}, std::uint16_t{0x0101}}) {
-        connector.state.currentSector = current;
-        const auto result = useCase().write(twoStages());
-        ASSERT_FALSE(result.has_value()) << current;
-        EXPECT_EQ(result.error().code, ErrorCode::MalformedData) << current;
-    }
-    EXPECT_TRUE(wroteNothing());
-    EXPECT_EQ(backup.saveCalls, 0);
-}
-
-TEST_F(G703OnboardSettingsTest, RefusesActiveSectorDisabledInTheDirectory)
-{
-    connector.state.currentSector = 2;
-    const auto result = useCase().write(twoStages());
-    ASSERT_FALSE(result.has_value());
-    EXPECT_EQ(result.error().code, ErrorCode::MalformedData);
-    EXPECT_TRUE(wroteNothing());
-    EXPECT_EQ(backup.saveCalls, 0);
-}
-
-TEST_F(G703OnboardSettingsTest, RefusesDirectoryWithInvalidCrc)
-{
-    connector.state.sectors[0][2] = 0x00; // estraga a entrada sem refazer o CRC
-    const auto result = useCase().write(twoStages());
-    ASSERT_FALSE(result.has_value());
-    EXPECT_EQ(result.error().code, ErrorCode::MalformedData);
-    EXPECT_TRUE(wroteNothing());
-}
-
-TEST_F(G703OnboardSettingsTest, RefusesActiveSectorWithInvalidCrc)
-{
-    connector.state.sectors[1][0] = 0x02; // estraga a taxa sem refazer o CRC
-    const auto result = useCase().write(twoStages());
-    ASSERT_FALSE(result.has_value());
-    EXPECT_EQ(result.error().code, ErrorCode::MalformedData);
-    EXPECT_TRUE(wroteNothing());
-    EXPECT_EQ(backup.saveCalls, 0);
-}
-
-TEST_F(G703OnboardSettingsTest, RefusesSectorWhoseLengthDiffersFromTheLayout)
-{
-    connector.state.sectors[1].pop_back();
-    const auto result = useCase().write(twoStages());
-    ASSERT_FALSE(result.has_value());
-    EXPECT_EQ(result.error().code, ErrorCode::MalformedData);
-    EXPECT_TRUE(wroteNothing());
-}
-
-TEST_F(G703OnboardSettingsTest, ReadRefusesWithTheSameSafetyChecks)
-{
-    connector.state.mode = 2;
-    EXPECT_EQ(useCase().read().error().detail, "mouse fora do modo onboard");
-    connector.state.mode = 1;
-    connector.state.currentSector = 2;
-    EXPECT_EQ(useCase().read().error().code, ErrorCode::MalformedData);
-}
-
-// --- leitura ---
-
-TEST_F(G703OnboardSettingsTest, ReadReturnsTheActiveProfileWithoutWritingAnything)
+TEST_F(G703OnboardSettingsTest, ReadReturnsTheInterpretedActiveProfileWithoutWritingAnything)
 {
     const auto snapshot = useCase().read();
     ASSERT_TRUE(snapshot.has_value());
     EXPECT_EQ(snapshot->sector, 1U);
-    EXPECT_EQ(snapshot->settings, G703ProfileSettings::make(1000, {7050}, 0).value());
+    EXPECT_EQ(snapshot->settings,
+              G703ProfileSettings::make(1000, {7050}, 0, 0, LedSetting::off(), LedSetting::off()).value());
     EXPECT_FALSE(snapshot->backupExists);
     EXPECT_TRUE(wroteNothing());
-    EXPECT_EQ(backup.saveCalls, 0);
-    EXPECT_EQ(connector.state.liveMemories, 0);
 }
 
-TEST_F(G703OnboardSettingsTest, ReadReportsAnExistingBackup)
+TEST_F(G703OnboardSettingsTest, ReadFailsWhenTheActiveSectorIsNotAG703Profile)
 {
-    backup.stored[1] = sector0001();
-    const auto snapshot = useCase().read();
-    ASSERT_TRUE(snapshot.has_value());
-    EXPECT_TRUE(snapshot->backupExists);
-}
-
-TEST_F(G703OnboardSettingsTest, ReadFailsWhenTheBackupStoreFails)
-{
-    backup.loadError = shared_kernel::DomainError{ErrorCode::BackendUnavailable, "disco"};
+    Bytes raw = sector0001();
+    raw[0] = 3; // intervalo inválido, com CRC refeito
+    connector.state.sectors[1] = OnboardSector::fromBytes(std::move(raw))->withCrc().bytes();
     const auto snapshot = useCase().read();
     ASSERT_FALSE(snapshot.has_value());
-    EXPECT_EQ(snapshot.error().detail, "disco");
+    EXPECT_EQ(snapshot.error().code, ErrorCode::MalformedData);
 }
 
-// --- gravação ---
-
-TEST_F(G703OnboardSettingsTest, WriteFollowsTheExactSequenceAndBacksUpTheOriginalBytesFirst)
+TEST_F(G703OnboardSettingsTest, WriteStoresTheEditedSectorWithValidCrcAndReturnsWhatWasReadBack)
 {
-    backup.log = &connector.state.calls;
-    const auto result = useCase().write(twoStages());
-    ASSERT_TRUE(result.has_value());
-    EXPECT_EQ(connector.state.calls, (std::vector<std::string>{"open", "describe", "mode", "current", "read:0",
-                                                               "read:1", "backup:1", "write:1", "read:1"}));
-    EXPECT_EQ(backup.stored.at(1), sector0001());
-}
-
-TEST_F(G703OnboardSettingsTest, WriteStoresTheEditedSectorAndReturnsWhatWasReadBack)
-{
-    const auto expected = twoStages().applyTo(*OnboardSector::fromBytes(sector0001()));
+    const auto expected = twoStages().applyTo(sector0001());
     ASSERT_TRUE(expected.has_value());
     const auto result = useCase().write(twoStages());
     ASSERT_TRUE(result.has_value());
     EXPECT_EQ(*result, twoStages());
-    EXPECT_EQ(connector.state.sectors.at(1), expected->bytes());
+    EXPECT_EQ(connector.state.sectors.at(1), OnboardSector::fromBytes(*expected)->withCrc().bytes());
     EXPECT_EQ(connector.state.count("write:1"), 1);
-    EXPECT_EQ(connector.state.sectors.at(0), directory()); // o diretório nunca é tocado
-    EXPECT_EQ(connector.state.liveMemories, 0);
-}
-
-TEST_F(G703OnboardSettingsTest, WriteKeepsAnExistingBackupInsteadOfOverwritingIt)
-{
-    const Bytes older = sector0002();
-    backup.stored[1] = older;
-    ASSERT_TRUE(useCase().write(twoStages()).has_value());
-    EXPECT_EQ(backup.saveCalls, 1);
-    EXPECT_EQ(backup.stored.at(1), older);
-}
-
-TEST_F(G703OnboardSettingsTest, WriteDoesNotWriteWhenTheBackupFails)
-{
-    backup.saveError = shared_kernel::DomainError{ErrorCode::BackendUnavailable, "disco cheio"};
-    const auto result = useCase().write(twoStages());
-    ASSERT_FALSE(result.has_value());
-    EXPECT_EQ(result.error().detail, "disco cheio");
-    EXPECT_TRUE(wroteNothing());
+    EXPECT_EQ(backup.stored.at(1), sector0001());
+    EXPECT_EQ(connector.state.sectors.at(0), directory());
 }
 
 TEST_F(G703OnboardSettingsTest, WriteWithUnchangedSettingsSendsNothing)
 {
-    const auto current = G703ProfileSettings::make(1000, {7050}, 0).value();
+    const auto current = G703ProfileSettings::read(sector0001()).value();
     const auto result = useCase().write(current);
     ASSERT_TRUE(result.has_value());
     EXPECT_EQ(*result, current);
@@ -297,49 +141,35 @@ TEST_F(G703OnboardSettingsTest, WriteWithUnchangedSettingsSendsNothing)
     EXPECT_EQ(backup.saveCalls, 0);
 }
 
-TEST_F(G703OnboardSettingsTest, WriteRefusesSettingsThatWouldDangleTheShiftIndex)
+// INC-020 R1-R3: estágios, padrão, shift, taxa e os dois LEDs gravados juntos; nenhum outro byte do setor muda.
+TEST_F(G703OnboardSettingsTest, WriteOfStagesShiftRateAndLedsChangesNoOtherByteOfTheRealSector)
 {
-    connector.state.sectors[1] = OnboardSector::fromBytes([] {
-                                     auto raw = sector0001();
-                                     raw[2] = 3;
-                                     return raw;
-                                 }())
-                                     ->withCrc()
-                                     .bytes();
-    const auto result = useCase().write(twoStages());
-    ASSERT_FALSE(result.has_value());
-    EXPECT_EQ(result.error().code, ErrorCode::InvalidArgument);
-    EXPECT_TRUE(wroteNothing());
-    EXPECT_EQ(backup.saveCalls, 0);
+    const auto edit = G703ProfileSettings::make(500, {400, 1600, 3200}, 2, 1, LedSetting::fixed(0, 255, 255),
+                                                *LedSetting::cycle(5000, 80));
+    ASSERT_TRUE(edit.has_value());
+    const auto result = useCase().write(*edit);
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(*result, *edit);
+
+    const auto& after = connector.state.sectors.at(1);
+    const auto before = sector0001();
+    ASSERT_EQ(after.size(), before.size());
+    for (std::size_t i = 0; i < before.size() - 2; ++i) {
+        const bool editable = i <= 12 || (i >= 0xD0 && i < 0xD0 + 22);
+        if (!editable) {
+            EXPECT_EQ(after[i], before[i]) << "byte " << i;
+        }
+    }
+    EXPECT_TRUE(OnboardSector::fromBytes(after)->hasValidCrc());
 }
 
-TEST_F(G703OnboardSettingsTest, WriteFailureIsReportedWithASingleAttemptAndNoRereadOrRetry)
+TEST_F(G703OnboardSettingsTest, WriteOfTheValuesAlreadyOnTheMouseSendsNothing)
 {
-    connector.state.writeError = shared_kernel::DomainError{ErrorCode::BackendUnavailable, "fn7 falhou"};
-    const auto result = useCase().write(twoStages());
-    ASSERT_FALSE(result.has_value());
-    EXPECT_EQ(result.error().detail, "fn7 falhou");
-    EXPECT_EQ(connector.state.count("write:1"), 1);
-    EXPECT_EQ(connector.state.count("read:1"), 1); // só a leitura anterior à escrita
-    EXPECT_EQ(connector.state.sectors.at(1), sector0001());
-}
-
-TEST_F(G703OnboardSettingsTest, WriteReportsADifferingRereadAndDoesNotRewrite)
-{
-    connector.state.postWriteOverride = sector0002();
-    const auto result = useCase().write(twoStages());
-    ASSERT_FALSE(result.has_value());
-    EXPECT_EQ(result.error().code, ErrorCode::MalformedData);
-    EXPECT_EQ(result.error().detail, "mouse com dados diferentes do enviado — use Restaurar cópia");
-    EXPECT_EQ(connector.state.count("write:1"), 1);
-}
-
-TEST_F(G703OnboardSettingsTest, WriteDoesNotWriteWhenTheLeaseExpiredAfterTheBackup)
-{
-    backup.onSave = [this] { clock.advance(std::chrono::seconds{16}); };
-    const auto result = useCase().write(twoStages());
-    ASSERT_FALSE(result.has_value());
-    EXPECT_EQ(result.error().code, ErrorCode::LeaseExpired);
+    const auto current = G703ProfileSettings::read(sector0001()).value();
+    const auto same = G703ProfileSettings::make(current.reportRateHz(), current.dpiStages(), current.defaultStage(),
+                                                current.dpiShiftStage(), LedSetting::off(), LedSetting::off());
+    ASSERT_TRUE(same.has_value());
+    ASSERT_TRUE(useCase().write(*same).has_value());
     EXPECT_TRUE(wroteNothing());
 }
 
@@ -350,7 +180,7 @@ protected:
     G703RestoreTest()
     {
         // O mouse está com a edição; a cópia guarda o original.
-        connector.state.sectors[1] = twoStages().applyTo(*OnboardSector::fromBytes(sector0001()))->bytes();
+        connector.state.sectors[1] = OnboardSector::fromBytes(*twoStages().applyTo(sector0001()))->withCrc().bytes();
         backup.stored[1] = sector0001();
     }
 };
@@ -360,30 +190,11 @@ TEST_F(G703RestoreTest, RestoresTheBackupWithTheSameWriteAndVerifySequence)
     backup.log = &connector.state.calls;
     const auto result = useCase().restoreBackup();
     ASSERT_TRUE(result.has_value());
-    EXPECT_EQ(*result, G703ProfileSettings::make(1000, {7050}, 0).value());
+    EXPECT_EQ(*result, G703ProfileSettings::read(sector0001()).value());
     EXPECT_EQ(connector.state.sectors.at(1), sector0001());
     EXPECT_EQ(connector.state.calls, (std::vector<std::string>{"open", "describe", "mode", "current", "read:0",
                                                                "read:1", "write:1", "read:1"}));
     EXPECT_EQ(backup.saveCalls, 0);
-}
-
-TEST_F(G703RestoreTest, RefusesWhenThereIsNoBackup)
-{
-    backup.stored.clear();
-    const auto result = useCase().restoreBackup();
-    ASSERT_FALSE(result.has_value());
-    EXPECT_EQ(result.error().code, ErrorCode::BackendUnavailable);
-    EXPECT_EQ(result.error().detail, "sem cópia de segurança");
-    EXPECT_TRUE(wroteNothing());
-}
-
-TEST_F(G703RestoreTest, RefusesBackupWithInvalidCrc)
-{
-    backup.stored[1][0] = 0x02;
-    const auto result = useCase().restoreBackup();
-    ASSERT_FALSE(result.has_value());
-    EXPECT_EQ(result.error().code, ErrorCode::MalformedData);
-    EXPECT_TRUE(wroteNothing());
 }
 
 // CRC válido não basta: uma cópia que o domínio não lê (report rate 3 ms) não é gravada.
@@ -397,38 +208,12 @@ TEST_F(G703RestoreTest, RefusesBackupThatTheDomainCannotReadEvenWithValidCrc)
     EXPECT_TRUE(wroteNothing());
 }
 
-TEST_F(G703RestoreTest, RefusesBackupWithTheWrongSize)
+TEST_F(G703RestoreTest, RefusesWhenThereIsNoBackup)
 {
-    backup.stored[1].pop_back();
+    backup.stored.clear();
     const auto result = useCase().restoreBackup();
     ASSERT_FALSE(result.has_value());
-    EXPECT_EQ(result.error().code, ErrorCode::MalformedData);
-    EXPECT_TRUE(wroteNothing());
-}
-
-TEST_F(G703RestoreTest, DoesNotWriteWhenTheMouseAlreadyHoldsTheBackup)
-{
-    connector.state.sectors[1] = sector0001();
-    const auto result = useCase().restoreBackup();
-    ASSERT_TRUE(result.has_value());
-    EXPECT_TRUE(wroteNothing());
-}
-
-TEST_F(G703RestoreTest, ReportsADifferingRereadWithoutRewriting)
-{
-    connector.state.postWriteOverride = sector0002();
-    const auto result = useCase().restoreBackup();
-    ASSERT_FALSE(result.has_value());
-    EXPECT_EQ(result.error().detail, "mouse com dados diferentes do enviado — use Restaurar cópia");
-    EXPECT_EQ(connector.state.count("write:1"), 1);
-}
-
-TEST_F(G703RestoreTest, ReportsBackupStoreFailureWithoutWriting)
-{
-    backup.loadError = shared_kernel::DomainError{ErrorCode::BackendUnavailable, "disco"};
-    const auto result = useCase().restoreBackup();
-    ASSERT_FALSE(result.has_value());
-    EXPECT_EQ(result.error().detail, "disco");
+    EXPECT_EQ(result.error().detail, "sem cópia de segurança");
     EXPECT_TRUE(wroteNothing());
 }
 

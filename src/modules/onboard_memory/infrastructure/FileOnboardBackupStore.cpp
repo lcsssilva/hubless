@@ -1,4 +1,4 @@
-#include "modules/pointer/infrastructure/FileOnboardBackupStore.hpp"
+#include "modules/onboard_memory/infrastructure/FileOnboardBackupStore.hpp"
 
 #include <cerrno>
 #include <format>
@@ -11,7 +11,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-namespace ghub::pointer::infrastructure {
+namespace ghub::onboard_memory::infrastructure {
 
 namespace {
 
@@ -27,7 +27,7 @@ shared_kernel::DomainError unavailable(const std::string& what, int error)
 
 std::filesystem::path FileOnboardBackupStore::pathFor(std::uint16_t sector) const
 {
-    return directory_ / std::format("g703-4086-sector-{:04x}.bin", static_cast<unsigned>(sector));
+    return directory_ / std::format("{}{:04x}.bin", filePrefix_, static_cast<unsigned>(sector));
 }
 
 shared_kernel::Result<std::optional<std::vector<std::uint8_t>>> FileOnboardBackupStore::load(std::uint16_t sector)
@@ -74,7 +74,7 @@ shared_kernel::Result<void> FileOnboardBackupStore::saveIfAbsent(std::uint16_t s
     }
 
     // mkstemp cria com 0600 e O_EXCL no mesmo diretório do destino (rename/link atômico).
-    std::string temporary = (directory_ / ".g703-backup-XXXXXX").string();
+    std::string temporary = (directory_ / ".onboard-backup-XXXXXX").string();
     const int fd = ::mkstemp(temporary.data());
     if (fd < 0) {
         return std::unexpected(unavailable("arquivo temporário da cópia", errno));
@@ -113,4 +113,13 @@ shared_kernel::Result<void> FileOnboardBackupStore::saveIfAbsent(std::uint16_t s
     return {}; // EEXIST: a cópia antiga é mantida, e isso também é sucesso
 }
 
-} // namespace ghub::pointer::infrastructure
+} // namespace ghub::onboard_memory::infrastructure
+
+namespace ghub::onboard_memory {
+
+std::unique_ptr<OnboardBackupStore> makeFileOnboardBackupStore(std::filesystem::path directory, std::string filePrefix)
+{
+    return std::make_unique<infrastructure::FileOnboardBackupStore>(std::move(directory), std::move(filePrefix));
+}
+
+} // namespace ghub::onboard_memory

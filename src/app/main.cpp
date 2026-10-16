@@ -1,10 +1,10 @@
 // Composition root (ADR-0002 §7): monta os módulos e carrega a janela QML.
 // Ligado à UI: módulos device_inventory (ADR-0006), battery (kernel power_supply, ADR-0004/ADR-0005;
 // G733 via HeadsetControl, ADR-0007) e camera (Brio 100 por V4L2: leitura só com ioctls de consulta,
-// ADR-0008; pré-visualização por streaming V4L2, ADR-0009) e pointer (G703: configuração lida do ratbagd por
-// D-Bus, somente leitura, ADR-0011) e lighting (modo ao vivo do G915 por HID++, ADR-0013).
-// A leitura do G703 só começa por clique (botão "Ler configuração do mouse"): ela ativa o ratbagd (root) e
-// suspende a bateria do G733 enquanto o serviço estiver ativo; nada é lido na abertura nem no smoke test.
+// ADR-0008; pré-visualização por streaming V4L2, ADR-0009) e pointer (G703: configuração lida do setor onboard
+// ativo por HID++ próprio, somente leitura, ADR-0027) e lighting (modo ao vivo do G915 por HID++, ADR-0013).
+// A leitura do G703 só começa por clique (botão "Ler configuração do mouse"): lê o setor onboard ativo sem ativar o
+// ratbagd; nada é lido na abertura nem no smoke test.
 // O stream da câmera só começa por ação do usuário (botão da janela). Escrita em dispositivo: só os controles
 // UVC da Brio 100 (VIDIOC_S_CTRL sob DeviceLease, ADR-0010), e apenas por ação do usuário na janela; nada é
 // gravado na abertura, na releitura nem na retomada. A única outra escrita é o modo ao vivo (volátil) do G915,
@@ -79,14 +79,14 @@
 #include "modules/lighting/infrastructure/HidppKeyboardStatusSource.hpp"
 #include "modules/lighting/presentation/KeyboardLightingController.hpp"
 #include "modules/lighting/presentation/KeyboardStatusViewModel.hpp"
+#include "modules/onboard_memory/api/FileOnboardBackupStore.hpp"
 #include "modules/pointer/application/G703OnboardSettings.hpp"
 #include "modules/pointer/application/ReadPointerConfiguration.hpp"
 #include "modules/pointer/application/ReadPointerSensorStatus.hpp"
 #include "modules/pointer/infrastructure/BackgroundPointerReader.hpp"
-#include "modules/pointer/infrastructure/FileOnboardBackupStore.hpp"
 #include "modules/pointer/infrastructure/G703NodeLocator.hpp"
 #include "modules/pointer/infrastructure/HidppPointerSensorSource.hpp"
-#include "modules/pointer/infrastructure/RatbagPointerBackend.hpp"
+#include "modules/pointer/infrastructure/OnboardPointerBackend.hpp"
 #include "modules/pointer/presentation/G703OnboardController.hpp"
 #include "modules/pointer/presentation/PointerSensorStatusViewModel.hpp"
 #include "modules/pointer/presentation/PointerViewModel.hpp"
@@ -283,34 +283,35 @@ int main(int argc, char* argv[])
     // Após cada escrita (sucesso ou falha) a janela relê a câmera para mostrar valores e flags de inativo.
     QObject::connect(&cameraControlEditor, &ghub::camera::CameraControlEditor::controlWritten, &cameraReader,
                      &ghub::camera::BackgroundCameraReader::refresh);
-    // Mouse (ADR-0011): leitura do ratbagd (barramento de sistema) só por clique em PointerViewModel::read();
-    // nada é lido na construção. Ordem de destruição (inversa à declaração): ViewModel, leitor (espera a leitura
-    // em andamento), caso de uso, backend e, por fim, o registro de leases e o probe (declarados acima).
-    ghub::pointer::RatbagPointerBackend ratbagPointerBackend{QDBusConnection::systemBus(),
-                                                             QStringLiteral("org.freedesktop.ratbag1"), 30s};
+    // Mouse (ADR-0027): a configuração do G703 é lida do setor onboard ativo por HID++ próprio (sem ratbagd), só por
+    // clique em PointerViewModel::read(); nada é lido na construção. Ordem de destruição (inversa à declaração):
+    // ViewModel, leitor (espera a leitura em andamento), caso de uso, backend, conector e, por fim, o registro de
+    // leases e o probe (declarados acima).
+    ghub::pointer::infrastructure::G703OnboardConnector g703OnboardConnector{
+        ghub::pointer::infrastructure::G703NodeLocator{}, steadyClock};
+    ghub::pointer::infrastructure::OnboardPointerBackend onboardPointerBackend{g703OnboardConnector};
     auto pointerInterface = ghub::device_access::PhysicalInterfaceId::create("hidpp:046d:c539");
     if (!pointerInterface) {
         qCritical("pointer: identificador de interface inválido: %s",
                   qPrintable(QString::fromStdString(pointerInterface.error().detail)));
         return EXIT_FAILURE;
     }
-    const ghub::pointer::ReadPointerConfiguration readPointerConfiguration{ratbagPointerBackend, externalProcessProbe,
+    const ghub::pointer::ReadPointerConfiguration readPointerConfiguration{onboardPointerBackend, externalProcessProbe,
                                                                            accessRegistry, *pointerInterface};
     ghub::pointer::BackgroundPointerReader pointerReader{readPointerConfiguration};
     ghub::pointer::PointerViewModel pointerViewModel{pointerReader};
     QObject::connect(&pointerReader, &ghub::pointer::BackgroundPointerReader::readFinished, &pointerViewModel,
                      &ghub::pointer::PointerViewModel::onReadFinished);
-    // Memória onboard do G703 (ADR-0017): HID++ próprio, só por clique em G703OnboardController (ler, gravar,
-    // restaurar); nada é aberto nem escrito na construção. Ordem de destruição (inversa à declaração): o
-    // controlador primeiro (espera a operação em andamento), depois o caso de uso, a cópia de segurança, o conector
-    // e, por fim, o registro de leases, o probe e o relógio (declarados acima).
-    ghub::pointer::infrastructure::G703OnboardConnector g703OnboardConnector{
-        ghub::pointer::infrastructure::G703NodeLocator{}, steadyClock};
-    ghub::pointer::infrastructure::FileOnboardBackupStore g703BackupStore{std::filesystem::path{
-        (QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + QStringLiteral("/ghub-linux/backup"))
-            .toStdString()}};
+    // Memória onboard do G703 (ADR-0017, ADR-0027): HID++ próprio, só por clique em G703OnboardController (ler,
+    // gravar, restaurar); nada é aberto nem escrito na construção. Ordem de destruição (inversa à declaração): o
+    // controlador primeiro (espera a operação em andamento), depois o caso de uso e a cópia de segurança.
+    const auto g703BackupStore = ghub::onboard_memory::makeFileOnboardBackupStore(
+        std::filesystem::path{(QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) +
+                               QStringLiteral("/ghub-linux/backup"))
+                                  .toStdString()},
+        "g703-4086-sector-");
     const ghub::pointer::G703OnboardSettings g703OnboardSettings{externalProcessProbe, accessRegistry,
-                                                                 g703OnboardConnector, g703BackupStore};
+                                                                 g703OnboardConnector, *g703BackupStore};
     ghub::pointer::G703OnboardController g703OnboardController{g703OnboardSettings};
     // Teclado (ADR-0013): o modo ao vivo do G915 só é aberto por clique em KeyboardLightingController::startLive();
     // nada é aberto nem escrito na construção. Ordem de destruição (inversa à declaração): o controlador primeiro
