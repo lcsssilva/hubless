@@ -21,7 +21,8 @@ QString failureText(const shared_kernel::DomainError& error)
     case shared_kernel::ErrorCode::DeviceBusy:
         return SoftwareAnimationController::tr("teclado ocupado: ") + QString::fromStdString(error.detail);
     case shared_kernel::ErrorCode::BackendUnavailable:
-        return SoftwareAnimationController::tr("indisponível: teclado ou áudio (desligado, dormindo ou sem permissão)");
+        return SoftwareAnimationController::tr("indisponível: teclado, áudio ou tela (desligado, dormindo, sem "
+                                               "permissão ou compartilhamento da tela não permitido)");
     case shared_kernel::ErrorCode::LeaseExpired:
     case shared_kernel::ErrorCode::LeaseRevoked:
         return SoftwareAnimationController::tr("animação encerrada: acesso ao teclado perdido");
@@ -43,8 +44,9 @@ domain::RgbColor toRgb(const QColor& color)
 SoftwareAnimationController::SoftwareAnimationController(const application::StartLiveKeyboardSession& start,
                                                          const shared_kernel::Clock& clock,
                                                          audio_processing::AudioLevelSource& audio,
-                                                         std::uint32_t starSeed, QObject* parent)
-    : QObject(parent), start_(&start), clock_(&clock), audio_(&audio), starSeed_(starSeed)
+                                                         application::ScreenColorSource& screen, std::uint32_t starSeed,
+                                                         QObject* parent)
+    : QObject(parent), start_(&start), clock_(&clock), audio_(&audio), screen_(&screen), starSeed_(starSeed)
 {
     connect(&watcher_, &QFutureWatcher<Outcome>::finished, this, &SoftwareAnimationController::onFinished);
     connect(&timer_, &QTimer::timeout, this, &SoftwareAnimationController::onTimer);
@@ -55,6 +57,7 @@ SoftwareAnimationController::~SoftwareAnimationController()
     timer_.stop();
     watcher_.disconnect(this);
     if (jobRunning_) {
+        cancelPendingScreenRequest(); // um diálogo de permissão aberto não pode prender o destrutor
         watcher_.waitForFinished();
     }
     releaseResources(); // devolve o controle ao firmware e fecha a captura de áudio (RAII)
@@ -96,6 +99,8 @@ void SoftwareAnimationController::start(const QString& kind, const QColor& color
     } else if (kind == QLatin1String("audio")) {
         plan.audio = true;
         plan.audioColor = rgb;
+    } else if (kind == QLatin1String("screen")) {
+        plan.screen = true;
     } else {
         status_ = tr("animação desconhecida");
         emit controllerChanged();
@@ -111,6 +116,7 @@ void SoftwareAnimationController::stop()
 {
     if (jobRunning_) {
         stopRequested_ = true; // roda quando a operação atual terminar
+        cancelPendingScreenRequest();
         return;
     }
     if (running_) {
@@ -124,6 +130,7 @@ void SoftwareAnimationController::releaseForSleep()
     stopRequested_ = false;
     if (jobRunning_) {
         watcher_.disconnect(this);
+        cancelPendingScreenRequest();
         watcher_.waitForFinished();
         QCoreApplication::sendPostedEvents(&watcher_);
         connect(&watcher_, &QFutureWatcher<Outcome>::finished, this, &SoftwareAnimationController::onFinished);
@@ -144,6 +151,15 @@ void SoftwareAnimationController::releaseResources()
     animation_.reset();
     session_.reset(); // devolve o controle ao firmware
     visualizer_.reset();
+    sampler_.reset(); // fecha a captura de tela e a sessão do portal
+}
+
+// Cancela o pedido de permissão da tela, se for isso que a thread de trabalho está esperando.
+void SoftwareAnimationController::cancelPendingScreenRequest()
+{
+    if (screenStartPending_) {
+        screen_->stop();
+    }
 }
 
 void SoftwareAnimationController::submit(Job kind)
@@ -155,6 +171,7 @@ void SoftwareAnimationController::submit(Job kind, Plan plan)
 {
     jobRunning_ = true;
     jobKind_ = kind;
+    screenStartPending_ = kind == Job::Start && plan.screen;
     watcher_.setFuture(QtConcurrent::run([this, kind, plan = std::move(plan)] { return run(kind, plan); }));
     if (kind != Job::Tick) {
         emit controllerChanged();
@@ -184,14 +201,25 @@ SoftwareAnimationController::Outcome SoftwareAnimationController::runStart(const
             return {.result = std::unexpected(started.error())};
         }
     }
+    if (plan.screen) {
+        sampler_ = std::make_unique<application::ScreenSampler>(*screen_);
+        if (auto started = sampler_->start(); !started.has_value()) { // espera a permissão do usuário
+            sampler_.reset();
+            return {.result = std::unexpected(started.error())};
+        }
+    }
     auto started = start_->start();
     if (!started.has_value()) {
         visualizer_.reset(); // fecha a captura de áudio
+        sampler_.reset();    // fecha a captura de tela
         return {.result = std::unexpected(started.error())};
     }
     session_ = std::move(*started);
-    animation_ = std::make_unique<application::RunSoftwareAnimation>(
-        *session_, *clock_, plan.audio ? visualizer_->frameSource() : plan.source, plan.framesPerSecond);
+    animation_ = std::make_unique<application::RunSoftwareAnimation>(*session_, *clock_,
+                                                                     plan.audio    ? visualizer_->frameSource()
+                                                                     : plan.screen ? sampler_->frameSource()
+                                                                                   : plan.source,
+                                                                     plan.framesPerSecond);
     ticksSinceControlCheck_ = 0;
     return {.result = {}};
 }
@@ -231,6 +259,7 @@ void SoftwareAnimationController::onFinished()
 {
     const auto outcome = watcher_.result();
     jobRunning_ = false;
+    screenStartPending_ = false;
     switch (jobKind_) {
     case Job::Start:
         if (outcome.result.has_value()) {

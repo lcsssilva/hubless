@@ -62,7 +62,7 @@ target_link_libraries(ghub-linux PRIVATE
     ghub_device_inventory_infrastructure ghub_device_inventory_presentation
     ghub_diagnostics_infrastructure ghub_diagnostics_presentation
     ghub_pointer_infrastructure ghub_pointer_background ghub_pointer_presentation ghub_pointer_hidpp
-    ghub_lighting_infrastructure ghub_lighting_presentation
+    ghub_lighting_infrastructure ghub_lighting_screen_infrastructure ghub_lighting_presentation
     ghub_headset_infrastructure ghub_headset_hidpp ghub_headset_presentation
     ghub_audio_processing_infrastructure ghub_audio_processing_presentation
     ghub_profiles_infrastructure ghub_profiles_presentation)

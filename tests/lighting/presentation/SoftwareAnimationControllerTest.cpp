@@ -4,6 +4,7 @@
 #include "fakes/FakeClock.hpp"
 #include "fakes/FakeExternalProcessProbe.hpp"
 #include "fakes/FakeKeyboardLighting.hpp"
+#include "fakes/FakeScreenColorSource.hpp"
 #include "modules/lighting/domain/G915KeyCatalog.hpp"
 
 #include <QColor>
@@ -276,6 +277,92 @@ private slots:
         QCOMPARE(countOf(keyboard.calls(), "end"), 1);
     }
 
+    void screenSamplingCapturesOnlyWhileRunningAndPaintsTheRegions()
+    {
+        auto& controller = rig->controller;
+        auto& keyboard = rig->keyboard;
+        auto& screen = rig->screen;
+        auto& clock = rig->clock;
+        QCOMPARE(screen.starts(), 0);
+        screen.setRegions({ghub::lighting::domain::RgbColor{255, 0, 0},
+                           {0, 255, 0},
+                           {0, 0, 255},
+                           {1, 1, 1},
+                           {2, 2, 2},
+                           {3, 3, 3},
+                           {4, 4, 4},
+                           {5, 5, 5},
+                           {6, 6, 6},
+                           {7, 7, 7}});
+
+        controller->start("screen", Qt::red, Qt::blue, 6, false, 50, 20);
+        QTRY_VERIFY_WITH_TIMEOUT(controller->running(), 5000);
+        QVERIFY(screen.running());
+        QTRY_VERIFY_WITH_TIMEOUT((clock.advance(100ms), controller->framesSent() >= 1), 5000);
+        controller->stop();
+        QTRY_VERIFY_WITH_TIMEOUT(!controller->running() && !controller->busy(), 5000);
+
+        QVERIFY(!screen.running());
+        QCOMPARE(countOf(keyboard.calls(), "end"), 1);
+        QVERIFY(!keyboard.painted().empty());
+    }
+
+    void otherAnimationsNeverStartTheScreenCapture()
+    {
+        auto& controller = rig->controller;
+        auto& screen = rig->screen;
+        controller->start("cycle", Qt::red, Qt::blue, 6, false, 50, 10);
+        QTRY_VERIFY_WITH_TIMEOUT(controller->running(), 5000);
+        controller->stop();
+        QTRY_VERIFY_WITH_TIMEOUT(!controller->running() && !controller->busy(), 5000);
+
+        QCOMPARE(screen.starts(), 0);
+    }
+
+    void deniedScreenPermissionOpensNoKeyboardSession()
+    {
+        auto& controller = rig->controller;
+        auto& keyboard = rig->keyboard;
+        auto& screen = rig->screen;
+        screen.failStart({ErrorCode::BackendUnavailable, "negado"});
+
+        controller->start("screen", Qt::red, Qt::blue, 6, false, 50, 10);
+        QTRY_VERIFY_WITH_TIMEOUT(!controller->busy(), 5000);
+
+        QVERIFY(!controller->running());
+        QVERIFY(keyboard.calls().empty());
+        QVERIFY(controller->status().contains("tela"));
+    }
+
+    void stoppingWhileThePermissionDialogIsOpenCancelsTheRequest()
+    {
+        auto& controller = rig->controller;
+        auto& keyboard = rig->keyboard;
+        auto& screen = rig->screen;
+        screen.blockInStart();
+
+        controller->start("screen", Qt::red, Qt::blue, 6, false, 50, 10);
+        QTRY_VERIFY_WITH_TIMEOUT(screen.insideStart(), 5000);
+        controller->stop();
+        QTRY_VERIFY_WITH_TIMEOUT(!controller->busy() && !controller->running(), 5000);
+
+        QVERIFY(keyboard.calls().empty());
+        QVERIFY(!screen.running());
+    }
+
+    void destroyingWhileThePermissionDialogIsOpenDoesNotHang()
+    {
+        auto& controller = rig->controller;
+        auto& screen = rig->screen;
+        screen.blockInStart();
+        controller->start("screen", Qt::red, Qt::blue, 6, false, 50, 10);
+        QTRY_VERIFY_WITH_TIMEOUT(screen.insideStart(), 5000);
+
+        controller.reset();
+
+        QVERIFY(!screen.running());
+    }
+
 private:
     // Cada teste recebe fakes novos (QTest reutiliza o objeto de teste entre os slots).
     struct Rig {
@@ -284,9 +371,10 @@ private:
         ghub::fakes::FakeExternalProcessProbe probe;
         ghub::fakes::FakeKeyboardLighting keyboard;
         ghub::fakes::FakeAudioLevelSource audio;
+        ghub::fakes::FakeScreenColorSource screen;
         StartLiveKeyboardSession startUseCase{keyboard, registry, probe, g915Interface()};
         std::unique_ptr<SoftwareAnimationController> controller =
-            std::make_unique<SoftwareAnimationController>(startUseCase, clock, audio, 7U);
+            std::make_unique<SoftwareAnimationController>(startUseCase, clock, audio, screen, 7U);
     };
     std::unique_ptr<Rig> rig;
 };
