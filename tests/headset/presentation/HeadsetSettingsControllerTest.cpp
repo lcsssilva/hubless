@@ -91,6 +91,22 @@ private slots:
         QVERIFY(changed.count() >= 2);
     }
 
+    void appliedObserver_GetsTheSidetoneOnlyOnSuccess()
+    {
+        HeadsetSettingsController controller{fixture->useCase};
+        std::vector<int> seen;
+        controller.setSidetoneObserver([&seen](int level) { seen.push_back(level); });
+
+        controller.setSidetone(70);
+        QTRY_VERIFY(!controller.busy() && !controller.status().isEmpty());
+        QCOMPARE(seen, (std::vector<int>{70}));
+
+        fixture->writer.setResult(ghub::shared_kernel::fail(ErrorCode::DeviceBusy, "ocupado"));
+        controller.setSidetone(10);
+        QTRY_VERIFY(!controller.busy() && controller.status().startsWith(QStringLiteral("Falha")));
+        QCOMPARE(seen, (std::vector<int>{70}));
+    }
+
     void setLightsOn_ReportsCycleEffect()
     {
         HeadsetSettingsController controller{fixture->useCase};

@@ -1437,6 +1437,38 @@ ApplicationWindow {
                     onToggleRequested: wanted => window.profilesController.setPersistent("equalizer", wanted)
                 }
 
+                SwitchRow {
+                    text: qsTr("Sidetone do G733")
+                    switchObjectName: "profilesPersistentSidetone"
+                    checked: window.profilesController.persistentSidetone
+                    switchEnabled: !window.profilesController.busy
+                    onToggleRequested: wanted => window.profilesController.setPersistent("sidetone", wanted)
+                }
+
+                SwitchRow {
+                    text: qsTr("Luzes do G733")
+                    switchObjectName: "profilesPersistentHeadsetLights"
+                    checked: window.profilesController.persistentHeadsetLights
+                    switchEnabled: !window.profilesController.busy
+                    onToggleRequested: wanted => window.profilesController.setPersistent("headsetLights", wanted)
+                }
+
+                SwitchRow {
+                    text: qsTr("Efeito do G915")
+                    switchObjectName: "profilesPersistentKeyboardEffect"
+                    checked: window.profilesController.persistentKeyboardEffect
+                    switchEnabled: !window.profilesController.busy
+                    onToggleRequested: wanted => window.profilesController.setPersistent("keyboardEffect", wanted)
+                }
+
+                SwitchRow {
+                    text: qsTr("DPI do G703")
+                    switchObjectName: "profilesPersistentPointerDpi"
+                    checked: window.profilesController.persistentPointerDpi
+                    switchEnabled: !window.profilesController.busy
+                    onToggleRequested: wanted => window.profilesController.setPersistent("pointerDpi", wanted)
+                }
+
                 SectionTitle { text: qsTr("Perfis") }
 
                 GHubButton {

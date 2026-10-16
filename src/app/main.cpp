@@ -412,6 +412,14 @@ int main(int argc, char* argv[])
     // efeito do G915 não têm leitura no dispositivo: "Salvar estado atual" guarda o último valor aplicado pelo perfil.
     ghub::headset::HeadsetProfileSettings headsetProfileSettings{changeHeadsetSetting, changeHeadsetLighting};
     ghub::profiles::HeadsetSettingsAdapter profilesHeadsetAdapter{headsetProfileSettings};
+    // O que a janela aplica com sucesso é o que "Salvar estado atual" captura (thread da janela, após cada sucesso).
+    headsetSettingsController.setSidetoneObserver(
+        [&headsetProfileSettings](int level) { headsetProfileSettings.rememberSidetone(level); });
+    headsetLightingController.setAppliedObserver(
+        [&headsetProfileSettings](int zone, int effect, int red, int green, int blue, int periodMs, int brightness) {
+            headsetProfileSettings.rememberLight({.zone = zone, .effect = effect, .red = red, .green = green,
+                                                  .blue = blue, .periodMs = periodMs, .brightness = brightness});
+        });
     // O efeito do G915 só vale com o modo ao vivo ligado pelo usuário (volátil); sem ele, a seção falha.
     class LiveKeyboardEffectApplier final : public ghub::lighting::KeyboardEffectApplier {
     public:
@@ -437,6 +445,11 @@ int main(int argc, char* argv[])
     LiveKeyboardEffectApplier liveKeyboardEffectApplier{keyboardLightingController};
     ghub::lighting::KeyboardEffectSettings keyboardEffectSettings{liveKeyboardEffectApplier};
     ghub::profiles::KeyboardEffectAdapter profilesKeyboardAdapter{keyboardEffectSettings};
+    keyboardLightingController.setEffectObserver(
+        [&keyboardEffectSettings](const QString& kind, const QColor& color, int brightness) {
+            keyboardEffectSettings.remember({.kind = kind.toStdString(), .red = color.red(), .green = color.green(),
+                                             .blue = color.blue(), .brightness = brightness});
+        });
     const ghub::pointer::G703DpiSettings g703DpiSettings{g703OnboardSettings};
     ghub::profiles::PointerSettingsAdapter profilesPointerAdapter{g703DpiSettings};
     const ghub::profiles::HardwarePorts hardwarePorts{

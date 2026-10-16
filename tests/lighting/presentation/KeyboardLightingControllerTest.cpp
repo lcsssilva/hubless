@@ -9,6 +9,8 @@
 #include <QSignalSpy>
 #include <QTest>
 
+#include <tuple>
+
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
@@ -230,6 +232,27 @@ private slots:
         }
         QCOMPARE(controller.status(), QStringLiteral("cor aplicada"));
         QVERIFY(controller.live());
+    }
+
+    void effectObserver_GetsKindColorAndBrightnessOnlyForAppliedEffects()
+    {
+        KeyboardLightingController controller{env->useCase};
+        std::vector<std::tuple<QString, int, int, int, int>> seen;
+        controller.setEffectObserver([&seen](const QString& kind, const QColor& c, int brightness) {
+            seen.emplace_back(kind, c.red(), c.green(), c.blue(), brightness);
+        });
+        startAndWait(controller);
+        controller.setBrightness(40);
+
+        controller.applyEffect(QStringLiteral("breathing"), QColor(1, 2, 3));
+        QTRY_VERIFY(!controller.busy());
+        QCOMPARE(seen.size(), std::size_t{1});
+        QCOMPARE(std::get<0>(seen[0]), QStringLiteral("breathing"));
+        QCOMPARE(std::get<3>(seen[0]), 3);
+        QCOMPARE(std::get<4>(seen[0]), 40);
+
+        controller.applyEffect(QStringLiteral("desconhecido"), QColor(1, 2, 3)); // nada é enviado
+        QCOMPARE(seen.size(), std::size_t{1});
     }
 
     void applyEffect_WithoutLive_DoesNotWrite()

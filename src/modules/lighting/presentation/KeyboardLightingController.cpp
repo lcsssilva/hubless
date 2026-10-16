@@ -111,7 +111,7 @@ void KeyboardLightingController::startLive()
     if (!running_ && live_) {
         return;
     }
-    submit({.kind = Kind::Start, .color = {}, .effect = std::nullopt});
+    submit({.kind = Kind::Start, .color = {}, .effect = std::nullopt, .effectKind = {}, .effectColor = {}, .brightness = 100});
 }
 
 void KeyboardLightingController::stopLive()
@@ -119,7 +119,7 @@ void KeyboardLightingController::stopLive()
     if (!running_ && !live_) {
         return;
     }
-    submit({.kind = Kind::Stop, .color = {}, .effect = std::nullopt});
+    submit({.kind = Kind::Stop, .color = {}, .effect = std::nullopt, .effectKind = {}, .effectColor = {}, .brightness = 100});
 }
 
 void KeyboardLightingController::paintAll(const QColor& color)
@@ -129,7 +129,7 @@ void KeyboardLightingController::paintAll(const QColor& color)
         emit controllerChanged();
         return;
     }
-    submit({.kind = Kind::Paint, .color = color, .effect = std::nullopt});
+    submit({.kind = Kind::Paint, .color = color, .effect = std::nullopt, .effectKind = {}, .effectColor = {}, .brightness = 100});
 }
 
 void KeyboardLightingController::setBrightness(int percent)
@@ -156,9 +156,13 @@ void KeyboardLightingController::applyEffect(const QString& kind, const QColor& 
         emit controllerChanged();
         return;
     }
+    // A cor já está dentro do efeito (R12: não é registrada em log); fica no pedido só para o observador do perfil.
     submit({.kind = Kind::Effect,
             .color = {},
-            .effect = effect}); // a cor já está dentro do efeito (R12: não é registrada)
+            .effect = effect,
+            .effectKind = kind,
+            .effectColor = color,
+            .brightness = brightness_});
 }
 
 void KeyboardLightingController::releaseForSleep()
@@ -197,7 +201,7 @@ void KeyboardLightingController::onCheckTimer()
 {
     // Nunca substitui um pedido do usuário nem roda junto com outra operação.
     if (live_ && !running_ && !pending_.has_value()) {
-        submit({.kind = Kind::Check, .color = {}, .effect = std::nullopt});
+        submit({.kind = Kind::Check, .color = {}, .effect = std::nullopt, .effectKind = {}, .effectColor = {}, .brightness = 100});
     }
 }
 
@@ -223,6 +227,7 @@ void KeyboardLightingController::start(Request request)
 {
     running_ = true;
     runningKind_ = request.kind;
+    runningRequest_ = request;
     watcher_.setFuture(QtConcurrent::run([this, request] { return run(request); }));
     if (request.kind != Kind::Check) {
         emit controllerChanged();
@@ -311,6 +316,9 @@ void KeyboardLightingController::onFinished()
             break;
         case Kind::Effect:
             status_ = tr("efeito aplicado (prévia: some ao desligar o modo ao vivo)");
+            if (effectObserver_ && runningRequest_.has_value()) {
+                effectObserver_(runningRequest_->effectKind, runningRequest_->effectColor, runningRequest_->brightness);
+            }
             qInfo("lighting: efeito aplicado");
             break;
         case Kind::Stop:

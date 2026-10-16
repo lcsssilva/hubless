@@ -79,6 +79,9 @@ void HeadsetSettingsController::onFinished()
             status_ = finished->lights == HeadsetLights::On ? tr("Luzes ligadas (ciclo)") : tr("Luzes desligadas");
         } else {
             lastSidetone_ = finished->level.value();
+            if (sidetoneObserver_) {
+                sidetoneObserver_(lastSidetone_);
+            }
             status_ = tr("Sidetone aplicado: %1").arg(lastSidetone_);
         }
     } else if (!outcome.has_value()) {

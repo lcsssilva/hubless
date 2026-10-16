@@ -6,6 +6,7 @@
 #include <QObject>
 #include <QString>
 
+#include <functional>
 #include <optional>
 
 namespace ghub::headset {
@@ -38,6 +39,9 @@ public:
     [[nodiscard]] int lastSidetone() const { return lastSidetone_; }
     [[nodiscard]] QString lightsState() const { return lightsState_; }
 
+    // INC-017 parte 2: avisado na thread dona, só depois de um sidetone aplicado com sucesso (o composition root
+    // liga isto ao "último valor aplicado" que o perfil captura).
+    void setSidetoneObserver(std::function<void(int)> observer) { sidetoneObserver_ = std::move(observer); }
     // Valor fora de 0-100: status de falha, nada é executado.
     Q_INVOKABLE void setSidetone(int level);
     // true = ligar (efeito ciclo, período 5000 ms, brilho 100, nas duas zonas), false = desligar.
@@ -62,6 +66,7 @@ private:
     QFutureWatcher<Outcome> watcher_;
     std::optional<Request> current_; // a operação em andamento
     std::optional<Request> pending_;
+    std::function<void(int)> sidetoneObserver_;
     QString status_;
     QString lightsState_;
     int lastSidetone_ = -1;
