@@ -242,6 +242,10 @@ TestCase {
             property string defaultProfile: ""
             property bool persistentCamera: false
             property bool persistentEqualizer: false
+            property bool persistentSidetone: false
+            property bool persistentHeadsetLights: false
+            property bool persistentKeyboardEffect: false
+            property bool persistentPointerDpi: false
             property var duplicateCalls: []
             property var exportCalls: []
             property var importCalls: []
@@ -3795,6 +3799,32 @@ TestCase {
         camera.toggleRequested(true);
         equalizer.toggleRequested(false);
         compare(profiles.persistentCalls, [["camera", true], ["equalizer", false]]);
+    }
+
+    function test_profilesHardwarePersistentSwitchesReflectAndRequestTheSection() {
+        const profiles = createProfilesFake({profileNames: ["A"], persistentHeadsetLights: true});
+        const window = createMainWithProfiles(profiles);
+        clickButton(window, "profilesPageButton");
+        const names = ["profilesPersistentSidetone", "profilesPersistentHeadsetLights",
+                       "profilesPersistentKeyboardEffect", "profilesPersistentPointerDpi"];
+        const items = names.map(n => findItem(window, n));
+        for (const item of items) verify(item !== null, "chave ausente");
+        compare(items[0].checked, false);
+        compare(items[1].checked, true);
+        items[0].toggleRequested(true);
+        items[1].toggleRequested(false);
+        items[2].toggleRequested(true);
+        items[3].toggleRequested(true);
+        compare(profiles.persistentCalls, [["sidetone", true], ["headsetLights", false],
+                                           ["keyboardEffect", true], ["pointerDpi", true]]);
+    }
+
+    function test_profilesApplyReportLinesAreVisible() {
+        const profiles = createProfilesFake({profileNames: ["A"], report: ["Sidetone do G733: aplicado — 35", "DPI do G703: falhou — mouse ausente"]});
+        const window = createMainWithProfiles(profiles);
+        clickButton(window, "profilesPageButton");
+        compare(labelTexts(window, "profileReportLine"),
+                ["Sidetone do G733: aplicado — 35", "DPI do G703: falhou — mouse ausente"]);
     }
 
     // ---- INC-017: configurações (aviso de bateria, apelidos, cópia local) ----

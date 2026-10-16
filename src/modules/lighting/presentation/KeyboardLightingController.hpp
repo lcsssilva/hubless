@@ -11,6 +11,7 @@
 
 #include <chrono>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 
@@ -59,6 +60,10 @@ public:
     // breathing); static e ripple não têm campo de brilho no SetEffect.
     void setBrightness(int percent);
 
+    // INC-017 parte 2: avisado na thread dona, só depois de um efeito aplicado com sucesso, com o tipo, a cor e o
+    // brilho pedidos (o composition root liga isto ao "último efeito" que o perfil captura).
+    using EffectObserver = std::function<void(const QString&, const QColor&, int)>;
+    void setEffectObserver(EffectObserver observer) { effectObserver_ = std::move(observer); }
     Q_INVOKABLE void startLive();
     Q_INVOKABLE void stopLive();
     Q_INVOKABLE void paintAll(const QColor& color);
@@ -81,6 +86,9 @@ private:
         Kind kind;
         QColor color;
         std::optional<domain::KeyboardEffect> effect;
+        QString effectKind;
+        QColor effectColor;
+        int brightness = 100;
     };
     // Copiável (exigência de QFutureWatcher::result): resultado e se a sessão continua aberta.
     struct Outcome {
@@ -101,7 +109,9 @@ private:
     std::unique_ptr<application::LiveKeyboardSession> session_; // tocada só pela operação em andamento
     QFutureWatcher<Outcome> watcher_;
     QTimer checkTimer_;
+    EffectObserver effectObserver_;
     std::optional<Request> pending_;
+    std::optional<Request> runningRequest_;
     Kind runningKind_ = Kind::Start;
     QString status_;
     bool live_ = false;

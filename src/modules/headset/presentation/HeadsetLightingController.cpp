@@ -59,16 +59,19 @@ void HeadsetLightingController::apply(int zone, int effect, int red, int green, 
         emit lightingChanged();
         return;
     }
+    const Values values{zone, effect, red, green, blue, periodMs, brightness};
     if (running_) {
         pending_ = *lighting; // só o último pedido vale
+        pendingValues_ = values;
         return;
     }
-    start(*lighting);
+    start(*lighting, values);
 }
 
-void HeadsetLightingController::start(HeadsetLighting lighting)
+void HeadsetLightingController::start(HeadsetLighting lighting, Values values)
 {
     running_ = true;
+    runningValues_ = values;
     const ChangeHeadsetLighting& useCase = *changeHeadsetLighting_;
     watcher_.setFuture(QtConcurrent::run([&useCase, lighting] -> Outcome { return useCase.apply(lighting); }));
     emit lightingChanged();
@@ -79,14 +82,20 @@ void HeadsetLightingController::onFinished()
     const auto outcome = watcher_.result();
     if (outcome.has_value()) {
         status_ = tr("Luzes aplicadas (efeito volátil: o headset volta ao padrão ao religar)");
+        if (observer_ && runningValues_.has_value()) {
+            const Values& v = *runningValues_;
+            observer_(v.zone, v.effect, v.red, v.green, v.blue, v.periodMs, v.brightness);
+        }
     } else {
         qWarning("headset: luzes falharam (código %d): %s", static_cast<int>(outcome.error().code),
                  outcome.error().detail.c_str());
         status_ = tr("Falha: %1").arg(QString::fromStdString(outcome.error().detail));
     }
     running_ = false;
+    runningValues_.reset();
     if (const auto next = std::exchange(pending_, std::nullopt); next.has_value()) {
-        start(*next);
+        start(*next, pendingValues_.value());
+        pendingValues_.reset();
     }
     emit lightingChanged();
 }

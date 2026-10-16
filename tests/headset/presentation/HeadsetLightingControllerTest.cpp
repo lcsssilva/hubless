@@ -71,6 +71,24 @@ private slots:
         QVERIFY(changed.count() >= 2);
     }
 
+    void appliedObserver_GetsTheAppliedValuesOnlyOnSuccess()
+    {
+        HeadsetLightingController controller{fixture->useCase};
+        std::vector<std::vector<int>> seen;
+        controller.setAppliedObserver([&seen](int z, int e, int r, int g, int b, int p, int br) {
+            seen.push_back({z, e, r, g, b, p, br});
+        });
+
+        controller.apply(1, 2, 0, 255, 128, 5000, 70);
+        QTRY_VERIFY(!controller.busy() && !controller.status().isEmpty());
+        QCOMPARE(seen, (std::vector<std::vector<int>>{{1, 2, 0, 255, 128, 5000, 70}}));
+
+        fixture->writer.result = ghub::shared_kernel::fail(ErrorCode::DeviceBusy, "ocupado");
+        controller.apply(0, 3, 0, 0, 0, 5000, 100);
+        QTRY_VERIFY(!controller.busy() && controller.status().startsWith(QStringLiteral("Falha")));
+        QCOMPARE(seen.size(), std::size_t{1});
+    }
+
     void apply_RejectsValuesOutsideTheRangesWithoutWriting()
     {
         HeadsetLightingController controller{fixture->useCase};
