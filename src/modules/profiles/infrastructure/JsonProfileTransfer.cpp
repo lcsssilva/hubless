@@ -16,7 +16,8 @@ namespace fmt = json_format;
 using shared_kernel::ErrorCode;
 
 constexpr const char* kFormat = "ghub-linux-profile";
-constexpr int kVersion = 1;
+constexpr int kVersion = 1;                // arquivo sem seções de hardware
+constexpr int kVersionWithHardware = 2;    // INC-017 parte 2: aceita as seções de hardware
 constexpr const char* kContext = "arquivo de perfil inválido";
 
 std::unexpected<shared_kernel::DomainError> malformed(const QString& reason)
@@ -28,7 +29,8 @@ std::unexpected<shared_kernel::DomainError> malformed(const QString& reason)
 
 shared_kernel::Result<void> JsonProfileTransfer::exportProfile(const Profile& profile, const std::string& path)
 {
-    const QJsonObject root{{"format", kFormat}, {"version", kVersion}, {"profile", fmt::toJson(profile, false)}};
+    const int version = profile.hardware().empty() ? kVersion : kVersionWithHardware;
+    const QJsonObject root{{"format", kFormat}, {"version", version}, {"profile", fmt::toJson(profile, false)}};
     QSaveFile file(QString::fromStdString(path));
     if (!file.open(QIODevice::WriteOnly)) {
         return shared_kernel::fail(ErrorCode::BackendUnavailable, "não foi possível abrir o arquivo para exportar");
@@ -65,8 +67,8 @@ shared_kernel::Result<ImportedProfile> JsonProfileTransfer::importProfile(const 
         return malformed("\"format\" diferente de ghub-linux-profile");
     }
     const auto version = fmt::exactInteger(root.value("version"), 0, 1'000'000);
-    if (!version || *version != kVersion) {
-        return malformed("\"version\" não suportada (esperada 1)");
+    if (!version || (*version != kVersion && *version != kVersionWithHardware)) {
+        return malformed("\"version\" não suportada (esperada 1 ou 2)");
     }
     if (!root.contains("profile")) {
         return malformed("falta a chave \"profile\"");
@@ -77,7 +79,7 @@ shared_kernel::Result<ImportedProfile> JsonProfileTransfer::importProfile(const 
             ignored.push_back(it.key().toStdString());
         }
     }
-    auto profile = fmt::parseProfile(root.value("profile"), {.context = kContext, .ignored = &ignored});
+    auto profile = fmt::parseProfile(root.value("profile"), {.context = kContext, .allowHardware = *version >= kVersionWithHardware, .ignored = &ignored});
     if (!profile) {
         return std::unexpected(profile.error());
     }

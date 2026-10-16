@@ -124,7 +124,7 @@ TEST_F(JsonProfileTransferTest, ImportRefusesInvalidJsonWrongFormatAndUnknownVer
     EXPECT_EQ(transfer.importProfile(pathOf("b.json")).error().code, ErrorCode::MalformedData);
     write("c.json", QByteArray(kValid).replace("ghub-linux-profile\"", "outro\""));
     EXPECT_EQ(transfer.importProfile(pathOf("c.json")).error().code, ErrorCode::MalformedData);
-    write("d.json", QByteArray(kValid).replace("\"version\":1", "\"version\":2"));
+    write("d.json", QByteArray(kValid).replace("\"version\":1", "\"version\":3"));
     EXPECT_EQ(transfer.importProfile(pathOf("d.json")).error().code, ErrorCode::MalformedData);
     write("e.json", QByteArray(kValid).replace("\"version\":1", "\"version\":\"1\""));
     EXPECT_EQ(transfer.importProfile(pathOf("e.json")).error().code, ErrorCode::MalformedData);

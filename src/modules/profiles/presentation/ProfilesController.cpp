@@ -24,6 +24,29 @@ std::string localPath(const QString& path)
     return (url.isLocalFile() ? url.toLocalFile() : path).toStdString();
 }
 
+// Seção <-> nome usado pela janela e pelo JSON.
+struct SectionName {
+    const char* key;
+    ProfileSection section;
+    const char* label; // para a janela
+};
+constexpr SectionName kSections[] = {{"camera", ProfileSection::Camera, "Câmera"},
+                                     {"equalizer", ProfileSection::Equalizer, "EQ"},
+                                     {"sidetone", ProfileSection::Sidetone, "Sidetone do G733"},
+                                     {"headsetLights", ProfileSection::HeadsetLights, "Luzes do G733"},
+                                     {"keyboardEffect", ProfileSection::KeyboardEffect, "Efeito do G915"},
+                                     {"pointerDpi", ProfileSection::PointerDpi, "DPI do G703"}};
+
+QString sectionLabel(ProfileSection section)
+{
+    for (const SectionName& entry : kSections) {
+        if (entry.section == section) {
+            return QString::fromUtf8(entry.label);
+        }
+    }
+    return {};
+}
+
 QString controlLabel(const ApplyProfile::CameraItemResult& item)
 {
     return item.name.empty() ? QStringLiteral("0x%1").arg(item.id, 8, 16, QLatin1Char('0')) : fromStd(item.name);
@@ -95,7 +118,8 @@ void ProfilesController::load()
                         .error = std::nullopt,
                         .saved = std::nullopt,
                         .cameraItems = {},
-                        .imported = std::nullopt};
+                        .imported = std::nullopt,
+                        .hardwareItems = {}};
         if (auto loaded = book.load(); !loaded) {
             outcome.error = loaded.error();
         }
@@ -124,7 +148,8 @@ void ProfilesController::saveCurrent(const QString& name, bool replace)
                         .error = std::nullopt,
                         .saved = std::nullopt,
                         .cameraItems = {},
-                        .imported = std::nullopt};
+                        .imported = std::nullopt,
+                        .hardwareItems = {}};
         auto saved = book.saveCurrent(rawName, gains, replace);
         if (saved) {
             outcome.saved = *saved;
@@ -159,16 +184,17 @@ void ProfilesController::startApply(const Profile& profile, const QString& viaAp
     operationName_ = fromStd(profile.name().value());
     operationApplication_ = viaApplication;
     const ApplyProfile& useCase = *applyProfile_;
-    skipCamera_ = book_->library().isPersistent(ProfileSection::Camera);
-    skipEqualizer_ = book_->library().isPersistent(ProfileSection::Equalizer);
-    const bool skipCamera = skipCamera_;
-    start(QtConcurrent::run([&useCase, profile, skipCamera]() -> Outcome {
+    skip_ = book_->library().persistentSections();
+    const SectionSet skip = skip_;
+    const bool skipCamera = skip.test(static_cast<std::size_t>(ProfileSection::Camera));
+    start(QtConcurrent::run([&useCase, profile, skip, skipCamera]() -> Outcome {
         return Outcome{.kind = Kind::Apply,
                        .error = std::nullopt,
                        .saved = std::nullopt,
                        .cameraItems =
                            skipCamera ? std::vector<ApplyProfile::CameraItemResult>{} : useCase.applyCamera(profile),
-                       .imported = std::nullopt};
+                       .imported = std::nullopt,
+                       .hardwareItems = useCase.applyHardware(profile, skip)};
     }));
 }
 
@@ -187,7 +213,8 @@ void ProfilesController::startPersistence(Kind kind, std::function<shared_kernel
     ProfileBook& book = *book_;
     start(QtConcurrent::run([&book, kind, work = std::move(work)]() -> Outcome {
         Outcome outcome{
-            .kind = kind, .error = std::nullopt, .saved = std::nullopt, .cameraItems = {}, .imported = std::nullopt};
+            .kind = kind, .error = std::nullopt, .saved = std::nullopt, .cameraItems = {}, .imported = std::nullopt,
+                        .hardwareItems = {}};
         if (auto done = work(book); !done) {
             outcome.error = done.error();
         }
@@ -267,7 +294,8 @@ void ProfilesController::importProfile(const QString& path, bool replace)
                         .error = std::nullopt,
                         .saved = std::nullopt,
                         .cameraItems = {},
-                        .imported = std::nullopt};
+                        .imported = std::nullopt,
+                        .hardwareItems = {}};
         auto imported = book.importProfile(file, replace);
         if (imported) {
             outcome.imported = std::move(*imported);
@@ -296,10 +324,13 @@ void ProfilesController::setPersistent(const QString& section, bool persistent)
     if (refuseIfBusy()) {
         return;
     }
-    ProfileSection parsed = ProfileSection::Camera;
-    if (section == QLatin1String("equalizer")) {
-        parsed = ProfileSection::Equalizer;
-    } else if (section != QLatin1String("camera")) {
+    std::optional<ProfileSection> parsed;
+    for (const SectionName& entry : kSections) {
+        if (section == QLatin1String(entry.key)) {
+            parsed = entry.section;
+        }
+    }
+    if (!parsed.has_value()) {
         status_ = tr("Falha: seção desconhecida: %1").arg(section);
         emit profilesChanged();
         return;
@@ -307,7 +338,7 @@ void ProfilesController::setPersistent(const QString& section, bool persistent)
     operationName_ = section;
     operationPersistent_ = persistent;
     startPersistence(Kind::Persistent,
-                     [parsed, persistent](ProfileBook& book) { return book.setPersistent(parsed, persistent); });
+                     [wanted = *parsed, persistent](ProfileBook& book) { return book.setPersistent(wanted, persistent); });
 }
 
 void ProfilesController::refreshFromBook()
@@ -323,6 +354,7 @@ void ProfilesController::refreshFromBook()
         book_->library().defaultProfile().has_value() ? fromStd(book_->library().defaultProfile()->value()) : QString();
     persistentCamera_ = book_->library().isPersistent(ProfileSection::Camera);
     persistentEqualizer_ = book_->library().isPersistent(ProfileSection::Equalizer);
+    persistent_ = book_->library().persistentSections();
     profileApplications_.clear();
     for (const auto& profile : book_->library().profiles()) {
         QStringList applications;
@@ -435,6 +467,11 @@ void ProfilesController::finishSave(const Outcome& outcome)
     if (saved.equalizerIncluded) {
         report_.push_back(tr("EQ: curva incluída"));
     }
+    for (const ProfileBook::SectionNote& note : saved.hardware) {
+        report_.push_back(note.included ? tr("%1: incluído").arg(sectionLabel(note.section))
+                                        : tr("%1 não incluído: %2")
+                                              .arg(sectionLabel(note.section), fromStd(note.omittedReason)));
+    }
     status_ = tr("Perfil salvo: %1").arg(operationName_);
 }
 
@@ -465,15 +502,44 @@ void ProfilesController::finishApply(const Outcome& outcome)
             report_.push_back(tr("%1: falhou — %2").arg(controlLabel(item), fromStd(item.outcome.error().detail)));
         }
     }
-    if (skipCamera_ && !applying_->camera().empty()) {
+    const auto skipped = [this](ProfileSection section) { return skip_.test(static_cast<std::size_t>(section)); };
+    const HardwareSections& wanted = applying_->hardware();
+    const bool skipCamera = skipped(ProfileSection::Camera);
+    const bool skipEqualizer = skipped(ProfileSection::Equalizer);
+    if (skipCamera && !applying_->camera().empty()) {
         report_.push_back(tr("Câmera: igual em todos os perfis (não alterada)"));
     }
-    if (skipEqualizer_ && applying_->equalizer().has_value()) {
+    if (skipEqualizer && applying_->equalizer().has_value()) {
         report_.push_back(tr("EQ: igual em todos os perfis (não alterado)"));
     }
-    // O EQ só é tocado aqui, na thread dona.
-    const auto equalizerResult =
-        skipEqualizer_ ? std::optional<shared_kernel::Result<void>>{} : applyProfile_->applyEqualizer(*applying_);
+    const std::pair<ProfileSection, bool> hardwarePresent[] = {
+        {ProfileSection::Sidetone, wanted.sidetone.has_value()},
+        {ProfileSection::HeadsetLights, !wanted.headsetLights.empty()},
+        {ProfileSection::KeyboardEffect, wanted.keyboardEffect.has_value()},
+        {ProfileSection::PointerDpi, wanted.pointerDpi.has_value()}};
+    for (const auto& [section, present] : hardwarePresent) {
+        if (present && skipped(section)) {
+            report_.push_back(tr("%1: igual em todos os perfis (não alterado)").arg(sectionLabel(section)));
+        }
+    }
+    // Seções de hardware (R11): cada uma lista o que foi aplicado e o que falhou.
+    const auto reportSection = [this, &allOk](const ApplyProfile::SectionResult& item) {
+        if (item.outcome.has_value()) {
+            report_.push_back(tr("%1: aplicado — %2").arg(fromStd(item.label), fromStd(*item.outcome)));
+        } else {
+            allOk = false;
+            report_.push_back(tr("%1: falhou — %2").arg(fromStd(item.label), fromStd(item.outcome.error().detail)));
+        }
+    };
+    for (const auto& item : outcome.hardwareItems) {
+        reportSection(item);
+    }
+    // O efeito do G915 e o EQ só são tocados aqui, na thread dona.
+    for (const auto& item : applyProfile_->applyKeyboardEffect(*applying_, skip_)) {
+        reportSection(item);
+    }
+    const auto equalizerResult = skipEqualizer ? std::optional<shared_kernel::Result<void>>{}
+                                               : applyProfile_->applyEqualizer(*applying_);
     if (equalizerResult.has_value()) {
         if (equalizerResult->has_value()) {
             report_.push_back(tr("EQ: curva definida (vale com o EQ ligado)"));
@@ -482,7 +548,7 @@ void ProfilesController::finishApply(const Outcome& outcome)
             report_.push_back(tr("EQ: falhou — %1").arg(fromStd(equalizerResult->error().detail)));
         }
     }
-    const bool hadCamera = !applying_->camera().empty() && !skipCamera_;
+    const bool hadCamera = !applying_->camera().empty() && !skipCamera;
     applying_.reset();
     if (operationApplication_.isEmpty()) {
         status_ = allOk ? tr("Perfil aplicado: %1").arg(operationName_)

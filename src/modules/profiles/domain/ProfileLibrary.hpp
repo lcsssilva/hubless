@@ -4,6 +4,7 @@
 #include "modules/profiles/domain/ProfileSection.hpp"
 #include "shared_kernel/Result.hpp"
 
+#include <array>
 #include <cstddef>
 #include <optional>
 #include <vector>
@@ -38,6 +39,7 @@ public:
     // NÃO vazias de `source` para todos os outros perfis (chamado ao salvar).
     [[nodiscard]] bool isPersistent(ProfileSection section) const noexcept;
     void setPersistent(ProfileSection section, bool persistent) noexcept;
+    [[nodiscard]] SectionSet persistentSections() const noexcept;
     void propagatePersistent(const Profile& source);
 
     // Nome inexistente -> InvalidArgument.
@@ -62,8 +64,7 @@ private:
     std::vector<Profile> profiles_;
     bool automaticSwitching_ = false;
     std::optional<ProfileName> defaultProfile_;
-    bool persistentCamera_ = false;
-    bool persistentEqualizer_ = false;
+    std::array<bool, profileSectionCount> persistent_{};
 };
 
 } // namespace ghub::profiles

@@ -26,6 +26,8 @@ if(GHUB_BUILD_APP)
         infrastructure/CameraSettingsAdapter.hpp
         infrastructure/CameraSettingsAdapter.cpp
         infrastructure/EqualizerSettingsAdapter.hpp
+        infrastructure/HardwareSettingsAdapters.hpp
+        infrastructure/HardwareSettingsAdapters.cpp
         infrastructure/JsonProfileFormat.hpp
         infrastructure/JsonProfileFormat.cpp
         infrastructure/JsonProfileTransfer.hpp
@@ -36,7 +38,8 @@ if(GHUB_BUILD_APP)
         infrastructure/KWinActiveApplicationSource.cpp)
     set_target_properties(ghub_profiles_infrastructure PROPERTIES AUTOMOC ON)
     target_link_libraries(ghub_profiles_infrastructure PUBLIC ghub_profiles_application ghub_camera_api
-                                                       ghub_audio_processing_api Qt6::Core Qt6::DBus)
+                                                       ghub_audio_processing_api ghub_headset_api ghub_lighting_api
+                                                       ghub_pointer_api Qt6::Core Qt6::DBus)
     ghub_set_warnings(ghub_profiles_infrastructure)
 endif()
 

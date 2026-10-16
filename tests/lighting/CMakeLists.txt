@@ -2,6 +2,11 @@ add_subdirectory(domain)
 add_subdirectory(application)
 add_subdirectory(infrastructure)
 
+add_executable(ghub_lighting_api_tests api/KeyboardEffectSettingsTest.cpp)
+target_link_libraries(ghub_lighting_api_tests PRIVATE ghub_lighting_api GTest::gtest_main)
+ghub_set_warnings(ghub_lighting_api_tests)
+gtest_discover_tests(ghub_lighting_api_tests TEST_PREFIX "lighting.")
+
 add_test(NAME lighting.no_forbidden_feature_source
     COMMAND Python3::Interpreter -I "${CMAKE_CURRENT_SOURCE_DIR}/no_forbidden_feature_source.py" "${PROJECT_SOURCE_DIR}")
 

@@ -131,7 +131,7 @@ TEST_F(JsonProfileRepositoryTest, SavedDocumentHasDocumentedShape)
     ASSERT_TRUE(repository.save(sampleLibrary()).has_value());
     const QByteArray text = readFile();
     EXPECT_TRUE(text.contains("\"format\": \"ghub-linux-profiles\""));
-    EXPECT_TRUE(text.contains("\"version\": 3"));
+    EXPECT_TRUE(text.contains("\"version\": 4"));
     EXPECT_TRUE(text.contains("\"automaticSwitching\": false"));
     EXPECT_TRUE(text.contains("\"equalizer\""));
 }
@@ -187,7 +187,7 @@ TEST_F(JsonProfileRepositoryTest, RejectsRootThatIsNotObject)
 
 TEST_F(JsonProfileRepositoryTest, RejectsFutureAndZeroVersions)
 {
-    expectMalformed(validV2("[]", "false", "4"));
+    expectMalformed(validV2("[]", "false", "6"));
     expectMalformed(validV2("[]", "false", "5"));
     expectMalformed(validDocument("[]", "0"));
 }
@@ -266,7 +266,7 @@ TEST_F(JsonProfileRepositoryTest, RejectsUnknownKeysInsteadOfDroppingThemSilentl
 
 TEST_F(JsonProfileRepositoryTest, SaveRefusedAfterFailedLoadLeavesFileByteForByteEqual)
 {
-    const QByteArray original = validV2("[]", "false", "4"); // versão futura que o app não entende
+    const QByteArray original = validV2("[]", "false", "5"); // versão futura que o app não entende
     writeFile(original);
     JsonProfileRepository repository(path);
     ASSERT_FALSE(repository.load().has_value());
@@ -277,7 +277,7 @@ TEST_F(JsonProfileRepositoryTest, SaveRefusedAfterFailedLoadLeavesFileByteForByt
 
 TEST_F(JsonProfileRepositoryTest, SaveWorksAgainAfterSuccessfulReload)
 {
-    writeFile(validV2("[]", "false", "4"));
+    writeFile(validV2("[]", "false", "5"));
     JsonProfileRepository repository(path);
     ASSERT_FALSE(repository.load().has_value());
     writeFile(validDocument());
@@ -407,23 +407,23 @@ TEST_F(JsonProfileRepositoryTest, RealV1FileMigratesWithoutRulesAndIsNotRewritte
     EXPECT_EQ(readFile(), kRealV1);
 }
 
-TEST_F(JsonProfileRepositoryTest, SavingAfterV1MigrationWritesV3KeepingTheProfile)
+TEST_F(JsonProfileRepositoryTest, SavingAfterV1MigrationWritesV4KeepingTheProfile)
 {
     writeFile(kRealV1);
     JsonProfileRepository repository(path);
     auto loaded = repository.load();
     ASSERT_TRUE(loaded.has_value());
     ASSERT_TRUE(repository.save(*loaded).has_value());
-    EXPECT_TRUE(readFile().contains("\"version\": 3"));
+    EXPECT_TRUE(readFile().contains("\"version\": 4"));
     JsonProfileRepository reader(path);
     const auto again = reader.load();
     ASSERT_TRUE(again.has_value());
     EXPECT_EQ(again->profiles(), loaded->profiles());
 }
 
-TEST_F(JsonProfileRepositoryTest, VersionFourIsRefusedAndFileStaysByteForByteIntact)
+TEST_F(JsonProfileRepositoryTest, VersionFiveIsRefusedAndFileStaysByteForByteIntact)
 {
-    const QByteArray original = validV2("[]", "false", "4");
+    const QByteArray original = validV2("[]", "false", "5");
     writeFile(original);
     JsonProfileRepository repository(path);
     const auto loaded = repository.load();
@@ -496,12 +496,12 @@ TEST_F(JsonProfileRepositoryTest, V2StillRefusesV3OnlyKeys)
                     kOneProfile + "}");
 }
 
-TEST_F(JsonProfileRepositoryTest, V2FileIsMigratedWithoutDefaultAndSavedAsV3)
+TEST_F(JsonProfileRepositoryTest, V2FileIsMigratedWithoutDefaultAndSavedAsV4)
 {
     writeFile(validV2(kOneProfile));
     JsonProfileRepository repository(path);
     const auto loaded = repository.load();
     ASSERT_TRUE(loaded.has_value()) << loaded.error().detail;
     ASSERT_TRUE(repository.save(*loaded).has_value());
-    EXPECT_TRUE(readFile().contains("\"version\": 3"));
+    EXPECT_TRUE(readFile().contains("\"version\": 4"));
 }

@@ -85,6 +85,100 @@ shared_kernel::Result<EqualizerGains> parseEqualizer(const QJsonValue& value, co
     return *created;
 }
 
+constexpr std::int64_t kIntMin = std::numeric_limits<int>::min();
+constexpr std::int64_t kIntMax = std::numeric_limits<int>::max();
+
+std::optional<int> intField(const QJsonObject& object, const char* key)
+{
+    const auto value = exactInteger(object.value(key), kIntMin, kIntMax);
+    return value ? std::optional<int>{static_cast<int>(*value)} : std::nullopt;
+}
+
+shared_kernel::Result<std::vector<HeadsetLightSetting>> parseHeadsetLights(const QJsonValue& value,
+                                                                           const ParseOptions& options)
+{
+    if (!value.isArray()) {
+        return malformed(options.context, "\"headsetLights\" deve ser uma lista");
+    }
+    std::vector<HeadsetLightSetting> lights;
+    for (const QJsonValue& entry : value.toArray()) {
+        if (!entry.isObject()) {
+            return malformed(options.context, "item de \"headsetLights\" deve ser um objeto");
+        }
+        const QJsonObject object = entry.toObject();
+        if (!checkKeys(object, {"zone", "effect", "red", "green", "blue", "periodMs", "brightness"}, options,
+                       "headsetLights[].")) {
+            return malformed(options.context, "chave desconhecida em item de \"headsetLights\"");
+        }
+        const auto zone = intField(object, "zone");
+        const auto effect = intField(object, "effect");
+        const auto red = intField(object, "red");
+        const auto green = intField(object, "green");
+        const auto blue = intField(object, "blue");
+        const auto period = intField(object, "periodMs");
+        const auto brightness = intField(object, "brightness");
+        if (!zone || !effect || !red || !green || !blue || !period || !brightness) {
+            return malformed(options.context, "item de \"headsetLights\" com campo ausente ou inválido");
+        }
+        lights.push_back({.zone = *zone, .effect = *effect, .red = *red, .green = *green, .blue = *blue,
+                          .periodMs = *period, .brightness = *brightness});
+    }
+    return lights;
+}
+
+shared_kernel::Result<KeyboardEffectSetting> parseKeyboardEffect(const QJsonValue& value, const ParseOptions& options)
+{
+    if (!value.isObject()) {
+        return malformed(options.context, "\"keyboardEffect\" deve ser um objeto");
+    }
+    const QJsonObject object = value.toObject();
+    if (!checkKeys(object, {"kind", "red", "green", "blue", "brightness"}, options, "keyboardEffect.")) {
+        return malformed(options.context, "chave desconhecida em \"keyboardEffect\"");
+    }
+    const auto red = intField(object, "red");
+    const auto green = intField(object, "green");
+    const auto blue = intField(object, "blue");
+    const auto brightness = intField(object, "brightness");
+    if (!object.value("kind").isString() || !red || !green || !blue || !brightness) {
+        return malformed(options.context, "\"keyboardEffect\" com campo ausente ou inválido");
+    }
+    return KeyboardEffectSetting{.kind = object.value("kind").toString().toStdString(), .red = *red, .green = *green,
+                                 .blue = *blue, .brightness = *brightness};
+}
+
+shared_kernel::Result<PointerDpiSetting> parsePointerDpi(const QJsonValue& value, const ParseOptions& options)
+{
+    if (!value.isObject()) {
+        return malformed(options.context, "\"pointerDpi\" deve ser um objeto");
+    }
+    const QJsonObject object = value.toObject();
+    if (!checkKeys(object, {"reportRateHz", "dpiStages", "defaultStage", "dpiShiftStage"}, options, "pointerDpi.")) {
+        return malformed(options.context, "chave desconhecida em \"pointerDpi\"");
+    }
+    const auto rate = intField(object, "reportRateHz");
+    const auto defaultStage = intField(object, "defaultStage");
+    if (!rate || !defaultStage || !object.value("dpiStages").isArray()) {
+        return malformed(options.context, "\"pointerDpi\" com campo ausente ou inválido");
+    }
+    PointerDpiSetting setting{.reportRateHz = *rate, .dpiStages = {}, .defaultStage = *defaultStage,
+                              .dpiShiftStage = std::nullopt};
+    for (const QJsonValue& stage : object.value("dpiStages").toArray()) {
+        const auto dpi = exactInteger(stage, kIntMin, kIntMax);
+        if (!dpi) {
+            return malformed(options.context, "estágio de DPI não é um inteiro válido");
+        }
+        setting.dpiStages.push_back(static_cast<int>(*dpi));
+    }
+    if (object.contains("dpiShiftStage")) {
+        const auto shift = intField(object, "dpiShiftStage");
+        if (!shift) {
+            return malformed(options.context, "\"dpiShiftStage\" não é um inteiro válido");
+        }
+        setting.dpiShiftStage = *shift;
+    }
+    return setting;
+}
+
 shared_kernel::Result<std::vector<ApplicationId>> parseApplications(const QJsonValue& value,
                                                                     const ParseOptions& options)
 {
@@ -137,9 +231,13 @@ shared_kernel::Result<Profile> parseProfile(const QJsonValue& value, const Parse
     const QJsonObject object = value.toObject();
     // Importação: "applications" é descartado e listado, mesmo que o formato o aceitasse.
     const bool readApplications = options.allowApplications && options.ignored == nullptr;
-    const std::set<QString> allowedKeys = readApplications
-                                              ? std::set<QString>{"name", "camera", "equalizer", "applications"}
-                                              : std::set<QString>{"name", "camera", "equalizer"};
+    std::set<QString> allowedKeys{"name", "camera", "equalizer"};
+    if (readApplications) {
+        allowedKeys.insert("applications");
+    }
+    if (options.allowHardware) {
+        allowedKeys.insert({"sidetone", "headsetLights", "keyboardEffect", "pointerDpi"});
+    }
     if (!checkKeys(object, allowedKeys, options, "")) {
         return malformed(options.context, "chave desconhecida em perfil");
     }
@@ -174,11 +272,74 @@ shared_kernel::Result<Profile> parseProfile(const QJsonValue& value, const Parse
         }
         applications = std::move(*parsed);
     }
-    auto profile = Profile::create(std::move(*name), std::move(camera), equalizer, std::move(applications));
+    HardwareSections hardware;
+    if (options.allowHardware) {
+        if (object.contains("sidetone")) {
+            const auto level = intField(object, "sidetone");
+            if (!level) {
+                return malformed(options.context, "\"sidetone\" não é um inteiro válido");
+            }
+            hardware.sidetone = *level;
+        }
+        if (object.contains("headsetLights")) {
+            auto parsed = parseHeadsetLights(object.value("headsetLights"), options);
+            if (!parsed) {
+                return std::unexpected(parsed.error());
+            }
+            hardware.headsetLights = std::move(*parsed);
+        }
+        if (object.contains("keyboardEffect")) {
+            auto parsed = parseKeyboardEffect(object.value("keyboardEffect"), options);
+            if (!parsed) {
+                return std::unexpected(parsed.error());
+            }
+            hardware.keyboardEffect = std::move(*parsed);
+        }
+        if (object.contains("pointerDpi")) {
+            auto parsed = parsePointerDpi(object.value("pointerDpi"), options);
+            if (!parsed) {
+                return std::unexpected(parsed.error());
+            }
+            hardware.pointerDpi = std::move(*parsed);
+        }
+    }
+    auto profile =
+        Profile::create(std::move(*name), std::move(camera), equalizer, std::move(applications), std::move(hardware));
     if (!profile) {
         return malformed(options.context, QString::fromStdString(profile.error().detail));
     }
     return profile;
+}
+
+QString sectionKey(ProfileSection section)
+{
+    switch (section) {
+    case ProfileSection::Camera:
+        return QStringLiteral("camera");
+    case ProfileSection::Equalizer:
+        return QStringLiteral("equalizer");
+    case ProfileSection::Sidetone:
+        return QStringLiteral("sidetone");
+    case ProfileSection::HeadsetLights:
+        return QStringLiteral("headsetLights");
+    case ProfileSection::KeyboardEffect:
+        return QStringLiteral("keyboardEffect");
+    case ProfileSection::PointerDpi:
+        return QStringLiteral("pointerDpi");
+    }
+    return {};
+}
+
+std::optional<ProfileSection> sectionFromKey(const QString& key, bool hardwareSections)
+{
+    for (std::size_t i = 0; i < profileSectionCount; ++i) {
+        const auto section = static_cast<ProfileSection>(i);
+        const bool hardware = section != ProfileSection::Camera && section != ProfileSection::Equalizer;
+        if (sectionKey(section) == key && (!hardware || hardwareSections)) {
+            return section;
+        }
+    }
+    return std::nullopt;
 }
 
 QJsonObject toJson(const Profile& profile, bool withApplications)
@@ -200,6 +361,43 @@ QJsonObject toJson(const Profile& profile, bool withApplications)
             gains.append(gain);
         }
         object.insert("equalizer", gains);
+    }
+    const HardwareSections& hardware = profile.hardware();
+    if (hardware.sidetone.has_value()) {
+        object.insert("sidetone", *hardware.sidetone);
+    }
+    if (!hardware.headsetLights.empty()) {
+        QJsonArray lights;
+        for (const HeadsetLightSetting& light : hardware.headsetLights) {
+            lights.append(QJsonObject{{"zone", light.zone},
+                                      {"effect", light.effect},
+                                      {"red", light.red},
+                                      {"green", light.green},
+                                      {"blue", light.blue},
+                                      {"periodMs", light.periodMs},
+                                      {"brightness", light.brightness}});
+        }
+        object.insert("headsetLights", lights);
+    }
+    if (hardware.keyboardEffect.has_value()) {
+        const KeyboardEffectSetting& effect = *hardware.keyboardEffect;
+        object.insert("keyboardEffect", QJsonObject{{"kind", QString::fromStdString(effect.kind)},
+                                                    {"red", effect.red},
+                                                    {"green", effect.green},
+                                                    {"blue", effect.blue},
+                                                    {"brightness", effect.brightness}});
+    }
+    if (hardware.pointerDpi.has_value()) {
+        const PointerDpiSetting& dpi = *hardware.pointerDpi;
+        QJsonArray stages;
+        for (const int stage : dpi.dpiStages) {
+            stages.append(stage);
+        }
+        QJsonObject pointer{{"reportRateHz", dpi.reportRateHz}, {"dpiStages", stages}, {"defaultStage", dpi.defaultStage}};
+        if (dpi.dpiShiftStage.has_value()) {
+            pointer.insert("dpiShiftStage", *dpi.dpiShiftStage);
+        }
+        object.insert("pointerDpi", pointer);
     }
     if (withApplications && !profile.applications().empty()) {
         QJsonArray applications;

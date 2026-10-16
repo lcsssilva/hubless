@@ -16,6 +16,12 @@ target_sources(ghub_headset_application PRIVATE
 target_link_libraries(ghub_headset_application PUBLIC ghub_headset_domain ghub_device_access_api)
 ghub_set_warnings(ghub_headset_application)
 
+# API pública (INC-017 parte 2, ADR-0028): fachada de sidetone e luzes por zona para o módulo profiles.
+add_library(ghub_headset_api STATIC)
+target_sources(ghub_headset_api PRIVATE api/HeadsetProfileSettings.cpp)
+target_link_libraries(ghub_headset_api PUBLIC ghub_headset_application)
+ghub_set_warnings(ghub_headset_api)
+
 # Infraestrutura HID++ do G733 (ADR-0025): leituras de estado sobre o canal compartilhado; sem Qt.
 add_library(ghub_headset_hidpp STATIC)
 target_sources(ghub_headset_hidpp PRIVATE

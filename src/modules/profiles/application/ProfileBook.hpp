@@ -1,6 +1,7 @@
 #pragma once
 
 #include "modules/profiles/application/CameraSettingsPort.hpp"
+#include "modules/profiles/application/HardwareSettingsPorts.hpp"
 #include "modules/profiles/application/ProfileRepository.hpp"
 #include "modules/profiles/application/ProfileTransfer.hpp"
 #include "modules/profiles/domain/ProfileLibrary.hpp"
@@ -18,10 +19,18 @@ namespace ghub::profiles {
 // Não é thread-safe: uma thread por vez. Todos os métodos bloqueiam (arquivo e câmera): thread de trabalho.
 class ProfileBook {
 public:
+    // Resultado da captura de uma seção de hardware ao salvar (INC-017 parte 2, R10).
+    struct SectionNote {
+        ProfileSection section;
+        bool included;
+        std::string omittedReason; // vazio quando incluída
+    };
+
     struct SaveReport {
         bool cameraIncluded = false;
         std::optional<std::string> cameraOmittedReason;
         bool equalizerIncluded = false;
+        std::vector<SectionNote> hardware; // sidetone, luzes, efeito do G915 e DPI, nesta ordem
     };
 
     // Início do detalhe de InvalidArgument quando o nome já existe (a apresentação pede "Substituir?").
@@ -34,15 +43,18 @@ public:
     };
 
     // `transfer` (exportar/importar) é opcional; sem ele essas operações retornam BackendUnavailable.
-    ProfileBook(ProfileRepository& repository, CameraSettingsPort& camera,
-                ProfileTransfer* transfer = nullptr) noexcept;
+    // `hardware` (sidetone, luzes, efeito do G915, DPI do G703) é opcional: porta nula = seção omitida ao salvar.
+    ProfileBook(ProfileRepository& repository, CameraSettingsPort& camera, ProfileTransfer* transfer = nullptr,
+                HardwarePorts hardware = {}) noexcept;
 
     // Lê a biblioteca. Em erro, guarda o erro: enquanto ele existir, saveCurrent e remove são recusados
     // sem chamar `save` do repositório, para não sobrescrever um arquivo que o app não entendeu (R8).
     [[nodiscard]] shared_kernel::Result<void> load();
 
     // R4: lê a câmera pelo port (erro -> seção omitida, com o motivo no relatório); os ganhos do EQ vêm do
-    // chamador. Sem nenhuma seção -> InvalidArgument e nada é gravado. Se o repositório falhar, a
+    // chamador. Seções de hardware (INC-017 parte 2): o que cada dono conhece agora. Sidetone, luzes do G733 e efeito
+    // do G915 não têm leitura no dispositivo: vale o último valor aplicado pela janela nesta sessão; o DPI do G703 é
+    // lido do mouse (só leitura). Sem valor conhecido -> seção omitida, com o motivo no relatório. Sem nenhuma seção -> InvalidArgument e nada é gravado. Se o repositório falhar, a
     // biblioteca em memória continua como estava.
     [[nodiscard]] shared_kernel::Result<SaveReport>
     saveCurrent(std::string_view name, std::optional<std::array<int, 10>> equalizerGains, bool replace);
@@ -75,12 +87,16 @@ public:
     [[nodiscard]] std::optional<shared_kernel::DomainError> loadError() const { return loadError_; }
 
 private:
+    // Captura as seções de hardware que os donos conhecem; registra no relatório por que cada omitida ficou de fora.
+    void captureHardware(HardwareSections& hardware, SaveReport& report);
+
     // Grava o candidato e, só se o repositório aceitar, troca a biblioteca em memória.
     [[nodiscard]] shared_kernel::Result<void> commit(ProfileLibrary candidate);
 
     ProfileRepository& repository_;
     CameraSettingsPort& camera_;
     ProfileTransfer* transfer_; // pode ser nulo
+    HardwarePorts hardware_;
     ProfileLibrary library_;
     std::optional<shared_kernel::DomainError> loadError_;
 };

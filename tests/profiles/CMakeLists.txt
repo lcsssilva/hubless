@@ -2,6 +2,7 @@ add_executable(ghub_profiles_domain_tests
     domain/ApplicationIdTest.cpp
     domain/EqualizerGainsTest.cpp
     domain/ProfileLibraryTest.cpp
+    domain/ProfileHardwareTest.cpp
     domain/ProfileNameTest.cpp
     domain/ProfileTest.cpp)
 target_link_libraries(ghub_profiles_domain_tests PRIVATE ghub_profiles_domain GTest::gtest_main)
@@ -10,6 +11,8 @@ gtest_discover_tests(ghub_profiles_domain_tests TEST_PREFIX "profiles.")
 
 add_executable(ghub_profiles_application_tests
     application/ApplyProfileTest.cpp
+    application/ApplyProfileHardwareTest.cpp
+    application/ProfileBookHardwareTest.cpp
     application/AutomaticProfileSwitcherTest.cpp
     application/ProfileBookTest.cpp)
 target_link_libraries(ghub_profiles_application_tests PRIVATE
@@ -20,13 +23,14 @@ gtest_discover_tests(ghub_profiles_application_tests TEST_PREFIX "profiles.")
 if(GHUB_BUILD_APP)
     find_package(Qt6 6.12 REQUIRED COMPONENTS Core)
     add_executable(ghub_profiles_infrastructure_tests infrastructure/JsonProfileRepositoryTest.cpp
-        infrastructure/JsonProfileTransferTest.cpp)
+        infrastructure/JsonProfileTransferTest.cpp infrastructure/JsonProfileHardwareTest.cpp)
     target_link_libraries(ghub_profiles_infrastructure_tests PRIVATE
         ghub_profiles_infrastructure Qt6::Core GTest::gtest_main)
     ghub_set_warnings(ghub_profiles_infrastructure_tests)
     gtest_discover_tests(ghub_profiles_infrastructure_tests TEST_PREFIX "profiles.")
 
-    add_executable(ghub_profiles_adapters_tests infrastructure/ProfileAdaptersTest.cpp)
+    add_executable(ghub_profiles_adapters_tests infrastructure/ProfileAdaptersTest.cpp
+        infrastructure/HardwareAdaptersTest.cpp)
     target_link_libraries(ghub_profiles_adapters_tests PRIVATE
         ghub_profiles_infrastructure ghub_test_fakes GTest::gtest_main)
     ghub_set_warnings(ghub_profiles_adapters_tests)
@@ -42,6 +46,14 @@ if(GHUB_BUILD_APP)
     ghub_set_warnings(ghub_profiles_controller_tests)
     add_test(NAME profiles.ProfilesControllerTest COMMAND ghub_profiles_controller_tests)
     set_tests_properties(profiles.ProfilesControllerTest PROPERTIES TIMEOUT 30)
+
+    add_executable(ghub_profiles_controller_hardware_tests presentation/ProfilesControllerHardwareTest.cpp)
+    set_target_properties(ghub_profiles_controller_hardware_tests PROPERTIES AUTOMOC ON)
+    target_link_libraries(ghub_profiles_controller_hardware_tests PRIVATE
+        ghub_profiles_presentation ghub_test_fakes Qt6::Test)
+    ghub_set_warnings(ghub_profiles_controller_hardware_tests)
+    add_test(NAME profiles.ProfilesControllerHardwareTest COMMAND ghub_profiles_controller_hardware_tests)
+    set_tests_properties(profiles.ProfilesControllerHardwareTest PROPERTIES TIMEOUT 30)
 endif()
 
 if(GHUB_BUILD_APP)
