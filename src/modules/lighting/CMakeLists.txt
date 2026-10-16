@@ -5,7 +5,8 @@ target_sources(ghub_lighting_infrastructure PRIVATE
     infrastructure/G915PerKeyFrames.cpp
     infrastructure/G915EffectFrames.cpp
     infrastructure/G915HidppSession.cpp
-    infrastructure/G915HidppLighting.cpp)
+    infrastructure/G915HidppLighting.cpp
+    infrastructure/HidppKeyboardStatusSource.cpp)
 target_link_libraries(ghub_lighting_infrastructure PUBLIC ghub_shared_kernel ghub_platform_hidpp ghub_lighting_application)
 ghub_set_warnings(ghub_lighting_infrastructure)
 
@@ -16,7 +17,8 @@ target_sources(ghub_lighting_domain PRIVATE
     domain/KeyboardEffect.cpp
     domain/HeadsetEffect.cpp
     domain/G915KeyCatalog.cpp
-    domain/KeyColorMap.cpp)
+    domain/KeyColorMap.cpp
+    domain/KeyboardStatus.cpp)
 target_link_libraries(ghub_lighting_domain PUBLIC ghub_shared_kernel)
 ghub_set_warnings(ghub_lighting_domain)
 
@@ -25,7 +27,8 @@ add_library(ghub_lighting_application STATIC)
 target_sources(ghub_lighting_application PRIVATE
     application/KeyboardAccess.cpp
     application/LiveKeyboardSession.cpp
-    application/SaveKeyboardEffect.cpp)
+    application/SaveKeyboardEffect.cpp
+    application/ReadKeyboardStatus.cpp)
 target_link_libraries(ghub_lighting_application PUBLIC ghub_lighting_domain ghub_device_access_api)
 ghub_set_warnings(ghub_lighting_application)
 
@@ -36,7 +39,9 @@ if(GHUB_BUILD_APP)
     add_library(ghub_lighting_presentation STATIC)
     target_sources(ghub_lighting_presentation PRIVATE
         presentation/KeyboardLightingController.hpp
-        presentation/KeyboardLightingController.cpp)
+        presentation/KeyboardLightingController.cpp
+        presentation/KeyboardStatusViewModel.hpp
+        presentation/KeyboardStatusViewModel.cpp)
     set_target_properties(ghub_lighting_presentation PROPERTIES AUTOMOC ON)
     target_link_libraries(ghub_lighting_presentation PUBLIC ghub_lighting_application Qt6::Core Qt6::Gui
                                                       PRIVATE Qt6::Concurrent)

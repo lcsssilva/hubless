@@ -6,14 +6,16 @@ add_executable(ghub_pointer_domain_tests
     domain/PointerConfigurationTest.cpp
     domain/OnboardSectorTest.cpp
     domain/G703ProfileSettingsTest.cpp
-    domain/OnboardDirectoryTest.cpp)
+    domain/OnboardDirectoryTest.cpp
+    domain/PointerSensorStatusTest.cpp)
 target_link_libraries(ghub_pointer_domain_tests PRIVATE ghub_pointer_domain GTest::gtest_main)
 ghub_set_warnings(ghub_pointer_domain_tests)
 gtest_discover_tests(ghub_pointer_domain_tests TEST_PREFIX "pointer.")
 
 add_executable(ghub_pointer_application_tests
     application/ReadPointerConfigurationTest.cpp
-    application/G703OnboardSettingsTest.cpp)
+    application/G703OnboardSettingsTest.cpp
+    application/ReadPointerSensorStatusTest.cpp)
 target_link_libraries(ghub_pointer_application_tests PRIVATE
     ghub_pointer_application ghub_test_fakes GTest::gtest_main)
 ghub_set_warnings(ghub_pointer_application_tests)
@@ -23,7 +25,8 @@ add_executable(ghub_pointer_hidpp_tests
     infrastructure/G703OnboardPolicyTest.cpp
     infrastructure/HidppOnboardMemoryTest.cpp
     infrastructure/G703NodeLocatorTest.cpp
-    infrastructure/FileOnboardBackupStoreTest.cpp)
+    infrastructure/FileOnboardBackupStoreTest.cpp
+    infrastructure/HidppPointerSensorSourceTest.cpp)
 target_link_libraries(ghub_pointer_hidpp_tests PRIVATE ghub_pointer_hidpp ghub_test_fakes GTest::gtest_main)
 ghub_set_warnings(ghub_pointer_hidpp_tests)
 gtest_discover_tests(ghub_pointer_hidpp_tests TEST_PREFIX "pointer.")
@@ -61,6 +64,14 @@ if(GHUB_BUILD_APP)
     ghub_set_warnings(ghub_pointer_onboard_controller_tests)
     add_test(NAME pointer.G703OnboardControllerTest COMMAND ghub_pointer_onboard_controller_tests)
     set_tests_properties(pointer.G703OnboardControllerTest PROPERTIES TIMEOUT 30 ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
+    add_executable(ghub_pointer_sensor_status_viewmodel_tests presentation/PointerSensorStatusViewModelTest.cpp)
+    set_target_properties(ghub_pointer_sensor_status_viewmodel_tests PROPERTIES AUTOMOC ON)
+    target_link_libraries(ghub_pointer_sensor_status_viewmodel_tests PRIVATE
+        ghub_pointer_presentation ghub_test_fakes Qt6::Test)
+    ghub_set_warnings(ghub_pointer_sensor_status_viewmodel_tests)
+    add_test(NAME pointer.PointerSensorStatusViewModelTest COMMAND ghub_pointer_sensor_status_viewmodel_tests)
+    set_tests_properties(pointer.PointerSensorStatusViewModelTest PROPERTIES TIMEOUT 30)
 endif()
 
 add_test(NAME pointer.read_only_source

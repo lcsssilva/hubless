@@ -204,6 +204,18 @@ TestCase {
         }
     }
 
+    // ViewModel de estado HID++ falso (G915/G703/G733): registra as leituras; nada chega a um dispositivo.
+    Component {
+        id: fakeStatusComponent
+        QtObject {
+            property var status: ({})
+            property bool reading: false
+            property string error: ""
+            property int readCalls: 0
+            function read() { readCalls++ }
+        }
+    }
+
     // Controlador de desktop falso (INC-013): registra os pedidos; nada é gravado em disco.
     // `setAutostart` atualiza `autostartEnabled` como o controlador real faria.
     Component {
@@ -260,7 +272,7 @@ TestCase {
     // Carrega o Main.qml real do código-fonte (caminho relativo a este arquivo).
     function createMain(fake, inventoryFake, cameraFake, previewFake, editorFake, pointerFake, lightingFake,
                         headsetFake, equalizerFake, onboardFake, noiseFake, desktopFake, diagnosticsFake,
-                        profilesFake, identityFake) {
+                        profilesFake, identityFake, keyboardStatusFake, pointerStatusFake, headsetStatusFake) {
         const component = Qt.createComponent(Qt.resolvedUrl("../../src/ui/qml/Main.qml"));
         compare(component.status, Component.Ready, component.errorString());
         const window = component.createObject(null, {batteryViewModel: fake,
@@ -277,7 +289,10 @@ TestCase {
                                                      desktopController: desktopFake || createDesktopFake(),
                                                      diagnosticsViewModel: diagnosticsFake || createDiagnosticsFake(),
                                                      profilesController: profilesFake || createProfilesFake(),
-                                                     deviceIdentityViewModel: identityFake || createIdentityFake()});
+                                                     deviceIdentityViewModel: identityFake || createIdentityFake(),
+                                                     keyboardStatusViewModel: keyboardStatusFake || createStatusFake(),
+                                                     pointerStatusViewModel: pointerStatusFake || createStatusFake(),
+                                                     headsetStatusViewModel: headsetStatusFake || createStatusFake()});
         verify(window !== null, "Main.qml deve instanciar");
         windows.push(window);
         return window;
@@ -333,6 +348,12 @@ TestCase {
 
     function createNoiseSuppressionFake(props) {
         const fake = fakeNoiseSuppressionComponent.createObject(null, props || {});
+        fakes.push(fake);
+        return fake;
+    }
+
+    function createStatusFake(props) {
+        const fake = fakeStatusComponent.createObject(null, props || {});
         fakes.push(fake);
         return fake;
     }
@@ -467,8 +488,8 @@ TestCase {
         return allItems(window).filter(item => item.objectName === "lightingSwatch");
     }
 
-    function effectButtons(window) {
-        return allItems(window).filter(item => item.objectName === "lightingEffectButton");
+    function effectCombo(window) {
+        return findItem(window, "lightingEffectCombo");
     }
 
     function pointerProfile(overrides) {
@@ -732,12 +753,12 @@ TestCase {
         const buttons = items.filter(item => /^(GHubButton|Button|QQuickButton)(_QMLTYPE_\d+)?\(/.test(item.toString()));
         compare(buttons.map(b => b.objectName).sort().join(","),
                 "cameraControlDefault,cameraControlDefault,cameraPreviewToggle,diagnosticsExportButton,"
-                + "diagnosticsRefreshButton,eqDisableButton,eqEnableButton,"
-                + "eqFlatButton,headsetLightsOffButton,"
-                + "headsetLightsOnButton,headsetSidetoneApplyButton,lightingCustomColorButton,"
-                + "lightingLiveButton,noiseDisableButton,noiseEnableButton,onboardAddStageButton,onboardReadButton,onboardRemoveStageButton,"
+                + "diagnosticsRefreshButton,eqFlatButton,headsetLightsOffButton,"
+                + "headsetLightsOnButton,headsetSidetoneApplyButton,"
+                + "onboardAddStageButton,onboardReadButton,onboardRemoveStageButton,"
                 + "onboardRestoreButton,onboardWriteButton,pointerReadButton,profileSaveButton,"
                 + "readIdentityButton,readIdentityButton,readIdentityButton,"
+                + "readStatusButton,readStatusButton,readStatusButton,"
                 + "toggleFeatureIdsButton,toggleFeatureIdsButton,toggleFeatureIdsButton"); // amostras: delegates de tipo próprio, testadas à parte
     }
 
@@ -1094,26 +1115,28 @@ TestCase {
         verify(notice.indexOf("Os efeitos também") < 0, notice);
     }
 
-    function test_lightingEffectButtonsExistAndAreDisabledWithoutLiveOrWhileBusy() {
+    function test_lightingEffectDropdownListsTheFourEffectsAndIsDisabledWithoutLiveOrWhileBusy() {
         const idle = createMain(createFake([]), null, null, null, null, null, createLightingFake());
-        compare(effectButtons(idle).map(b => b.text).join(","), "Onda,Ciclo de cores,Respiração,Ondulação");
-        effectButtons(idle).forEach(b => compare(b.enabled, false));
+        const combo = effectCombo(idle);
+        compare(combo.count, 4);
+        compare([0, 1, 2, 3].map(i => combo.textAt(i)).join(","), "Onda,Ciclo de cores,Respiração,Ondulação");
+        compare(combo.enabled, false);
         const busy = createMain(createFake([]), null, null, null, null, null,
                                 createLightingFake({live: true, busy: true}));
-        compare(effectButtons(busy).length, 4);
-        effectButtons(busy).forEach(b => compare(b.enabled, false));
+        compare(effectCombo(busy).count, 4);
+        compare(effectCombo(busy).enabled, false);
     }
 
-    function test_lightingEffectButtonsApplyTheirKindWithTheChosenColor() {
+    function test_lightingEffectDropdownAppliesTheChosenKindWithTheChosenColor() {
         const lighting = createLightingFake({live: true});
         const window = createMain(createFake([]), null, null, null, null, null, lighting);
-        const buttons = effectButtons(window);
-        buttons.forEach(b => verify(b.enabled));
-        buttons[0].clicked();
+        const combo = effectCombo(window);
+        verify(combo.enabled);
+        combo.activated(0);
         swatches(window)[2].clicked();
-        buttons[2].clicked();
-        buttons[3].clicked();
-        buttons[1].clicked();
+        combo.activated(2);
+        combo.activated(3);
+        combo.activated(1);
         compare(JSON.stringify(lighting.effectCalls),
                 JSON.stringify([["wave", "#ffffff"], ["breathing", "#0000ff"], ["ripple", "#0000ff"],
                                 ["cycle", "#0000ff"]]));
@@ -1121,33 +1144,37 @@ TestCase {
         compare(lighting.startCalls, 0);
     }
 
-    function test_lightingButtonStartsWhenNotLive() {
+    function test_lightingSwitchStartsWhenOffAndShowsTheControllerState() {
         const lighting = createLightingFake();
         const window = createMain(createFake([]), null, null, null, null, null, lighting);
-        const button = findItem(window, "lightingLiveButton");
-        compare(button.text, "Ligar modo ao vivo");
-        button.clicked();
+        const toggle = findItem(window, "lightingLiveSwitch");
+        compare(toggle.checked, false);
+        toggle.clicked();
         compare(lighting.startCalls, 1);
         compare(lighting.stopCalls, 0);
+        // O interruptor não muda sozinho: o estado exibido segue o controlador.
+        compare(toggle.checked, false);
+        lighting.live = true;
+        tryCompare(toggle, "checked", true);
     }
 
-    function test_lightingButtonStopsWhenLive() {
+    function test_lightingSwitchStopsWhenLive() {
         const lighting = createLightingFake({live: true});
         const window = createMain(createFake([]), null, null, null, null, null, lighting);
-        const button = findItem(window, "lightingLiveButton");
-        compare(button.text, "Desligar modo ao vivo");
-        button.clicked();
+        const toggle = findItem(window, "lightingLiveSwitch");
+        compare(toggle.checked, true);
+        toggle.clicked();
         compare(lighting.stopCalls, 1);
         compare(lighting.startCalls, 0);
     }
 
-    function test_lightingButtonDisabledWhileBusy() {
+    function test_lightingSwitchDisabledWhileBusy() {
         const lighting = createLightingFake({busy: true});
         const window = createMain(createFake([]), null, null, null, null, null, lighting);
-        const button = findItem(window, "lightingLiveButton");
-        compare(button.enabled, false);
+        const toggle = findItem(window, "lightingLiveSwitch");
+        compare(toggle.enabled, false);
         lighting.busy = false;
-        tryVerify(() => button.enabled);
+        tryVerify(() => toggle.enabled);
     }
 
     function test_lightingColorControlsDisabledWithoutLive() {
@@ -1183,6 +1210,45 @@ TestCase {
         const window = createMain(createFake([]), null, null, null, null, null, lighting);
         verify(findItem(window, "lightingCustomColorButton").enabled);
         compare(lighting.paintCalls.length, 0);
+    }
+
+    function test_lightingColorsAreRoundSwatchesWithTheirNamesAndARingOnTheChosenOne() {
+        const lighting = createLightingFake({live: true});
+        const window = createMain(createFake([]), null, null, null, null, null, lighting);
+        const all = swatches(window);
+        compare(all.map(s => s.Accessible.name).join(","),
+                "Vermelho,Verde,Azul,Branco,Ciano,Magenta,Amarelo,Laranja");
+        all.forEach(s => {
+            compare(s.width, 20);
+            compare(s.height, 20);
+            compare(s.ToolTip.text, s.Accessible.name);
+        });
+        // O branco é a cor inicial dos efeitos; clicar em outra move o anel.
+        compare(all.filter(s => s.selected).map(s => s.colorName), ["Branco"]);
+        all[2].clicked();
+        compare(all.filter(s => s.selected).map(s => s.colorName), ["Azul"]);
+        const custom = findItem(window, "lightingCustomColorButton");
+        compare(custom.plus, true);
+        compare(custom.Accessible.name, "Outra cor…");
+    }
+
+    function test_lightingPanelHasColorsAndEffectsTabsThatSwapTheirContents() {
+        const window = createMain(createFake([]), sampleInventory(), null, null, null, null,
+                                  createLightingFake({live: true}));
+        showMinimum(window);
+        openDevice(window, "G915");
+        const tabs = findItem(window, "lightingTabs");
+        compare(tabs.model.join(","), "Cores,Efeitos");
+        compare(tabs.currentIndex, 0);
+        const colorsVisible = () => swatches(window)[0].visible;
+        const effectsVisible = () => effectCombo(window).visible;
+        tryVerify(() => colorsVisible());
+        compare(effectsVisible(), false);
+        const effectsTab = descendants(tabs).filter(i => i.objectName === "innerTab")[1];
+        mouseClick(effectsTab);
+        tryVerify(() => effectsVisible());
+        compare(colorsVisible(), false);
+        compare(findItem(window, "lightingEffectHeader").text, "Efeito");
     }
 
     function test_lightingStatusFollowsController() {
@@ -1304,32 +1370,45 @@ TestCase {
         compare(eq.bandCalls, [[4, 7]]);
     }
 
-    function test_eqButtonsForwardToTheController() {
+    function test_eqSwitchAndResetButtonForwardToTheController() {
         const eq = createEqualizerFake();
         const window = createMainWithEqualizer(eq);
-        findItem(window, "eqEnableButton").clicked();
+        const toggle = findItem(window, "eqEnableSwitch");
+        compare(toggle.checked, false);
+        toggle.clicked();
+        compare(eq.enableCalls, 1);
+        compare(eq.disableCalls, 0);
         eq.enabled = true;
-        tryVerify(() => findItem(window, "eqDisableButton").enabled);
-        findItem(window, "eqDisableButton").clicked();
+        tryCompare(toggle, "checked", true);
+        toggle.clicked();
         findItem(window, "eqFlatButton").clicked();
         compare(eq.enableCalls, 1);
         compare(eq.disableCalls, 1);
         compare(eq.flatCalls, 1);
     }
 
-    function test_eqButtonsFollowEnabledAndBusy() {
+    function test_eqSwitchFollowsEnabledAndBusy() {
         const eq = createEqualizerFake();
         const window = createMainWithEqualizer(eq);
-        compare(findItem(window, "eqEnableButton").enabled, true);
-        compare(findItem(window, "eqDisableButton").enabled, false);
+        const toggle = findItem(window, "eqEnableSwitch");
+        compare(toggle.enabled, true);
+        compare(findItem(window, "eqFlatButton").enabled, true);
         eq.enabled = true;
-        tryCompare(findItem(window, "eqEnableButton"), "enabled", false);
-        compare(findItem(window, "eqDisableButton").enabled, true);
+        tryCompare(toggle, "checked", true);
         eq.busy = true;
-        tryCompare(findItem(window, "eqDisableButton"), "enabled", false);
+        tryCompare(toggle, "enabled", false);
         compare(findItem(window, "eqFlatButton").enabled, false);
-        eq.enabled = false;
-        compare(findItem(window, "eqEnableButton").enabled, false); // ocupado
+    }
+
+    // A troca da saída padrão de áudio é uma ação com efeito no sistema: o aviso curto fica visível no painel.
+    function test_eqPanelKeepsAShortVisibleWarningAboutTheDefaultOutput() {
+        const window = createMainWithEqualizer(createEqualizerFake());
+        showMinimum(window);
+        openDeviceTab(window, "G733", "equalizer");
+        const warning = findItem(window, "eqOutputWarningLabel");
+        verify(warning.text.indexOf("saída padrão") >= 0, warning.text);
+        verify(warning.text.length < 80, warning.text);
+        tryVerify(() => warning.visible && warning.width > 0);
     }
 
     function test_eqStatusFollowsController() {
@@ -1378,29 +1457,41 @@ TestCase {
         compare(noise.thresholdCalls, [33]);
     }
 
-    function test_noiseButtonsForwardToTheController() {
+    function test_noiseSwitchForwardsToTheController() {
         const noise = createNoiseSuppressionFake();
         const window = createMainWithNoiseSuppression(noise);
-        findItem(window, "noiseEnableButton").clicked();
+        const toggle = findItem(window, "noiseEnableSwitch");
+        compare(toggle.checked, false);
+        toggle.clicked();
+        compare(noise.enableCalls, 1);
+        compare(noise.disableCalls, 0);
         noise.enabled = true;
-        tryVerify(() => findItem(window, "noiseDisableButton").enabled);
-        findItem(window, "noiseDisableButton").clicked();
+        tryCompare(toggle, "checked", true);
+        toggle.clicked();
         compare(noise.enableCalls, 1);
         compare(noise.disableCalls, 1);
     }
 
-    function test_noiseButtonsFollowEnabledAndBusy() {
+    function test_noiseSwitchFollowsEnabledAndBusy() {
         const noise = createNoiseSuppressionFake();
         const window = createMainWithNoiseSuppression(noise);
-        compare(findItem(window, "noiseEnableButton").enabled, true);
-        compare(findItem(window, "noiseDisableButton").enabled, false);
+        const toggle = findItem(window, "noiseEnableSwitch");
+        compare(toggle.enabled, true);
         noise.enabled = true;
-        tryCompare(findItem(window, "noiseEnableButton"), "enabled", false);
-        compare(findItem(window, "noiseDisableButton").enabled, true);
+        tryCompare(toggle, "checked", true);
         noise.busy = true;
-        tryCompare(findItem(window, "noiseDisableButton"), "enabled", false);
-        noise.enabled = false;
-        compare(findItem(window, "noiseEnableButton").enabled, false); // ocupado
+        tryCompare(toggle, "enabled", false);
+    }
+
+    // A troca da entrada padrão de áudio é uma ação com efeito no sistema: o aviso curto fica visível no painel.
+    function test_noisePanelKeepsAShortVisibleWarningAboutTheDefaultInput() {
+        const window = createMainWithNoiseSuppression(createNoiseSuppressionFake());
+        showMinimum(window);
+        openDeviceTab(window, "G733", "microphone");
+        const warning = findItem(window, "noiseInputWarningLabel");
+        verify(warning.text.indexOf("entrada padrão") >= 0, warning.text);
+        verify(warning.text.length < 80, warning.text);
+        tryVerify(() => warning.visible && warning.width > 0);
     }
 
     function test_noiseStatusFollowsController() {
@@ -1734,13 +1825,13 @@ TestCase {
         openDevice(window, "G733");
         const sidetone = findItem(window, "headsetSidetoneApplyButton");
         tryVerify(() => sidetone.visible);
-        compare(findItem(window, "eqEnableButton").visible, false);
+        compare(findItem(window, "eqEnableSwitch").visible, false);
         openTab(window, "equalizer");
-        tryVerify(() => findItem(window, "eqEnableButton").visible);
+        tryVerify(() => findItem(window, "eqEnableSwitch").visible);
         compare(sidetone.visible, false);
         openTab(window, "microphone");
-        tryVerify(() => findItem(window, "noiseEnableButton").visible);
-        compare(findItem(window, "eqEnableButton").visible, false);
+        tryVerify(() => findItem(window, "noiseEnableSwitch").visible);
+        compare(findItem(window, "eqEnableSwitch").visible, false);
     }
 
     function test_g703TabsSeparateOnboardAndRatbag() {
@@ -1785,6 +1876,7 @@ TestCase {
         tryVerify(() => visibleTexts("inventoryDeviceLabel").length === 1);
         compare(visibleTexts("inventoryDeviceLabel"), ["G703: detectado via cabo USB"]);
         compare(visibleTexts("batteryDeviceLabel"), ["G703: não detectado"]);
+        compare(visibleTexts("batteryStateText"), ["não detectado"]);
     }
 
     // R7: o stream nunca fica ligado numa página invisível.
@@ -1801,7 +1893,9 @@ TestCase {
         const preview = createPreviewFake();
         const window = createMain(createFake([]), sampleInventory(), null, preview);
         openDevice(window, "Brio 100");
-        clickButton(window, "profilesPageButton");
+        // A página do dispositivo não tem a aba Perfis (item 1 do pedido de estilo); a função de navegação continua
+        // a parar a pré-visualização ao sair da Brio 100 para qualquer página.
+        window.openPage(window.profilesPage);
         tryCompare(preview, "stopCalls", 1);
         compare(preview.toggleCalls, 0);
     }
@@ -2147,13 +2241,19 @@ TestCase {
         compare(drawing.kind, "headset");
         verify(Math.abs(drawing.mapToItem(area, drawing.width / 2, 0).x - area.width / 2) <= 1, "centro x");
         verify(Math.abs(drawing.mapToItem(area, 0, drawing.height / 2).y - area.height / 2) <= 1, "centro y");
+        // Como no G HUB: bloco alinhado à esquerda que começa 282 px antes da borda direita da área (item 8).
         const block = descendants(area).find(i => i.objectName === "mainBatteryBlock");
         compare(block.visible, true);
+        compare(block.mapToItem(area, 0, 0).x, area.width - 282);
         verify(block.mapToItem(area, block.width, 0).x <= area.width, "dentro da área");
-        verify(area.width - block.mapToItem(area, block.width, 0).x <= 40, "colado à direita");
         verify(block.mapToItem(area, 0, 0).y <= 40, "no topo");
-        compare(descendants(block).find(i => i.objectName === "mainBatteryText").text, "93% · descarregando");
-        compare(descendants(block).find(i => i.objectName === "mainBatteryIcon").value, 93);
+        const part = name => descendants(block).find(i => i.objectName === name);
+        compare(part("batteryHeader").text, "Nível de bateria");
+        compare(part("batteryPercentText").text, "93%");
+        compare(part("batteryPercentText").font.pixelSize, 18);
+        compare(part("batteryStateText").text, "descarregando");
+        compare(part("batteryIcon").value, 93);
+        verify(part("batteryIcon").mapToItem(block, 0, 0).x >= part("batteryPercentText").width, "ícone à direita do número");
     }
 
     function test_mainAreaHasNoBatteryBlockForTheBrio100() {
@@ -2201,6 +2301,16 @@ TestCase {
             openDevice(window, name);
             for (const key of tabsByDevice[name]) {
                 openTab(window, key);
+                if (key === "info") {
+                    // A página Informações não tem painel: as três colunas cabem na largura da janela.
+                    const page = visibleByName(window, "infoPage")[0];
+                    const outside = allVisibleDescendants(page).filter(item => item.objectName !== "" && item.width > 0
+                        && item.height > 0 && item.mapToItem(null, item.width, 0).x > window.width + 1)
+                        .map(item => item.objectName + " " + item.mapToItem(null, item.width, 0).x);
+                    compare(outside, [], name + "/info");
+                    compare(visibleByName(window, "devicePanel").length, 0, name + "/info sem painel");
+                    continue;
+                }
                 const panel = visibleByName(window, "devicePanel")[0];
                 // Só itens com objectName (controles e rótulos do app); os internos do estilo Material (sombra,
                 // ondulação) passam da borda de propósito.
@@ -2219,7 +2329,7 @@ TestCase {
     function test_sectionTitlesAreUppercase13pxWithSpacingAndDimWhite() {
         const window = createMain(createFake([]), sampleInventory());
         showMinimum(window);
-        openDeviceTab(window, "G915", "info");
+        openDeviceTab(window, "G733", "headset");
         const titles = visibleByName(window, "sectionTitle");
         verify(titles.length > 0, "há cabeçalhos de seção");
         titles.forEach(t => {
@@ -2227,6 +2337,15 @@ TestCase {
             compare(t.font.letterSpacing, 0.5);
             compare(t.font.capitalization, Font.AllUppercase);
             verify(Qt.colorEqual(t.color, Theme.foregroundMedium), String(t.color));
+        });
+        // Na página Informações os cabeçalhos usam #afb1b4 (referência §5).
+        openTab(window, "info");
+        const infoTitles = visibleByName(window, "sectionTitle");
+        verify(infoTitles.length > 0, "há cabeçalhos na página Informações");
+        infoTitles.forEach(t => {
+            compare(t.font.pixelSize, 13);
+            compare(t.font.capitalization, Font.AllUppercase);
+            verify(Qt.colorEqual(t.color, Theme.sliderFill), String(t.color));
         });
     }
 
@@ -2294,17 +2413,365 @@ TestCase {
             verify(Qt.colorEqual(button.contentItem.color, button.enabled ? Theme.foreground : Theme.buttonDisabledText),
                    name + " " + button.contentItem.color);
         };
-        openDeviceTab(window, "G915", "lighting");
-        check("lightingLiveButton");
-        check("lightingCustomColorButton"); // desabilitado sem o modo ao vivo
+        openDeviceTab(window, "G703", "onboard");
+        check("onboardReadButton");
+        compare(findItem(window, "onboardReadButton").width, 278); // largura toda do conteúdo do painel
         clickButton(window, "backButton");
         openDeviceTab(window, "G733", "headset");
         check("headsetLightsOnButton");
+        compare(findItem(window, "headsetLightsOnButton").width, 278);
         clickButton(window, "backButton");
         clickButton(window, "profilesPageButton");
         check("profileSaveButton");
         clickButton(window, "settingsPageButton");
         check("diagnosticsRefreshButton");
+    }
+
+    // ---- Estilo mais fiel ao G HUB (itens 1 a 12 do pedido de 2026-10-15) ----
+
+    // Item 1: na página do dispositivo o cabeçalho tem só a seta e o título.
+    function test_deviceHeaderHasOnlyTheArrowAndTheTitle() {
+        const window = createMain(createFake([]), sampleInventory());
+        showMinimum(window);
+        ["devicesTabButton", "profilesPageButton", "settingsPageButton", "topBarDivider"]
+            .forEach(name => compare(findItem(window, name).visible, true, name + " na tela inicial"));
+        openDevice(window, "G915");
+        ["devicesTabButton", "profilesPageButton", "settingsPageButton", "topBarDivider"]
+            .forEach(name => compare(findItem(window, name).visible, false, name + " na página do dispositivo"));
+        const back = findItem(window, "backButton");
+        const arrow = back.mapToItem(null, back.width / 2, back.height / 2);
+        verify(Math.abs(arrow.x - 35.5) <= 3, "seta em x≈25..46: " + arrow.x);
+        verify(Math.abs(arrow.y - 56) <= 3, "seta em y≈56: " + arrow.y);
+        compare(findItem(window, "deviceTitle").mapToItem(null, 0, 0).x, 81);
+        // Nas páginas Perfis e Configurações as abas e a engrenagem continuam.
+        clickButton(window, "backButton");
+        clickButton(window, "profilesPageButton");
+        compare(findItem(window, "devicesTabButton").visible, true);
+        compare(findItem(window, "settingsPageButton").visible, true);
+        compare(findItem(window, "topBarDivider").visible, true);
+    }
+
+    // Item 2: os parágrafos longos viram o texto de um "?" ao lado do cabeçalho; nada é apagado.
+    function test_longNoticesLiveInHelpIcons() {
+        const window = createMain(createFake([]), sampleInventory());
+        ["lightingNoticeLabel", "onboardNoticeLabel", "pointerNoticeLabel", "headsetNoticeLabel", "eqNoticeLabel",
+         "noiseNoticeLabel"].forEach(name => {
+            const icon = findItem(window, name);
+            verify(icon.tip !== undefined, name + " é um ícone de ajuda");
+            compare(icon.width, 20, name);
+            verify(icon.text.length > 60, name + ": " + icon.text);
+        });
+    }
+
+    function test_noPanelShowsALongParagraphOutsideTheHelpIcons() {
+        const onboard = createOnboardFake({loaded: true, dpiStages: [400, 800], defaultStage: 1, reportRateHz: 1000,
+                                           backupExists: true, status: "lido"});
+        const window = createMain(createFake([]), sampleInventory(), richCamera(), null, null, null, null, null, null,
+                                  onboard);
+        showMinimum(window);
+        const tabsByDevice = {"G915": ["lighting"], "G703": ["onboard", "ratbag"],
+                              "G733": ["headset", "equalizer", "microphone"], "Brio 100": ["image", "modes"]};
+        for (const name of Object.keys(tabsByDevice)) {
+            openDevice(window, name);
+            for (const key of tabsByDevice[name]) {
+                openTab(window, key);
+                const panel = visibleByName(window, "devicePanel")[0];
+                const longTexts = allVisibleDescendants(panel).filter(item => typeof item.text === "string"
+                    && item.tip === undefined && !/Status|Applied/.test(item.objectName)
+                    && item.text.length > 90).map(item => item.objectName + ": " + item.text.substring(0, 40));
+                compare(longTexts, [], name + "/" + key);
+            }
+            clickButton(window, "backButton");
+            tryCompare(window, "currentPage", 0);
+        }
+    }
+
+    // Exceção de segurança do item 2: ações que gravam no dispositivo ou trocam a saída/entrada de áudio mantêm uma
+    // linha curta visível.
+    function test_onboardPanelKeepsAShortVisibleWriteWarning() {
+        const window = createMain(createFake([]), sampleInventory());
+        showMinimum(window);
+        openDevice(window, "G703");
+        const warning = findItem(window, "onboardWriteWarningLabel");
+        compare(warning.text, "Grava no perfil ativo do mouse.");
+        tryVerify(() => warning.visible && warning.width > 0);
+    }
+
+    function test_ratbagWarningIsOneShortVisibleLineThatStillNamesTheBlocking() {
+        const window = createMain(createFake([]), sampleInventory());
+        showMinimum(window);
+        openDeviceTab(window, "G703", "ratbag");
+        const warning = findItem(window, "ratbagBlockWarningLabel");
+        tryVerify(() => warning.visible && warning.width > 0);
+        verify(warning.text.length < 110, warning.text);
+        const notice = findItem(window, "pointerNoticeLabel");
+        // O texto longo (com a menção à memória do mouse) vai inteiro para o balão.
+        verify(notice.text.indexOf("memória do mouse") >= 0, notice.text);
+        verify(notice.text.indexOf("ratbagd") >= 0, notice.text);
+    }
+
+    // Item 4/5: iluminação do G915 com abas CORES/EFEITOS e "+" para outra cor.
+    function test_lightingCustomColorPlusOpensTheSameColorDialogOnlyWhenEnabled() {
+        const lighting = createLightingFake({live: true});
+        const window = createMain(createFake([]), sampleInventory(), null, null, null, null, lighting);
+        showMinimum(window);
+        openDevice(window, "G915");
+        const plus = findItem(window, "lightingCustomColorButton");
+        tryVerify(() => plus.visible && plus.width > 0);
+        compare(plus.enabled, true);
+        compare(lighting.paintCalls.length, 0);
+    }
+
+    // Item 7: controles do G703 próprios; as ações são as mesmas de antes.
+    function test_onboardEditorUsesOwnComboRadiosAndSpinBoxesAndForwardsTheEditedValues() {
+        const onboard = createOnboardFake({loaded: true, dpiStages: [7050, 1600], defaultStage: 1, reportRateHz: 500,
+                                           backupExists: true});
+        const window = createMainWithOnboard(onboard);
+        showMinimum(window);
+        openDevice(window, "G703");
+        const rate = findItem(window, "onboardRateBox");
+        tryVerify(() => rate.visible && rate.width > 0);
+        verify(rate.popup !== undefined && rate.placeholderText !== undefined, "GHubComboBox");
+        compare(rate.currentText, "500");
+        rate.activated(3);
+        const radios = allItems(window).filter(i => i.objectName === "onboardDefaultRadio");
+        compare(radios.map(r => r.checked), [false, true]);
+        verify(radios[0].indicator.objectName === "radioRing", "GHubRadioButton");
+        radios[0].clicked();
+        const fields = allItems(window).filter(i => i.objectName === "onboardDpiField");
+        compare(fields.length, 2);
+        const plus = descendants(fields[0]).find(i => i.objectName === "spinPlus");
+        verify(plus !== undefined, "GHubSpinBox");
+        reveal(fields[0]);
+        waitForRendering(window.contentItem);
+        mouseClick(plus);
+        tryCompare(fields[0], "value", 7100);
+        findItem(window, "onboardWriteButton").clicked();
+        compare(JSON.stringify(onboard.writeCalls), JSON.stringify([[1000, [7100, 1600], 0]]));
+    }
+
+    // Item 6/7: sidetone com o valor à direita e os extremos; Brio com controles próprios.
+    function test_headsetSidetoneSliderShowsItsValueAndExtremes() {
+        const window = createMain(createFake([]), sampleInventory());
+        const slider = findItem(window, "headsetSidetoneSlider");
+        compare(slider.showValue, true);
+        compare(slider.showExtremes, true);
+        slider.value = 40;
+        compare(descendants(slider).find(i => i.objectName === "sliderValue").text, "40");
+    }
+
+    function test_brioControlsUseOwnSliderSwitchAndDropdown() {
+        const window = createMain(createFake([]), null, richCamera());
+        const slider = findItem(window, "cameraControlSlider");
+        compare(slider.showValue, true);
+        compare(slider.showExtremes, true);
+        const toggle = findItem(window, "cameraControlSwitch");
+        compare(toggle.width, 54);
+        compare(toggle.height, 24);
+        verify(toggle.toggleRequested !== undefined, "GHubSwitch");
+        const combo = findItem(window, "cameraControlCombo");
+        verify(combo.placeholderText !== undefined, "GHubComboBox");
+    }
+
+    // Item 9: as 10 bandas ficam na área principal; o painel guarda o título, o interruptor, o "?" e o estado.
+    function test_equalizerBandsLiveInTheMainAreaReplacingTheDrawing() {
+        const window = createMain(createFake([]), sampleInventory());
+        showMinimum(window);
+        openDeviceTab(window, "G733", "equalizer");
+        const area = visibleByName(window, "mainArea")[0];
+        compare(descendants(area).filter(i => i.objectName === "eqBandSlider").length, 10);
+        compare(descendants(area).find(i => i.objectName === "deviceDrawing").visible, false);
+        const panel = visibleByName(window, "devicePanel")[0];
+        compare(descendants(panel).filter(i => i.objectName === "eqBandSlider").length, 0);
+        verify(descendants(panel).some(i => i.objectName === "eqEnableSwitch"), "interruptor no painel");
+        verify(descendants(panel).some(i => i.objectName === "eqStatusLabel"), "estado no painel");
+        // Nas outras abas o desenho do headset volta.
+        openTab(window, "headset");
+        compare(descendants(visibleByName(window, "mainArea")[0]).find(i => i.objectName === "deviceDrawing").visible, true);
+    }
+
+    // Item 10: Informações em 3 colunas, sem painel; o trilho continua.
+    function test_infoPageHasThreeColumnsWithoutThePanel() {
+        const window = createMain(createFake([{name: "G733", summary: "93% · descarregando", percent: 93}]),
+                                  sampleInventory());
+        showMinimum(window);
+        openDeviceTab(window, "G733", "info");
+        const page = visibleByName(window, "infoPage")[0];
+        verify(page !== undefined, "página Informações visível");
+        compare(visibleByName(window, "devicePanel").length, 0);
+        compare(visibleByName(window, "mainArea").length, 0);
+        compare(railButtons(window).length, 4);
+        const column = name => descendants(page).find(i => i.objectName === name);
+        const left = column("infoLeftColumn");
+        const center = column("infoCenterColumn");
+        const right = column("infoRightColumn");
+        [left, center, right].forEach(c => compare(c.width, 250, c.objectName));
+        const xs = [left, center, right].map(c => c.mapToItem(null, 0, 0).x);
+        compare(xs[1] - xs[0], 320);
+        compare(xs[2] - xs[1], 318);
+        verify(xs[0] >= 61, "a primeira coluna começa depois do trilho: " + xs[0]);
+        // Esquerda: bateria e conexão. Centro: desenho. Direita: identidade, alinhada à esquerda da coluna.
+        verify(descendants(left).some(i => i.objectName === "batteryHeader"), "bateria na esquerda");
+        verify(descendants(left).some(i => i.objectName === "inventoryDeviceLabel"), "conexão na esquerda");
+        compare(descendants(center).find(i => i.objectName === "deviceDrawing").kind, "headset");
+        const read = descendants(right).find(i => i.objectName === "readIdentityButton");
+        compare(read.mapToItem(null, 0, 0).x, xs[2]);
+        compare(read.width, 250);
+        compare(descendants(right).find(i => i.objectName === "sectionTitle").text, "Identidade (HID++)");
+    }
+
+    // ---- Estado HID++ na página Informações (G915, G703, G733) ----
+
+    function createMainWithStatus(keyboard, pointer, headset) {
+        return createMain(createFake([]), sampleInventory(), null, null, null, null, null, null, null, null, null, null,
+                          null, null, null, keyboard, pointer, headset);
+    }
+
+    function statusButton(window) {
+        return visibleByName(window, "readStatusButton")[0];
+    }
+
+    function test_statusSectionReadsOnlyOnClickAndNothingOnOpen() {
+        const fakes3 = {"G915": createStatusFake(), "G703": createStatusFake(), "G733": createStatusFake()};
+        const window = createMainWithStatus(fakes3["G915"], fakes3["G703"], fakes3["G733"]);
+        for (const name of Object.keys(fakes3)) {
+            openDeviceTab(window, name, "info");
+            tryVerify(() => statusButton(window) !== undefined);
+            compare(fakes3[name].readCalls, 0, name + " nada lido ao abrir");
+            compare(statusButton(window).text, "Ler estado");
+            mouseClick(statusButton(window));
+            compare(fakes3[name].readCalls, 1, name);
+            const header = visibleByName(window, "sectionTitle").find(t => t.text === "Estado (HID++)");
+            verify(header !== undefined, name + " cabeçalho");
+            clickButton(window, "backButton");
+        }
+    }
+
+    function test_statusHelpIconExplainsOnDemandReadingAndUninterpretedBytes() {
+        const window = createMainWithStatus(createStatusFake(), createStatusFake(), createStatusFake());
+        openDeviceTab(window, "G915", "info");
+        const help = visibleByName(window, "statusHelpIcon")[0];
+        verify(help !== undefined);
+        verify(help.text.indexOf("só quando você clica") >= 0, help.text);
+        verify(help.text.indexOf("não interpretado") >= 0, help.text);
+    }
+
+    function test_statusButtonIsDisabledWhileReading() {
+        const status = createStatusFake({reading: true});
+        const window = createMainWithStatus(status, createStatusFake(), createStatusFake());
+        openDeviceTab(window, "G915", "info");
+        tryVerify(() => statusButton(window) !== undefined);
+        compare(statusButton(window).enabled, false);
+        status.reading = false;
+        tryCompare(statusButton(window), "enabled", true);
+    }
+
+    function statusRows(window) {
+        const labels = visibleByName(window, "statusRowLabel").map(i => i.text);
+        const values = visibleByName(window, "statusRowValue").map(i => i.text);
+        return labels.map((l, i) => l + "=" + values[i]);
+    }
+
+    function test_statusShowsTheValuesOfTheDevice() {
+        const keyboard = createStatusFake({status: {brightness: "100 de 100", brightnessUnexplained: "05 03 (não interpretado)",
+                                                    reportRate: "1000 Hz (1 ms)", supportedReportRates: "125, 250, 500, 1000"}});
+        const pointer = createStatusFake({status: {dpiRange: "100 a 25600", dpi: "7050 (padrão 800)",
+                                                   reportRate: "1000 Hz (1 ms)", supportedReportRates: "125, 250, 500, 1000"}});
+        const headset = createStatusFake({status: {equalizer: "10 bandas", equalizerUnexplained: "",
+                                                   uninterpreted: "00 00 00 00 (não interpretado)"}});
+        const window = createMainWithStatus(keyboard, pointer, headset);
+        openDeviceTab(window, "G915", "info");
+        tryVerify(() => statusRows(window).length === 4);
+        compare(statusRows(window), ["Brilho=100 de 100", "Report rate=1000 Hz (1 ms)",
+                                     "Taxas suportadas=125, 250, 500, 1000", "Não interpretado=05 03 (não interpretado)"]);
+        const value = visibleByName(window, "statusRowValue")[0];
+        compare(value.font.bold, true);
+        verify(Qt.colorEqual(value.color, Theme.foreground));
+        verify(Qt.colorEqual(visibleByName(window, "statusRowLabel")[0].color, "#888888"));
+        clickButton(window, "backButton");
+        openDeviceTab(window, "G703", "info");
+        tryVerify(() => statusRows(window).length === 4);
+        compare(statusRows(window), ["DPI=7050 (padrão 800)", "Faixa de DPI=100 a 25600", "Report rate=1000 Hz (1 ms)",
+                                     "Taxas suportadas=125, 250, 500, 1000"]);
+        clickButton(window, "backButton");
+        openDeviceTab(window, "G733", "info");
+        tryVerify(() => statusRows(window).length === 2);
+        compare(statusRows(window), ["Equalizador=10 bandas", "Sidetone (0x8300)=00 00 00 00 (não interpretado)"]);
+    }
+
+    function test_statusShowsTheErrorOnlyWhenThereIsOne() {
+        const keyboard = createStatusFake();
+        const window = createMainWithStatus(keyboard, createStatusFake(), createStatusFake());
+        openDeviceTab(window, "G915", "info");
+        tryVerify(() => statusButton(window) !== undefined);
+        compare(visibleByName(window, "statusErrorLabel").length, 0);
+        keyboard.error = "teclado ocupado";
+        tryVerify(() => visibleByName(window, "statusErrorLabel").length === 1);
+        compare(visibleByName(window, "statusErrorLabel")[0].text, "teclado ocupado");
+    }
+
+    function test_brioInfoHasNoStatusSection() {
+        const window = createMainWithStatus(createStatusFake(), createStatusFake(), createStatusFake());
+        openDeviceTab(window, "Brio 100", "info");
+        tryVerify(() => visibleByName(window, "inventoryDeviceLabel").length === 1);
+        compare(visibleByName(window, "readStatusButton").length, 0);
+        compare(visibleByName(window, "statusHelpIcon").length, 0);
+    }
+
+    // G703: cabeçalho de seção para a taxa de relatório e estágios em maiúsculas secundárias.
+    function test_onboardReportRateHasASectionHeaderAndStagesAreUppercaseSecondary() {
+        const onboard = createOnboardFake({loaded: true, dpiStages: [400, 800], defaultStage: 1, reportRateHz: 1000});
+        const window = createMainWithOnboard(onboard);
+        showMinimum(window);
+        openDevice(window, "G703");
+        const rate = findItem(window, "onboardRateBox");
+        tryVerify(() => rate.visible && rate.width > 0);
+        const header = visibleByName(window, "sectionTitle").find(t => t.text === "Report rate (por segundo)");
+        verify(header !== undefined, "cabeçalho REPORT RATE");
+        compare(header.font.capitalization, Font.AllUppercase);
+        verify(rate.mapToItem(null, 0, 0).y > header.mapToItem(null, 0, 0).y, "dropdown abaixo do cabeçalho");
+        const stages = visibleByName(window, "onboardStageLabel");
+        compare(stages.map(l => l.text), ["Estágio 1", "Estágio 2"]);
+        stages.forEach(l => {
+            compare(l.font.capitalization, Font.AllUppercase);
+            verify(l.font.pixelSize >= 12 && l.font.pixelSize <= 13);
+            verify(Qt.colorEqual(l.color, Theme.foregroundMedium));
+        });
+    }
+
+    // Regressão: a página Informações ocupa a largura toda e não pode engolir os cliques do trilho.
+    function test_railStillWorksFromTheInfoPage() {
+        const window = createMain(createFake([]), sampleInventory());
+        showMinimum(window);
+        openDeviceTab(window, "G703", "info");
+        openTab(window, "ratbag");
+        tryVerify(() => findItem(window, "pointerReadButton").visible);
+    }
+
+    // O aplicativo instalado pode rodar sem o plugin de tema do KDE: o texto não pode herdar a paleta do sistema.
+    function test_textColorsComeFromTheThemeNotFromTheSystemPalette() {
+        const window = createMain(createFake([{name: "G915", summary: "63% · descarregando", percent: 63}]),
+                                  sampleInventory());
+        showMinimum(window);
+        openDevice(window, "G915");
+        const same = (item, color) => verify(Qt.colorEqual(item.color, color), item.objectName + " " + item.color);
+        same(visibleByName(window, "panelTitle")[0], Theme.foreground);
+        same(visibleByName(window, "batteryPercentText")[0], Theme.foreground);
+        same(visibleByName(window, "switchRowLabel")[0], Theme.foreground);
+        openTab(window, "info");
+        same(visibleByName(window, "inventoryDeviceLabel")[0], Theme.foreground);
+        same(visibleByName(window, "batteryPercentText")[0], Theme.foreground);
+    }
+
+    // Item 12: a página Perfis usa os controles próprios.
+    function test_profilesPageUsesOwnTextFieldAndSwitch() {
+        const window = createMainWithProfiles(createProfilesFake({}));
+        const field = findItem(window, "profileNameField");
+        const underline = descendants(field).find(i => i.objectName === "fieldUnderline");
+        compare(underline.height, 1);
+        const toggle = findItem(window, "profilesAutoSwitch");
+        compare(toggle.width, 54);
+        verify(toggle.toggleRequested !== undefined, "GHubSwitch");
     }
 
     // ---- INC-014 parte 3: renderização fora da tela (1024×768) para conferir o layout contra a referência ----
@@ -2344,8 +2811,16 @@ TestCase {
         const diagnostics = createDiagnosticsFake({backends: [{name: "HeadsetControl", available: true, detail: "4.1.0"},
                                                               {name: "ratbagd", available: false, detail: "inativo"}],
                                                    status: "pronto"});
-        return createMain(batteries, inventory, camera, null, null, pointer, null, null, equalizer, onboard, null,
-                          null, diagnostics, profiles);
+        const lighting = createLightingFake({live: true, status: "modo ao vivo ligado"});
+        const keyboardStatus = createStatusFake({status: {brightness: "100 de 100",
+            brightnessUnexplained: "05 03 (não interpretado)", reportRate: "1000 Hz (1 ms)",
+            supportedReportRates: "125, 250, 500, 1000"}});
+        const pointerStatus = createStatusFake({status: {dpiRange: "100 a 25600", dpi: "7050 (padrão 800)",
+            reportRate: "1000 Hz (1 ms)", supportedReportRates: "125, 250, 500, 1000"}});
+        const headsetStatus = createStatusFake({status: {equalizer: "10 bandas", equalizerUnexplained: "",
+            uninterpreted: "00 00 00 00 (não interpretado)"}});
+        return createMain(batteries, inventory, camera, null, null, pointer, lighting, null, equalizer, onboard, null,
+                          null, diagnostics, profiles, null, keyboardStatus, pointerStatus, headsetStatus);
     }
 
     // Sem GHUB_UI_RENDER_DIR só confere que a captura funciona; com ela, grava um PNG por tela.
@@ -2369,11 +2844,16 @@ TestCase {
         capture("01-inicio");
         openDevice(window, "G915");
         capture("02-g915-iluminacao");
+        mouseClick(descendants(findItem(window, "lightingTabs")).filter(i => i.objectName === "innerTab")[1]);
+        waitForRendering(window.contentItem);
+        capture("13-g915-efeitos");
         openTab(window, "info");
         capture("03-g915-informacoes");
         clickButton(window, "backButton");
         openDevice(window, "G703");
         capture("04-g703-sensibilidade");
+        openTab(window, "info");
+        capture("14-g703-informacoes");
         openTab(window, "ratbag");
         capture("05-g703-leitura");
         clickButton(window, "backButton");
@@ -2383,11 +2863,14 @@ TestCase {
         capture("07-g733-equalizador");
         openTab(window, "microphone");
         capture("08-g733-microfone");
+        openTab(window, "info");
+        capture("15-g733-informacoes");
         clickButton(window, "backButton");
         openDevice(window, "Brio 100");
         capture("09-brio-imagem");
         openTab(window, "modes");
         capture("10-brio-modos");
+        clickButton(window, "backButton");
         clickButton(window, "profilesPageButton");
         capture("11-perfis");
         clickButton(window, "settingsPageButton");

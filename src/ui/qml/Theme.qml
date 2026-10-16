@@ -27,6 +27,11 @@ QtObject {
     readonly property color buttonDisabledSurface: "#222222"
     readonly property color buttonDisabledText: "#999999"
     readonly property color tabForeground: "#c8cdd7"    // abas inativas da barra do topo
+    readonly property color switchOff: "#a6a6a7"        // trilho do interruptor desligado
+    readonly property color fieldUnderline: "#595b5e"   // sublinhado de campos de texto e de números
+    readonly property color dropdownItem: "#888888"     // itens da lista aberta do dropdown (sem o cursor)
+    readonly property color innerTabInactive: "#9d9e9f" // abas internas do painel
+    readonly property color helpIcon: "#a6a6a8"         // ícone "?" ao lado do cabeçalho de seção
 
     // Desenhos próprios dos dispositivos (DeviceDrawing): corpo, contorno e detalhes, sem imagens de terceiros.
     readonly property color deviceBody: "#34363a"

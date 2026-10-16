@@ -12,6 +12,8 @@ namespace ghub::pointer::infrastructure {
 //   - 0x8100 fn0, fn2, fn4, fn5 (leituras);
 //   - 0x8100 fn6 (endereço de escrita) só com os 6 parâmetros [setor BE16][0000][tamanho BE16] e setor entre 1 e
 //     `profileCount` (nunca o diretório 0x0000 nem a ROM >= 0x0100); fn7 e fn8 (corpo e fim da escrita);
+//   - leituras de estado (INC-015 parte 2, ADR-0025): 0x2201 fn1/fn2 só com params exatamente [00] (sensor 0) e
+//     0x8060 fn0/fn1 sem parâmetros; 0x2201 fn0/fn3+ e 0x8060 fn2+ (escritas) continuam recusados;
 //   - nada mais: fn1 (modo), fn3 (perfil atual), fn9..15 e qualquer outra feature são recusados.
 // `profileCount` só é conhecido após o fn0: começa em 0 (fn6 sempre recusado) e só o adaptador HidppOnboardMemory
 // o fixa, com setProfileCount(), depois de um describe() bem-sucedido.

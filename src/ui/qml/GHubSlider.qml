@@ -3,12 +3,21 @@ import QtQuick.Controls
 
 // Slider no estilo do G HUB (INC-014 parte 3, R23): trilho de 2 px (vazio `sliderTrack`, cheio `sliderFill`) e
 // polegar branco circular de 12 px. Serve nas duas orientações; o comportamento é o do Slider do Qt Quick Controls.
+// Opcionalmente (horizontal): o valor em negrito de 14 px à direita, na altura do trilho (`showValue`), e os extremos
+// "from"/"to" em 11 px abaixo do trilho (`showExtremes`).
 Slider {
     id: control
 
+    property bool showValue: false
+    property bool showExtremes: false
+    // Texto do valor à direita; o padrão é o valor arredondado.
+    property string valueText: String(Math.round(control.value))
+
     padding: 0
+    rightPadding: horizontal && showValue ? 48 : 0
+    bottomPadding: horizontal && showExtremes ? 16 : 0
     implicitWidth: horizontal ? 200 : 20
-    implicitHeight: horizontal ? 20 : 200
+    implicitHeight: horizontal ? (showExtremes ? 36 : 20) : 200
 
     background: Rectangle {
         objectName: "sliderTrack"
@@ -43,5 +52,38 @@ Slider {
         height: 12
         radius: 6
         color: control.enabled ? Theme.foreground : Theme.foregroundMedium
+    }
+
+    Label {
+        objectName: "sliderValue"
+        visible: control.horizontal && control.showValue
+        width: 40
+        x: control.width - width
+        y: control.topPadding + control.availableHeight / 2 - height / 2
+        text: control.valueText
+        horizontalAlignment: Text.AlignRight
+        font.pixelSize: 14
+        font.bold: true
+        color: control.enabled ? Theme.foreground : Theme.foregroundDisabled
+    }
+
+    Label {
+        objectName: "sliderMinLabel"
+        visible: control.horizontal && control.showExtremes
+        x: control.leftPadding
+        y: control.topPadding + control.availableHeight / 2 + 18 - height / 2
+        text: String(Math.round(control.from))
+        font.pixelSize: 11
+        color: Theme.dropdownItem
+    }
+
+    Label {
+        objectName: "sliderMaxLabel"
+        visible: control.horizontal && control.showExtremes
+        x: control.leftPadding + control.availableWidth - width
+        y: control.topPadding + control.availableHeight / 2 + 18 - height / 2
+        text: String(Math.round(control.to))
+        font.pixelSize: 11
+        color: Theme.dropdownItem
     }
 }

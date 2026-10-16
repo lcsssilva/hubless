@@ -55,6 +55,7 @@ Rectangle {
 
         Label {
             objectName: "cardTitle"
+            color: Theme.foreground
             width: parent.width
             elide: Text.ElideRight
             text: card.deviceName

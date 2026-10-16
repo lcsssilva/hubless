@@ -91,10 +91,67 @@ TEST(G703OnboardPolicyTest, DeniesEveryOtherFeature)
 {
     const G703OnboardPolicy policy{5};
     for (const std::uint16_t feature :
-         std::array<std::uint16_t, 9>{0x2201, 0x8060, 0x8071, 0x8110, 0x4522, 0x8070, 0x8081, 0x1004, 0x1234}) {
+         std::array<std::uint16_t, 7>{0x8071, 0x8110, 0x4522, 0x8070, 0x8081, 0x1004, 0x1234}) {
         for (std::uint8_t function = 0; function < 16; ++function) {
             EXPECT_FALSE(allowed(policy, feature, function, addressParams(0x0001)))
                 << "feature " << feature << " fn " << int{function};
         }
+    }
+}
+
+// INC-015 parte 2 (ADR-0025): 0x2201 (DPI) e 0x8060 (report rate) deixaram de ser totalmente recusadas, só para as
+// leituras abaixo. O teste DeniesEveryOtherFeature perdeu estas duas features por esse motivo; as funções de escrita
+// continuam recusadas nos testes seguintes.
+TEST(G703OnboardPolicyTest, AllowsTheSensorDpiReadsOnlyForSensorZero)
+{
+    const G703OnboardPolicy policy{5};
+    EXPECT_TRUE(allowed(policy, 0x2201, 1, {0x00}));
+    EXPECT_TRUE(allowed(policy, 0x2201, 2, {0x00}));
+}
+
+TEST(G703OnboardPolicyTest, SensorDpiReadsRefuseAnyOtherParams)
+{
+    const G703OnboardPolicy policy{5};
+    for (const std::uint8_t function : {std::uint8_t{1}, std::uint8_t{2}}) {
+        EXPECT_FALSE(allowed(policy, 0x2201, function)) << "sem parâmetros";
+        EXPECT_FALSE(allowed(policy, 0x2201, function, {0x01})) << "outro sensor";
+        EXPECT_FALSE(allowed(policy, 0x2201, function, {0x00, 0x00})) << "parâmetro extra";
+        EXPECT_FALSE(allowed(policy, 0x2201, function, {0x00, 0x03, 0x20})) << "tentativa de enviar DPI";
+    }
+}
+
+TEST(G703OnboardPolicyTest, SensorDpiWriteAndOtherFunctionsStayDenied)
+{
+    const G703OnboardPolicy policy{5};
+    EXPECT_FALSE(allowed(policy, 0x2201, 0, {0x00}));
+    EXPECT_FALSE(allowed(policy, 0x2201, 3, {0x00})) << "SetSensorDpi";
+    EXPECT_FALSE(allowed(policy, 0x2201, 3, {0x00, 0x03, 0x20}));
+    for (std::uint8_t function = 3; function < 16; ++function) {
+        EXPECT_FALSE(allowed(policy, 0x2201, function, {0x00})) << "fn " << int{function};
+    }
+}
+
+TEST(G703OnboardPolicyTest, AllowsTheReportRateReadsWithoutParams)
+{
+    const G703OnboardPolicy policy{5};
+    EXPECT_TRUE(allowed(policy, 0x8060, 0));
+    EXPECT_TRUE(allowed(policy, 0x8060, 1));
+}
+
+TEST(G703OnboardPolicyTest, ReportRateReadsRefuseAnyParams)
+{
+    const G703OnboardPolicy policy{5};
+    EXPECT_FALSE(allowed(policy, 0x8060, 0, {0x00}));
+    EXPECT_FALSE(allowed(policy, 0x8060, 1, {0x02}));
+}
+
+TEST(G703OnboardPolicyTest, ReportRateWriteStaysDenied)
+{
+    const G703OnboardPolicy policy{5};
+    EXPECT_FALSE(allowed(policy, 0x8060, 2)) << "SetReportRate";
+    EXPECT_FALSE(allowed(policy, 0x8060, 2, {0x02}));
+    for (std::uint8_t function = 2; function < 16; ++function) {
+        EXPECT_FALSE(allowed(policy, 0x8060, function, {0x02})) << "fn " << int{function};
+        EXPECT_FALSE(allowed(policy, 0x8060, function)) << "fn " << int{function};
     }
 }

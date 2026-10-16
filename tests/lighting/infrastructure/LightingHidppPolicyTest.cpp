@@ -72,3 +72,41 @@ TEST(LightingHidppPolicy, ExplicitBlockListCoversTheUnknownHandshake)
     EXPECT_TRUE(LightingHidppPolicy::isExplicitlyBlocked(0x4522));
     EXPECT_FALSE(LightingHidppPolicy::isExplicitlyBlocked(0x8071));
 }
+
+// INC-015 parte 2 (ADR-0025): leituras de estado do G915.
+namespace {
+
+bool allowedWith(std::uint16_t feature, std::uint8_t function, const std::vector<std::uint8_t>& params = {})
+{
+    const LightingHidppPolicy policy;
+    return policy.isAllowed(feature, function, params);
+}
+
+} // namespace
+
+TEST(LightingHidppPolicy, StatusReadsAllowOnlyFn0AndFn1OfBrightnessAndReportRate)
+{
+    for (const std::uint16_t feature : {std::uint16_t{0x8040}, std::uint16_t{0x8060}}) {
+        EXPECT_TRUE(allowedWith(feature, 0)) << std::hex << feature;
+        EXPECT_TRUE(allowedWith(feature, 1)) << std::hex << feature;
+        for (std::uint8_t function = 2; function < 16; ++function) {
+            EXPECT_FALSE(allowedWith(feature, function)) << std::hex << feature << " fn" << std::dec << int{function};
+        }
+    }
+}
+
+TEST(LightingHidppPolicy, WriteFunctionsOfBrightnessAndReportRateStayDenied)
+{
+    EXPECT_FALSE(allowedWith(0x8040, 2));
+    EXPECT_FALSE(allowedWith(0x8040, 3));
+    EXPECT_FALSE(allowedWith(0x8060, 2));
+    EXPECT_FALSE(allowedWith(0x8060, 3));
+}
+
+TEST(LightingHidppPolicy, StatusReadsRefuseAnyNonEmptyParams)
+{
+    EXPECT_FALSE(allowedWith(0x8060, 1, {0x02}));
+    EXPECT_FALSE(allowedWith(0x8060, 0, {0x00}));
+    EXPECT_FALSE(allowedWith(0x8040, 0, {0x00}));
+    EXPECT_FALSE(allowedWith(0x8040, 1, {0x00, 0x32}));
+}

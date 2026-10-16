@@ -22,6 +22,7 @@ Rectangle {
         text: panel.title
         font.pixelSize: 24
         font.weight: Font.Medium
+        color: Theme.foreground
     }
 
     Item {

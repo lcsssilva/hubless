@@ -68,18 +68,27 @@
 #include "modules/diagnostics/infrastructure/XdgReportWriter.hpp"
 #include "modules/diagnostics/presentation/DiagnosticsViewModel.hpp"
 #include "modules/headset/application/ChangeHeadsetSetting.hpp"
+#include "modules/headset/application/ReadHeadsetStatus.hpp"
 #include "modules/headset/infrastructure/HeadsetControlSettingsWriter.hpp"
+#include "modules/headset/infrastructure/HidppHeadsetStatusSource.hpp"
 #include "modules/headset/presentation/HeadsetSettingsController.hpp"
+#include "modules/headset/presentation/HeadsetStatusViewModel.hpp"
 #include "modules/lighting/application/LiveKeyboardSession.hpp"
+#include "modules/lighting/application/ReadKeyboardStatus.hpp"
 #include "modules/lighting/infrastructure/G915HidppLighting.hpp"
+#include "modules/lighting/infrastructure/HidppKeyboardStatusSource.hpp"
 #include "modules/lighting/presentation/KeyboardLightingController.hpp"
+#include "modules/lighting/presentation/KeyboardStatusViewModel.hpp"
 #include "modules/pointer/application/G703OnboardSettings.hpp"
 #include "modules/pointer/application/ReadPointerConfiguration.hpp"
+#include "modules/pointer/application/ReadPointerSensorStatus.hpp"
 #include "modules/pointer/infrastructure/BackgroundPointerReader.hpp"
 #include "modules/pointer/infrastructure/FileOnboardBackupStore.hpp"
 #include "modules/pointer/infrastructure/G703NodeLocator.hpp"
+#include "modules/pointer/infrastructure/HidppPointerSensorSource.hpp"
 #include "modules/pointer/infrastructure/RatbagPointerBackend.hpp"
 #include "modules/pointer/presentation/G703OnboardController.hpp"
+#include "modules/pointer/presentation/PointerSensorStatusViewModel.hpp"
 #include "modules/pointer/presentation/PointerViewModel.hpp"
 #include "modules/profiles/application/ApplyProfile.hpp"
 #include "modules/profiles/application/ProfileBook.hpp"
@@ -220,6 +229,21 @@ int main(int argc, char* argv[])
                                                                     steadyClock};
     const ghub::device_inventory::ReadDeviceIdentity readDeviceIdentity{hidppIdentitySource, accessRegistry};
     ghub::device_inventory::DeviceIdentityViewModel deviceIdentityViewModel{readDeviceIdentity};
+    // Leituras de estado HID++ (ADR-0025): brilho e report rate do G915, DPI e report rate do G703, bandas do EQ do
+    // G733. Só leitura, só por clique em read() de cada ViewModel; nada é aberto nem lido na construção. Mesma
+    // ordem de destruição da identidade: ViewModel, caso de uso, fonte.
+    ghub::lighting::infrastructure::HidppKeyboardStatusSource hidppKeyboardStatusSource{
+        ghub::platform::hidpp::HidppNodeLocator{}, steadyClock};
+    const ghub::lighting::application::ReadKeyboardStatus readKeyboardStatus{hidppKeyboardStatusSource, accessRegistry};
+    ghub::lighting::presentation::KeyboardStatusViewModel keyboardStatusViewModel{readKeyboardStatus};
+    ghub::pointer::infrastructure::HidppPointerSensorSource hidppPointerSensorSource{
+        ghub::platform::hidpp::HidppNodeLocator{}, steadyClock};
+    const ghub::pointer::ReadPointerSensorStatus readPointerSensorStatus{hidppPointerSensorSource, accessRegistry};
+    ghub::pointer::PointerSensorStatusViewModel pointerStatusViewModel{readPointerSensorStatus};
+    ghub::headset::infrastructure::HidppHeadsetStatusSource hidppHeadsetStatusSource{
+        ghub::platform::hidpp::HidppNodeLocator{}, steadyClock};
+    const ghub::headset::ReadHeadsetStatus readHeadsetStatus{hidppHeadsetStatusSource, accessRegistry};
+    ghub::headset::HeadsetStatusViewModel headsetStatusViewModel{readHeadsetStatus};
     // Câmera (ADR-0008): Brio 100 lida por V4L2 só com ioctls de consulta, numa thread de trabalho,
     // ao iniciar e a cada 60 s (os ioctls de controle acordam a câmera; não reler mais que isso).
     // O ViewModel só lê o cache: é atualizado quando uma leitura termina; o timer dele é reserva.
@@ -399,6 +423,9 @@ int main(int argc, char* argv[])
         {QStringLiteral("batteryViewModel"), QVariant::fromValue(&batteryViewModel)},
         {QStringLiteral("deviceInventoryViewModel"), QVariant::fromValue(&deviceInventoryViewModel)},
         {QStringLiteral("deviceIdentityViewModel"), QVariant::fromValue(&deviceIdentityViewModel)},
+        {QStringLiteral("keyboardStatusViewModel"), QVariant::fromValue(&keyboardStatusViewModel)},
+        {QStringLiteral("pointerStatusViewModel"), QVariant::fromValue(&pointerStatusViewModel)},
+        {QStringLiteral("headsetStatusViewModel"), QVariant::fromValue(&headsetStatusViewModel)},
         {QStringLiteral("cameraViewModel"), QVariant::fromValue(&cameraViewModel)},
         {QStringLiteral("cameraPreviewViewModel"), QVariant::fromValue(&cameraPreviewViewModel)},
         {QStringLiteral("cameraControlEditor"), QVariant::fromValue(&cameraControlEditor)},

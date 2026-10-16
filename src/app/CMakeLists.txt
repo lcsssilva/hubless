@@ -23,7 +23,9 @@ qt_add_executable(ghub-linux main.cpp)
 # Componentes QML de src/ui/qml (INC-014). Theme.qml é singleton; o alias mantém o nome do arquivo no recurso,
 # que o qmldir de src/ui/qml usa nos testes de apresentação.
 set(GHUB_QML_DIR "${PROJECT_SOURCE_DIR}/src/ui/qml")
-set(GHUB_QML_FILES Main.qml DeviceCard.qml DeviceDrawing.qml BatteryIcon.qml DevicePage.qml PanelCard.qml PanelPage.qml SideTab.qml TopBarTab.qml SectionTitle.qml GHubButton.qml GHubSlider.qml GHubCheckBox.qml Theme.qml)
+set(GHUB_QML_FILES Main.qml DeviceCard.qml DeviceDrawing.qml BatteryIcon.qml DevicePage.qml PanelCard.qml PanelPage.qml SideTab.qml TopBarTab.qml SectionTitle.qml GHubButton.qml GHubSlider.qml GHubCheckBox.qml
+    GHubSwitch.qml GHubComboBox.qml GHubSpinBox.qml GHubRadioButton.qml GHubTextField.qml ColorSwatch.qml InnerTabs.qml
+    HelpIcon.qml SectionHeader.qml SwitchRow.qml BatteryBlock.qml EqualizerView.qml InfoPage.qml Theme.qml)
 set(GHUB_QML_PATHS)
 foreach(qml_file IN LISTS GHUB_QML_FILES)
     set_source_files_properties("${GHUB_QML_DIR}/${qml_file}" PROPERTIES QT_RESOURCE_ALIAS ${qml_file})
@@ -51,7 +53,7 @@ target_link_libraries(ghub-linux PRIVATE
     ghub_diagnostics_infrastructure ghub_diagnostics_presentation
     ghub_pointer_infrastructure ghub_pointer_background ghub_pointer_presentation ghub_pointer_hidpp
     ghub_lighting_infrastructure ghub_lighting_presentation
-    ghub_headset_infrastructure ghub_headset_presentation
+    ghub_headset_infrastructure ghub_headset_hidpp ghub_headset_presentation
     ghub_audio_processing_infrastructure ghub_audio_processing_presentation
     ghub_profiles_infrastructure ghub_profiles_presentation)
 ghub_set_warnings(ghub-linux)

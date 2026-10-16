@@ -62,6 +62,12 @@ ApplicationWindow {
     // G915, G703 e G733 só é lida por clique na aba Informações (INC-015, ADR-0024).
     required property QtObject deviceIdentityViewModel
 
+    // KeyboardStatusViewModel, PointerSensorStatusViewModel e HeadsetStatusViewModel, fornecidos pelo composition
+    // root: o estado HID++ de G915, G703 e G733 só é lido por clique na página Informações.
+    required property QtObject keyboardStatusViewModel
+    required property QtObject pointerStatusViewModel
+    required property QtObject headsetStatusViewModel
+
     // Nome do perfil à espera da confirmação de remoção; estado de UI apenas.
     property string profilePendingRemoval: ""
     // Nome do perfil à espera da confirmação de atualização; estado de UI apenas.
@@ -148,6 +154,26 @@ ApplicationWindow {
     Material.primary: Theme.surface
     Material.foreground: Theme.foreground
 
+    // A aparência não pode depender da paleta do sistema (o app pode rodar sem o plugin de tema do KDE nem com o
+    // estilo Material): a paleta da janela vem dos tokens do Theme e é herdada por todos os controles.
+    palette.window: Theme.background
+    palette.windowText: Theme.foreground
+    palette.base: Theme.surface
+    palette.alternateBase: Theme.surface
+    palette.text: Theme.foreground
+    palette.button: Theme.buttonSurface
+    palette.buttonText: Theme.foreground
+    palette.brightText: Theme.foreground
+    palette.placeholderText: Theme.foregroundMedium
+    palette.highlight: Theme.primary
+    palette.highlightedText: Theme.foreground
+    palette.toolTipBase: Theme.foreground
+    palette.toolTipText: "#000000"
+    palette.link: Theme.primary
+    palette.mid: Theme.sliderTrack
+    palette.dark: Theme.surface
+    palette.light: Theme.sliderFill
+
     // Encerra o stream da câmera ao fechar a janela. Com bandeja (hideOnClose) e fora de um encerramento
     // pedido, recusa o fechamento e esconde a janela: o processo continua e a bandeja reabre (INC-013 R4/R5).
     onClosing: function(close) {
@@ -160,6 +186,7 @@ ApplicationWindow {
 
     // Texto corrido de um painel: ocupa a largura da coluna e quebra a linha.
     component BodyLabel: Label {
+        color: Theme.foreground
         Layout.fillWidth: true
         wrapMode: Text.WordWrap
     }
@@ -180,125 +207,6 @@ ApplicationWindow {
         }
     }
 
-    // Aba Informações de um dispositivo: conexão e bateria só dele (INC-014 R11).
-    component InfoTab: TabPage {
-        id: infoTab
-        property string deviceName: ""
-        property var inventoryDevices: []
-        property var batteryDevices: []
-        // Chave do dispositivo no DeviceIdentityViewModel ("g915", "g703", "g733"); vazia = sem leitura HID++.
-        property string identityKey: ""
-        readonly property var identity: identityKey !== "" && window.deviceIdentityViewModel.identities[identityKey]
-                                        ? window.deviceIdentityViewModel.identities[identityKey]
-                                        : ({state: "idle"})
-        readonly property bool identityOk: identity.state === "ok"
-        // Estado de UI apenas: lista de IDs das features recolhida por padrão.
-        property bool featureIdsExpanded: false
-
-        SectionTitle { text: qsTr("Conexão") }
-
-        Repeater {
-            model: infoTab.inventoryDevices.filter(d => d.name === infoTab.deviceName)
-
-            delegate: Label {
-                required property var modelData
-                objectName: "inventoryDeviceLabel"
-                text: modelData.name + ": " + modelData.summary
-            }
-        }
-
-        SectionTitle { text: qsTr("Bateria") }
-
-        Repeater {
-            model: infoTab.batteryDevices.filter(d => d.name === infoTab.deviceName)
-
-            delegate: Label {
-                required property var modelData
-                objectName: "batteryDeviceLabel"
-                text: modelData.name + ": " + modelData.summary
-            }
-        }
-
-        // Identidade por HID++ (INC-015): só leitura, só por clique; o QML apenas encaminha ao ViewModel.
-        // A Brio 100 não fala HID++: sem chave, a seção nem é criada.
-        Loader {
-            Layout.fillWidth: true
-            active: infoTab.identityKey !== ""
-            visible: active
-            sourceComponent: identitySection
-        }
-
-        Component {
-            id: identitySection
-
-            ColumnLayout {
-                spacing: 12
-
-                SectionTitle { text: qsTr("Identidade (HID++)") }
-
-                GHubButton {
-                    objectName: "readIdentityButton"
-                    enabled: infoTab.identity.state !== "reading"
-                    text: infoTab.identity.state === "reading" ? qsTr("Lendo…") : qsTr("Ler identidade")
-                    onClicked: window.deviceIdentityViewModel.read(infoTab.identityKey)
-                }
-
-                BodyLabel {
-                    objectName: "identityErrorLabel"
-                    visible: infoTab.identity.state === "error"
-                    color: Theme.error
-                    text: infoTab.identity.error || ""
-                }
-
-                BodyLabel {
-                    objectName: "identityNameLabel"
-                    visible: infoTab.identityOk
-                    text: qsTr("Nome: %1").arg(infoTab.identity.name)
-                }
-
-                BodyLabel {
-                    objectName: "identityTypeLabel"
-                    visible: infoTab.identityOk
-                    text: qsTr("Tipo: %1").arg(infoTab.identity.type)
-                }
-
-                BodyLabel {
-                    objectName: "identityFirmwareLabel"
-                    visible: infoTab.identityOk
-                    text: qsTr("Firmware: %1").arg(infoTab.identityOk && infoTab.identity.firmwares.length > 0
-                                                   ? infoTab.identity.firmwares.join("\n") : qsTr("não informado"))
-                }
-
-                BodyLabel {
-                    objectName: "identityFeatureCountLabel"
-                    visible: infoTab.identityOk
-                    text: qsTr("Features: %1").arg(infoTab.identity.featureCount)
-                }
-
-                BodyLabel {
-                    objectName: "identityTruncationLabel"
-                    visible: infoTab.identityOk && infoTab.identity.truncationNote !== ""
-                    color: Theme.foregroundMedium
-                    text: infoTab.identity.truncationNote || ""
-                }
-
-                GHubButton {
-                    objectName: "toggleFeatureIdsButton"
-                    flat: true
-                    visible: infoTab.identityOk && infoTab.identity.featureCount > 0
-                    text: infoTab.featureIdsExpanded ? qsTr("Ocultar IDs das features") : qsTr("Mostrar IDs das features")
-                    onClicked: infoTab.featureIdsExpanded = !infoTab.featureIdsExpanded
-                }
-
-                BodyLabel {
-                    objectName: "identityFeatureIdsLabel"
-                    visible: infoTab.identityOk && infoTab.identity.featureCount > 0 && infoTab.featureIdsExpanded
-                    text: infoTab.identityOk ? infoTab.identity.featureIds.join(", ") : ""
-                }
-            }
-        }
-    }
-
     // Barra do topo (INC-014 parte 3, R19): 88 px, preta, divisor de 1 px na base. À esquerda, a marca própria
     // (tela inicial) ou a seta e o nome do dispositivo (páginas de dispositivo); depois as abas e a engrenagem.
     header: Item {
@@ -312,6 +220,7 @@ ApplicationWindow {
 
             Label {
                 objectName: "brandLabel"
+                color: Theme.foreground
                 visible: !window.deviceOpen
                 // Com a seta de voltar à esquerda (Perfis e Configurações), a marca vem depois dela.
                 x: window.currentPage === window.homePage ? 39 : 81
@@ -325,8 +234,9 @@ ApplicationWindow {
                 id: backButton
                 objectName: "backButton"
                 visible: window.currentPage !== window.homePage
-                x: 13
-                anchors.verticalCenter: parent.verticalCenter
+                // Na página do dispositivo a seta fica em x≈25, y≈48 (REFERENCIA-ESTILO-GHUB.md §4.1), sem fundo.
+                x: window.deviceOpen ? 12 : 13
+                y: window.deviceOpen ? 32 : 20
                 width: 48
                 height: 48
                 hoverEnabled: true
@@ -346,15 +256,19 @@ ApplicationWindow {
 
             Label {
                 objectName: "deviceTitle"
+                color: Theme.foreground
                 visible: window.deviceOpen
                 x: 81
-                anchors.verticalCenter: parent.verticalCenter
+                y: 27
                 text: window.deviceNames[window.currentPage] ?? ""
                 font.pixelSize: 36
                 font.bold: true
             }
 
+            // Abas, engrenagem e divisor só existem na tela inicial e nas páginas Perfis e Configurações:
+            // a página do dispositivo tem só a seta e o título (item 1 do pedido de estilo).
             Row {
+                visible: !window.deviceOpen
                 x: 280
                 height: parent.height
                 spacing: 16
@@ -376,6 +290,7 @@ ApplicationWindow {
 
             ToolButton {
                 objectName: "settingsPageButton"
+                visible: !window.deviceOpen
                 anchors.right: parent.right
                 anchors.rightMargin: 40
                 anchors.verticalCenter: parent.verticalCenter
@@ -392,6 +307,7 @@ ApplicationWindow {
 
             Rectangle {
                 objectName: "topBarDivider"
+                visible: !window.deviceOpen
                 anchors.left: parent.left
                 anchors.right: parent.right
                 anchors.bottom: parent.bottom
@@ -472,30 +388,35 @@ ApplicationWindow {
             onTabSelected: key => window.g915Tab = key
 
             TabPage {
-                BodyLabel {
-                    font.bold: true
-                    text: qsTr("Teclado (G915)")
+                // O modo ao vivo e cada cor só são pedidos por clique; o QML apenas encaminha ao controlador e
+                // mostra o estado que o controlador informa.
+                SwitchRow {
+                    text: qsTr("Modo ao vivo")
+                    help: qsTr("No modo ao vivo o aplicativo controla as cores do G915. Nada é gravado no teclado: ao desligar o modo ou fechar o aplicativo, o efeito salvo volta. Os efeitos são uma prévia: somem ao desligar o modo ao vivo, como observado neste teclado.")
+                    helpObjectName: "lightingNoticeLabel"
+                    switchObjectName: "lightingLiveSwitch"
+                    checked: window.keyboardLightingController.live
+                    switchEnabled: !window.keyboardLightingController.busy
+                    onToggleRequested: wanted => wanted ? window.keyboardLightingController.startLive()
+                                                        : window.keyboardLightingController.stopLive()
                 }
 
-                BodyLabel {
-                    objectName: "lightingNoticeLabel"
-                    text: qsTr("No modo ao vivo o aplicativo controla as cores do G915. Nada é gravado no teclado: ao desligar o modo ou fechar o aplicativo, o efeito salvo volta. Os efeitos são uma prévia: somem ao desligar o modo ao vivo, como observado neste teclado.")
+                InnerTabs {
+                    id: lightingTabs
+                    objectName: "lightingTabs"
+                    model: [qsTr("Cores"), qsTr("Efeitos")]
                 }
 
-                // O modo ao vivo e cada cor só são pedidos por clique; o QML apenas encaminha ao controlador.
-                GHubButton {
-                    objectName: "lightingLiveButton"
-                    text: window.keyboardLightingController.live ? qsTr("Desligar modo ao vivo")
-                                                                 : qsTr("Ligar modo ao vivo")
-                    enabled: !window.keyboardLightingController.busy
-                    onClicked: window.keyboardLightingController.live
-                        ? window.keyboardLightingController.stopLive()
-                        : window.keyboardLightingController.startLive()
+                SectionHeader {
+                    text: qsTr("Cor")
+                    visible: lightingTabs.currentIndex === 0
                 }
 
+                // Amostras circulares de 20 px; o "+" abre o seletor de cor.
                 Flow {
                     Layout.fillWidth: true
-                    spacing: 6
+                    visible: lightingTabs.currentIndex === 0
+                    spacing: 18
 
                     Repeater {
                         model: [
@@ -509,11 +430,12 @@ ApplicationWindow {
                             {name: qsTr("Laranja"), value: "#ff8000"}
                         ]
 
-                        delegate: GHubButton {
+                        delegate: ColorSwatch {
                             required property var modelData
                             objectName: "lightingSwatch"
-                            text: modelData.name
-                            Accessible.name: modelData.name
+                            swatchColor: modelData.value
+                            colorName: modelData.name
+                            selected: Qt.colorEqual(window.lightingEffectColor, modelData.value)
                             enabled: window.keyboardLightingController.live && !window.keyboardLightingController.busy
                             onClicked: {
                                 window.lightingEffectColor = modelData.value
@@ -522,36 +444,47 @@ ApplicationWindow {
                         }
                     }
 
-                    GHubButton {
+                    ColorSwatch {
                         objectName: "lightingCustomColorButton"
-                        text: qsTr("Outra cor…")
+                        plus: true
+                        colorName: qsTr("Outra cor…")
                         enabled: window.keyboardLightingController.live && !window.keyboardLightingController.busy
                         onClicked: lightingColorDialog.open()
                     }
                 }
 
-                // Prévia de efeito de hardware: só enquanto o modo ao vivo está ligado; some ao desligar.
-                Flow {
-                    Layout.fillWidth: true
-                    spacing: 6
+                // Prévia de efeito de hardware: só enquanto o modo ao vivo está ligado; escolher o item faz o mesmo
+                // pedido que o botão de cada efeito fazia.
+                SectionHeader {
+                    objectName: "lightingEffectHeader"
+                    text: qsTr("Efeito")
+                    visible: lightingTabs.currentIndex === 1
+                }
 
-                    Repeater {
-                        model: [
-                            {name: qsTr("Onda"), kind: "wave"},
-                            {name: qsTr("Ciclo de cores"), kind: "cycle"},
-                            {name: qsTr("Respiração"), kind: "breathing"},
-                            {name: qsTr("Ondulação"), kind: "ripple"}
-                        ]
+                GHubComboBox {
+                    id: lightingEffectCombo
+                    objectName: "lightingEffectCombo"
+                    readonly property var effects: [
+                        {name: qsTr("Onda"), kind: "wave"},
+                        {name: qsTr("Ciclo de cores"), kind: "cycle"},
+                        {name: qsTr("Respiração"), kind: "breathing"},
+                        {name: qsTr("Ondulação"), kind: "ripple"}
+                    ]
+                    visible: lightingTabs.currentIndex === 1
+                    model: effects.map(e => e.name)
+                    currentIndex: -1
+                    placeholderText: qsTr("Escolher efeito")
+                    enabled: window.keyboardLightingController.live && !window.keyboardLightingController.busy
+                    onActivated: index => window.keyboardLightingController.applyEffect(effects[index].kind,
+                                                                                         window.lightingEffectColor)
+                }
 
-                        delegate: GHubButton {
-                            required property var modelData
-                            objectName: "lightingEffectButton"
-                            text: modelData.name
-                            Accessible.name: modelData.name
-                            enabled: window.keyboardLightingController.live && !window.keyboardLightingController.busy
-                            onClicked: window.keyboardLightingController.applyEffect(modelData.kind, window.lightingEffectColor)
-                        }
-                    }
+                BodyLabel {
+                    objectName: "lightingEffectPreviewNote"
+                    visible: lightingTabs.currentIndex === 1
+                    font.pixelSize: 12
+                    color: Theme.foregroundMedium
+                    text: qsTr("Prévia: some ao desligar o modo ao vivo.")
                 }
 
                 BodyLabel {
@@ -560,11 +493,18 @@ ApplicationWindow {
                 }
             }
 
-            InfoTab {
+            infoContent: InfoPage {
+                anchors.fill: parent
                 deviceName: "G915"
+                deviceKind: "keyboard"
                 identityKey: "g915"
+                statusKind: "keyboard"
+                statusViewModel: window.keyboardStatusViewModel
+                identityViewModel: window.deviceIdentityViewModel
                 inventoryDevices: window.deviceInventoryViewModel.devices
                 batteryDevices: window.batteryViewModel.devices
+                batterySummary: window.batteryTextOf("G915")
+                batteryPercent: window.batteryPercentOf("G915")
             }
         }
 
@@ -575,19 +515,26 @@ ApplicationWindow {
             deviceKind: "mouse"
             batteryText: window.batteryTextOf("G703")
             batteryPercent: window.batteryPercentOf("G703")
-            tabs: [{key: "onboard", text: qsTr("Sensibilidade"), icon: "speedometer"},
+            tabs: [{key: "onboard", text: qsTr("Sensibilidade (DPI)"), icon: "speedometer"},
                    {key: "ratbag", text: qsTr("Leitura (ratbagd)"), icon: "view-refresh"},
                    {key: "info", text: qsTr("Informações"), icon: "applications-system"}]
             currentTab: window.g703Tab
             onTabSelected: key => window.g703Tab = key
 
             TabPage {
-                SectionTitle { text: qsTr("Sensibilidade (memória do mouse)") }
                 // Memória do mouse por HID++ (INC-011): o QML só repassa os valores editados ao controlador,
                 // que valida e grava; nada é lido nem gravado na abertura.
+                SectionHeader {
+                    text: qsTr("Memória do mouse")
+                    help: qsTr("Grava na memória do mouse (perfil ativo). Antes da primeira gravação é salva uma cópia do perfil. Feche o Piper e não use o ratbagd ao mesmo tempo: um Commit dele sobrescreve estes valores.")
+                    helpObjectName: "onboardNoticeLabel"
+                }
+
+                // Exceção de segurança: esta ação grava no dispositivo, então a linha curta fica sempre visível.
                 BodyLabel {
-                    objectName: "onboardNoticeLabel"
-                    text: qsTr("Grava na memória do mouse (perfil ativo). Antes da primeira gravação é salva uma cópia do perfil. Feche o Piper e não use o ratbagd ao mesmo tempo: um Commit dele sobrescreve estes valores.")
+                    objectName: "onboardWriteWarningLabel"
+                    font.bold: true
+                    text: qsTr("Grava no perfil ativo do mouse.")
                 }
 
                 GHubButton {
@@ -627,20 +574,16 @@ ApplicationWindow {
                         function onDefaultStageChanged() { onboardEditor.syncFromController() }
                     }
 
-                    RowLayout {
+                    SectionHeader { text: qsTr("Report rate (por segundo)") }
+
+                    ColumnLayout {
                         Layout.fillWidth: true
 
-                        Label {
-                            Layout.fillWidth: true
-                            wrapMode: Text.WordWrap
-                            text: qsTr("Taxa de relatório (Hz)")
-                        }
-
-                        ComboBox {
+                        GHubComboBox {
                             objectName: "onboardRateBox"
                             model: [125, 250, 500, 1000]
                             currentIndex: Math.max(0, model.indexOf(onboardEditor.editRate))
-                            onActivated: onboardEditor.editRate = model[currentIndex]
+                            onActivated: index => onboardEditor.editRate = model[index]
                         }
                     }
 
@@ -658,11 +601,15 @@ ApplicationWindow {
                                 Layout.fillWidth: true
 
                                 Label {
+                                    objectName: "onboardStageLabel"
                                     Layout.fillWidth: true
                                     text: qsTr("Estágio ") + (stageRow.index + 1)
+                                    font.pixelSize: 12
+                                    font.capitalization: Font.AllUppercase
+                                    color: Theme.foregroundMedium
                                 }
 
-                                RadioButton {
+                                GHubRadioButton {
                                     objectName: "onboardDefaultRadio"
                                     text: qsTr("padrão")
                                     checked: onboardEditor.editDefault === stageRow.index
@@ -670,7 +617,7 @@ ApplicationWindow {
                                 }
                             }
 
-                            SpinBox {
+                            GHubSpinBox {
                                 Layout.fillWidth: true
                                 objectName: "onboardDpiField"
                                 from: 100
@@ -739,15 +686,17 @@ ApplicationWindow {
             }
 
             TabPage {
-                BodyLabel {
-                    objectName: "pointerNoticeLabel"
-                    text: qsTr("Ler a configuração ativa o serviço ratbagd (root). Enquanto ele estiver ativo (até ~20 min), a bateria do G733 fica suspensa.")
+                SectionHeader {
+                    text: qsTr("Leitura (ratbagd)")
+                    help: qsTr("Ler a configuração ativa o serviço ratbagd (root). Enquanto ele estiver ativo (até ~20 min), a bateria do G733 fica suspensa.\n\nAtenção: esta leitura ativa o ratbagd, que pode bloquear a memória do mouse (aba Sensibilidade) e a bateria do G733 por cerca de 20 minutos.")
+                    helpObjectName: "pointerNoticeLabel"
                 }
 
+                // Exceção de segurança: ativar o ratbagd tem efeito fora do app, então o aviso curto fica visível.
                 BodyLabel {
                     objectName: "ratbagBlockWarningLabel"
                     font.bold: true
-                    text: qsTr("Atenção: esta leitura ativa o ratbagd, que pode bloquear a memória do mouse (aba Sensibilidade) e a bateria do G733 por cerca de 20 minutos.")
+                    text: qsTr("Atenção: ativa o ratbagd e suspende a bateria do G733 por cerca de 20 minutos.")
                 }
                 // A leitura só começa por clique; o QML apenas encaminha ao ViewModel.
                 GHubButton {
@@ -835,11 +784,18 @@ ApplicationWindow {
                 }
             }
 
-            InfoTab {
+            infoContent: InfoPage {
+                anchors.fill: parent
                 deviceName: "G703"
+                deviceKind: "mouse"
                 identityKey: "g703"
+                statusKind: "pointer"
+                statusViewModel: window.pointerStatusViewModel
+                identityViewModel: window.deviceIdentityViewModel
                 inventoryDevices: window.deviceInventoryViewModel.devices
                 batteryDevices: window.batteryViewModel.devices
+                batterySummary: window.batteryTextOf("G703")
+                batteryPercent: window.batteryPercentOf("G703")
             }
         }
 
@@ -858,56 +814,54 @@ ApplicationWindow {
             onTabSelected: key => window.g733Tab = key
 
             TabPage {
-                BodyLabel {
-                    objectName: "headsetNoticeLabel"
-                    text: qsTr("Ajustes enviados pelo HeadsetControl. O headset não informa o valor atual. O sidetone fica gravado no headset e só é ouvido enquanto algum programa usa o microfone; as luzes voltam ao padrão ao desligar o headset. “Ligar luzes” aplica o efeito respiração do HeadsetControl.")
-                }
-
                 // Grava só pelo botão "Aplicar"; mover o controle não grava nada.
+                SectionHeader {
+                    text: qsTr("Sidetone")
+                    help: qsTr("Ajustes enviados pelo HeadsetControl. O headset não informa o valor atual. O sidetone fica gravado no headset e só é ouvido enquanto algum programa usa o microfone; as luzes voltam ao padrão ao desligar o headset. “Ligar luzes” aplica o efeito respiração do HeadsetControl.")
+                    helpObjectName: "headsetNoticeLabel"
+                }
+
+                GHubSlider {
+                    id: headsetSidetoneSlider
+                    objectName: "headsetSidetoneSlider"
+                    Layout.fillWidth: true
+                    from: 0
+                    to: 100
+                    stepSize: 1
+                    showValue: true
+                    showExtremes: true
+                    Accessible.name: qsTr("Sidetone")
+                }
+
+                // Exceção de segurança: esta ação grava no headset, então a linha curta fica sempre visível.
                 BodyLabel {
-                    text: qsTr("Sidetone: %1").arg(Math.round(headsetSidetoneSlider.value))
+                    objectName: "headsetSidetoneWarningLabel"
                     font.bold: true
+                    text: qsTr("O sidetone fica gravado no headset.")
                 }
 
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: 12
-
-                    GHubSlider {
-                        id: headsetSidetoneSlider
-                        objectName: "headsetSidetoneSlider"
-                        Layout.fillWidth: true
-                        from: 0
-                        to: 100
-                        stepSize: 1
-                    }
-
-                    GHubButton {
-                        objectName: "headsetSidetoneApplyButton"
-                        Layout.fillWidth: false
-                        text: qsTr("Aplicar")
-                        enabled: !window.headsetSettingsController.busy
-                        onClicked: window.headsetSettingsController.setSidetone(Math.round(headsetSidetoneSlider.value))
-                    }
+                GHubButton {
+                    objectName: "headsetSidetoneApplyButton"
+                    text: qsTr("Aplicar")
+                    enabled: !window.headsetSettingsController.busy
+                    onClicked: window.headsetSettingsController.setSidetone(Math.round(headsetSidetoneSlider.value))
                 }
 
-                ColumnLayout {
-                    Layout.fillWidth: true
-                    spacing: 8
+                // O headset não informa se as luzes estão ligadas: por honestidade são dois botões, não um interruptor.
+                SectionHeader { text: qsTr("Luzes") }
 
-                    GHubButton {
-                        objectName: "headsetLightsOnButton"
-                        text: qsTr("Ligar luzes")
-                        enabled: !window.headsetSettingsController.busy
-                        onClicked: window.headsetSettingsController.setLights(true)
-                    }
+                GHubButton {
+                    objectName: "headsetLightsOnButton"
+                    text: qsTr("Ligar luzes")
+                    enabled: !window.headsetSettingsController.busy
+                    onClicked: window.headsetSettingsController.setLights(true)
+                }
 
-                    GHubButton {
-                        objectName: "headsetLightsOffButton"
-                        text: qsTr("Desligar luzes")
-                        enabled: !window.headsetSettingsController.busy
-                        onClicked: window.headsetSettingsController.setLights(false)
-                    }
+                GHubButton {
+                    objectName: "headsetLightsOffButton"
+                    text: qsTr("Desligar luzes")
+                    enabled: !window.headsetSettingsController.busy
+                    onClicked: window.headsetSettingsController.setLights(false)
                 }
 
                 BodyLabel {
@@ -926,96 +880,23 @@ ApplicationWindow {
             }
 
             TabPage {
-                SectionTitle { text: qsTr("Equalizador do G733 (no PC)") }
+                // As 10 bandas ficam na área principal (mainView); o painel guarda o interruptor, o "?" e o estado.
+                SwitchRow {
+                    text: qsTr("Equalizador")
+                    help: qsTr("Processado no PC pelo PipeWire, não no headset. Vale só com o app aberto. Enquanto ligado, a saída padrão passa a ser “G733 + EQ”.")
+                    helpObjectName: "eqNoticeLabel"
+                    switchObjectName: "eqEnableSwitch"
+                    checked: window.hostEqualizerController.enabled
+                    switchEnabled: !window.hostEqualizerController.busy
+                    onToggleRequested: wanted => wanted ? window.hostEqualizerController.enable()
+                                                        : window.hostEqualizerController.disable()
+                }
+
+                // Exceção de segurança: ligar troca a saída padrão de áudio do sistema.
                 BodyLabel {
-                    objectName: "eqNoticeLabel"
-                    text: qsTr("Processado no PC pelo PipeWire, não no headset. Vale só com o app aberto. Enquanto ligado, a saída padrão passa a ser “G733 + EQ”.")
-                }
-
-                // Uma faixa por banda. O QML só mostra a curva e encaminha o movimento do usuário ao controlador.
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: 0
-
-                    Repeater {
-                        model: window.hostEqualizerController.bandFrequencies
-
-                        delegate: ColumnLayout {
-                            id: eqBand
-                            required property int index
-                            required property string modelData
-                            readonly property int gain: window.hostEqualizerController.gains[index] ?? 0
-                            Layout.fillWidth: true
-                            spacing: 4
-
-                            Label {
-                                objectName: "eqBandValueLabel"
-                                Layout.alignment: Qt.AlignHCenter
-                                font.pixelSize: 11
-                                text: (eqBand.gain > 0 ? "+" : "") + eqBand.gain
-                            }
-
-                            GHubSlider {
-                                id: eqBandSlider
-                                objectName: "eqBandSlider"
-                                Layout.alignment: Qt.AlignHCenter
-                                Layout.preferredHeight: 160
-                                orientation: Qt.Vertical
-                                from: window.hostEqualizerController.minimumGain
-                                to: window.hostEqualizerController.maximumGain
-                                stepSize: 1
-                                snapMode: Slider.SnapAlways
-                                Accessible.name: qsTr("Banda %1 Hz").arg(eqBand.modelData)
-                                // O valor segue o controlador; o envio acontece só quando o usuário move.
-                                onMoved: window.hostEqualizerController.setBand(eqBand.index, Math.round(value))
-
-                                Binding {
-                                    target: eqBandSlider
-                                    property: "value"
-                                    value: eqBand.gain
-                                    when: !eqBandSlider.pressed
-                                    restoreMode: Binding.RestoreNone
-                                }
-                            }
-
-                            Label {
-                                objectName: "eqBandLabel"
-                                Layout.alignment: Qt.AlignHCenter
-                                font.pixelSize: 11
-                                text: eqBand.modelData
-                            }
-                        }
-                    }
-                }
-
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: 8
-
-                    GHubButton {
-                        objectName: "eqEnableButton"
-                        text: qsTr("Ligar EQ")
-                        enabled: !window.hostEqualizerController.busy && !window.hostEqualizerController.enabled
-                        onClicked: window.hostEqualizerController.enable()
-                    }
-
-                    GHubButton {
-                        objectName: "eqDisableButton"
-                        text: qsTr("Desligar EQ")
-                        enabled: !window.hostEqualizerController.busy && window.hostEqualizerController.enabled
-                        onClicked: window.hostEqualizerController.disable()
-                    }
-                }
-
-                RowLayout {
-                    Layout.fillWidth: true
-
-                    GHubButton {
-                        objectName: "eqFlatButton"
-                        text: qsTr("Plano")
-                        enabled: !window.hostEqualizerController.busy
-                        onClicked: window.hostEqualizerController.flat()
-                    }
+                    objectName: "eqOutputWarningLabel"
+                    font.bold: true
+                    text: qsTr("Troca a saída padrão para “G733 + EQ”.")
                 }
 
                 BodyLabel {
@@ -1025,61 +906,50 @@ ApplicationWindow {
             }
 
             TabPage {
-                SectionTitle { text: qsTr("Redução de ruído do microfone do G733 (no PC)") }
-                BodyLabel {
-                    objectName: "noiseNoticeLabel"
-                    text: qsTr("Processado no PC pelo RNNoise, não no headset; não é o Blue VO!CE. Vale só com o app aberto. Enquanto ligado, a entrada padrão passa a ser “G733 + Redução de ruído”.")
+                SwitchRow {
+                    text: qsTr("Redução de ruído")
+                    help: qsTr("Processado no PC pelo RNNoise, não no headset; não é o Blue VO!CE. Vale só com o app aberto. Enquanto ligado, a entrada padrão passa a ser “G733 + Redução de ruído”.")
+                    helpObjectName: "noiseNoticeLabel"
+                    switchObjectName: "noiseEnableSwitch"
+                    checked: window.noiseSuppressionController.enabled
+                    switchEnabled: !window.noiseSuppressionController.busy
+                    onToggleRequested: wanted => wanted ? window.noiseSuppressionController.enable()
+                                                        : window.noiseSuppressionController.disable()
                 }
 
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: 8
-
-                    GHubButton {
-                        objectName: "noiseEnableButton"
-                        text: qsTr("Ligar")
-                        enabled: !window.noiseSuppressionController.busy && !window.noiseSuppressionController.enabled
-                        onClicked: window.noiseSuppressionController.enable()
-                    }
-
-                    GHubButton {
-                        objectName: "noiseDisableButton"
-                        text: qsTr("Desligar")
-                        enabled: !window.noiseSuppressionController.busy && window.noiseSuppressionController.enabled
-                        onClicked: window.noiseSuppressionController.disable()
-                    }
+                // Exceção de segurança: ligar troca a entrada padrão de áudio do sistema.
+                BodyLabel {
+                    objectName: "noiseInputWarningLabel"
+                    font.bold: true
+                    text: qsTr("Troca a entrada padrão para “G733 + Redução de ruído”.")
                 }
 
                 // O QML só mostra o limiar e encaminha o movimento do usuário ao controlador.
-                BodyLabel {
+                SectionTitle {
                     objectName: "noiseThresholdLabel"
-                    font.bold: true
                     text: qsTr("Sensibilidade: %1 %").arg(window.noiseSuppressionController.threshold)
                 }
 
-                RowLayout {
+                GHubSlider {
+                    id: noiseSlider
+                    objectName: "noiseThresholdSlider"
                     Layout.fillWidth: true
+                    orientation: Qt.Horizontal
+                    from: window.noiseSuppressionController.minimumThreshold
+                    to: window.noiseSuppressionController.maximumThreshold
+                    stepSize: 1
+                    snapMode: Slider.SnapAlways
+                    showExtremes: true
+                    Accessible.name: qsTr("Sensibilidade da redução de ruído")
+                    // O valor segue o controlador; o envio acontece só quando o usuário move.
+                    onMoved: window.noiseSuppressionController.setThreshold(Math.round(value))
 
-                    GHubSlider {
-                        id: noiseSlider
-                        objectName: "noiseThresholdSlider"
-                        Layout.fillWidth: true
-                        orientation: Qt.Horizontal
-                        from: window.noiseSuppressionController.minimumThreshold
-                        to: window.noiseSuppressionController.maximumThreshold
-                        stepSize: 1
-                        snapMode: Slider.SnapAlways
-                        Accessible.name: qsTr("Sensibilidade da redução de ruído")
-                        // O valor segue o controlador; o envio acontece só quando o usuário move.
-                        onMoved: window.noiseSuppressionController.setThreshold(Math.round(value))
-
-                        Binding {
-                            target: noiseSlider
-                            property: "value"
-                            value: window.noiseSuppressionController.threshold
-                            when: !noiseSlider.pressed
-                            restoreMode: Binding.RestoreNone
-                        }
+                    Binding {
+                        target: noiseSlider
+                        property: "value"
+                        value: window.noiseSuppressionController.threshold
+                        when: !noiseSlider.pressed
+                        restoreMode: Binding.RestoreNone
                     }
                 }
 
@@ -1089,11 +959,31 @@ ApplicationWindow {
                 }
             }
 
-            InfoTab {
+            infoContent: InfoPage {
+                anchors.fill: parent
                 deviceName: "G733"
+                deviceKind: "headset"
                 identityKey: "g733"
+                statusKind: "headset"
+                statusViewModel: window.headsetStatusViewModel
+                identityViewModel: window.deviceIdentityViewModel
                 inventoryDevices: window.deviceInventoryViewModel.devices
                 batteryDevices: window.batteryViewModel.devices
+                batterySummary: window.batteryTextOf("G733")
+                batteryPercent: window.batteryPercentOf("G733")
+            }
+
+            // O equalizador gráfico ocupa a área principal no lugar do desenho do headset.
+            mainViewTab: "equalizer"
+            mainView: EqualizerView {
+                anchors.fill: parent
+                bandFrequencies: window.hostEqualizerController.bandFrequencies
+                gains: window.hostEqualizerController.gains
+                minimumGain: window.hostEqualizerController.minimumGain
+                maximumGain: window.hostEqualizerController.maximumGain
+                busy: window.hostEqualizerController.busy
+                onBandMoved: (band, gain) => window.hostEqualizerController.setBand(band, gain)
+                onResetRequested: window.hostEqualizerController.flat()
             }
         }
 
@@ -1111,7 +1001,7 @@ ApplicationWindow {
             onTabSelected: key => window.brioTab = key
 
             TabPage {
-                SectionTitle { text: qsTr("Câmera") }
+                SectionHeader { text: qsTr("Câmera") }
                 BodyLabel {
                     objectName: "cameraStatusLabel"
                     text: window.cameraViewModel.status
@@ -1178,12 +1068,19 @@ ApplicationWindow {
                             Layout.fillWidth: true
                             spacing: 12
 
+                            // Só o slider estica; interruptor e dropdown ficam no tamanho natural e um espaço empurra
+                            // o botão "Padrão" para a direita.
                             Loader {
-                                Layout.fillWidth: true
+                                Layout.fillWidth: controlRow.modelData.kind === "integer"
                                 sourceComponent: controlRow.modelData.kind === "integer" ? sliderComponent
                                     : controlRow.modelData.kind === "boolean" ? switchComponent
                                     : controlRow.modelData.kind === "menu" ? comboComponent
                                     : null
+                            }
+
+                            Item {
+                                Layout.fillWidth: true
+                                visible: controlRow.modelData.kind !== "integer"
                             }
 
                             GHubButton {
@@ -1199,6 +1096,8 @@ ApplicationWindow {
                             id: sliderComponent
                             GHubSlider {
                                 objectName: "cameraControlSlider"
+                                showValue: true
+                                showExtremes: true
                                 from: controlRow.modelData.minimum
                                 to: controlRow.modelData.maximum
                                 stepSize: controlRow.modelData.step
@@ -1214,17 +1113,19 @@ ApplicationWindow {
 
                         Component {
                             id: switchComponent
-                            GHubCheckBox {
+                            GHubSwitch {
                                 objectName: "cameraControlSwitch"
                                 checked: (controlRow.modelData.value ?? 0) !== 0
                                 enabled: controlRow.modelData.editable === true
-                                onToggled: window.cameraControlEditor.setValue(controlRow.modelData.id, checked ? 1 : 0)
+                                // O estado exibido segue o modelo; o clique só pede o valor oposto ao editor.
+                                onToggleRequested: wanted => window.cameraControlEditor.setValue(controlRow.modelData.id,
+                                                                                                 wanted ? 1 : 0)
                             }
                         }
 
                         Component {
                             id: comboComponent
-                            ComboBox {
+                            GHubComboBox {
                                 objectName: "cameraControlCombo"
                                 textRole: "label"
                                 valueRole: "value"
@@ -1256,10 +1157,15 @@ ApplicationWindow {
                 }
             }
 
-            InfoTab {
+            infoContent: InfoPage {
+                anchors.fill: parent
                 deviceName: "Brio 100"
+                deviceKind: "camera"
+                identityViewModel: window.deviceIdentityViewModel
                 inventoryDevices: window.deviceInventoryViewModel.devices
                 batteryDevices: window.batteryViewModel.devices
+                batterySummary: window.batteryTextOf("Brio 100")
+                batteryPercent: window.batteryPercentOf("Brio 100")
             }
         }
 
@@ -1281,17 +1187,13 @@ ApplicationWindow {
                     text: qsTr("Arquivo de perfis ilegível: nada será gravado até corrigi-lo.")
                 }
 
-                GHubCheckBox {
-                    id: profilesAutoSwitch
-                    objectName: "profilesAutoSwitch"
+                // O estado exibido segue o controlador (a gravação pode falhar); o clique só pede o estado oposto.
+                SwitchRow {
                     text: qsTr("Trocar de perfil pelo aplicativo em foco")
+                    switchObjectName: "profilesAutoSwitch"
                     checked: window.profilesController.automaticSwitching
-                    enabled: !window.profilesController.busy
-                    onClicked: {
-                        window.profilesController.setAutomaticSwitching(checked)
-                        // O estado exibido segue o controlador: a gravação pode falhar.
-                        checked = Qt.binding(() => window.profilesController.automaticSwitching)
-                    }
+                    switchEnabled: !window.profilesController.busy
+                    onToggleRequested: wanted => window.profilesController.setAutomaticSwitching(wanted)
                 }
 
                 BodyLabel {
@@ -1315,7 +1217,7 @@ ApplicationWindow {
                     Layout.fillWidth: true
                     spacing: 12
 
-                    TextField {
+                    GHubTextField {
                         id: profileNameField
                         objectName: "profileNameField"
                         Layout.fillWidth: true
@@ -1491,6 +1393,7 @@ ApplicationWindow {
                     delegate: Label {
                         required property var modelData
                         objectName: "diagnosticsBackendLabel"
+                        color: Theme.foreground
                         Layout.fillWidth: true
                         wrapMode: Text.WordWrap
                         text: modelData.name + ": "
@@ -1516,6 +1419,7 @@ ApplicationWindow {
                     delegate: Label {
                         required property var modelData
                         objectName: "diagnosticsEntryLabel"
+                        color: Theme.foreground
                         Layout.fillWidth: true
                         wrapMode: Text.WordWrap
                         text: modelData.severity + " · " + modelData.category + ": " + modelData.message

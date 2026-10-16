@@ -11,3 +11,16 @@ SectionTitle 1.0 SectionTitle.qml
 GHubButton 1.0 GHubButton.qml
 GHubSlider 1.0 GHubSlider.qml
 GHubCheckBox 1.0 GHubCheckBox.qml
+GHubSwitch 1.0 GHubSwitch.qml
+GHubComboBox 1.0 GHubComboBox.qml
+GHubSpinBox 1.0 GHubSpinBox.qml
+GHubRadioButton 1.0 GHubRadioButton.qml
+GHubTextField 1.0 GHubTextField.qml
+ColorSwatch 1.0 ColorSwatch.qml
+InnerTabs 1.0 InnerTabs.qml
+HelpIcon 1.0 HelpIcon.qml
+SectionHeader 1.0 SectionHeader.qml
+BatteryBlock 1.0 BatteryBlock.qml
+EqualizerView 1.0 EqualizerView.qml
+InfoPage 1.0 InfoPage.qml
+SwitchRow 1.0 SwitchRow.qml
