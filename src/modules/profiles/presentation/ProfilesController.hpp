@@ -47,6 +47,10 @@ class ProfilesController final : public QObject {
     Q_PROPERTY(QString lastApplication READ lastApplication NOTIFY profilesChanged)
     // Nome do perfil -> lista de aplicativos associados.
     Q_PROPERTY(QVariantMap profileApplications READ profileApplications NOTIFY profilesChanged)
+    // INC-017: perfil padrão da troca automática (vazio = nenhum) e seções "iguais em todos os perfis".
+    Q_PROPERTY(QString defaultProfile READ defaultProfile NOTIFY profilesChanged)
+    Q_PROPERTY(bool persistentCamera READ persistentCamera NOTIFY profilesChanged)
+    Q_PROPERTY(bool persistentEqualizer READ persistentEqualizer NOTIFY profilesChanged)
 
 public:
     static constexpr std::chrono::milliseconds defaultSettleDelay{500};
@@ -70,6 +74,9 @@ public:
     [[nodiscard]] QString switchingStatus() const;
     [[nodiscard]] QString lastApplication() const { return lastApplication_; }
     [[nodiscard]] QVariantMap profileApplications() const { return profileApplications_; }
+    [[nodiscard]] QString defaultProfile() const { return defaultProfile_; }
+    [[nodiscard]] bool persistentCamera() const { return persistentCamera_; }
+    [[nodiscard]] bool persistentEqualizer() const { return persistentEqualizer_; }
 
     // Lê o arquivo de perfis (só leitura). Chamado uma vez pelo composition root.
     Q_INVOKABLE void load();
@@ -82,20 +89,44 @@ public:
     // Associa `lastApplication` ao perfil; sem aplicativo registrado -> status de erro, nada é gravado.
     Q_INVOKABLE void assignLastApplication(const QString& profile);
     Q_INVOKABLE void unassignApplication(const QString& application);
+    // INC-017 R4/R5: duplicar, exportar e importar (caminho local ou URL file://). Importar nunca aplica nada; nome
+    // já existente sem `replace` emite `importNeedsReplace` (a janela pergunta "Substituir?" e repete com true).
+    Q_INVOKABLE void duplicate(const QString& source, const QString& copyName);
+    Q_INVOKABLE void exportProfile(const QString& name, const QString& path);
+    Q_INVOKABLE void importProfile(const QString& path, bool replace);
+    // INC-017 R6/R7: perfil padrão (vazio = nenhum) e seção persistente ("camera" ou "equalizer").
+    Q_INVOKABLE void setDefaultProfile(const QString& name);
+    Q_INVOKABLE void setPersistent(const QString& section, bool persistent);
 
 signals:
     void profilesChanged();
     // Houve seção de câmera na aplicação (com sucesso ou não): a janela deve reler a câmera.
     void cameraApplied();
+    // A importação encontrou um perfil com o mesmo nome; nada foi gravado.
+    void importNeedsReplace(const QString& name, const QString& path);
 
 private:
-    enum class Kind : unsigned char { Load, Save, Apply, Remove, Switching, Assign, Unassign };
+    enum class Kind : unsigned char {
+        Load,
+        Save,
+        Apply,
+        Remove,
+        Switching,
+        Assign,
+        Unassign,
+        Duplicate,
+        Export,
+        Import,
+        Default,
+        Persistent
+    };
 
     struct Outcome {
         Kind kind = Kind::Load;
         std::optional<shared_kernel::DomainError> error;
         std::optional<ProfileBook::SaveReport> saved;
         std::vector<ApplyProfile::CameraItemResult> cameraItems;
+        std::optional<ProfileBook::ImportReport> imported;
     };
 
     // `viaApplication` vazio = aplicação manual.
@@ -115,6 +146,7 @@ private:
     void handleFinished();
     void finishSave(const Outcome& outcome);
     void finishApply(const Outcome& outcome);
+    void finishImport(const Outcome& outcome);
     void refreshFromBook();
 
     ProfileBook* book_;                // não nulo
@@ -125,6 +157,13 @@ private:
     std::optional<Profile> applying_; // perfil em aplicação (cópia)
     QString operationName_;
     QString operationApplication_; // aplicação automática em curso (vazio = manual)
+    QString operationPath_;        // arquivo da importação em curso
+    bool operationPersistent_ = false;
+    bool skipCamera_ = false; // seção persistente: não é alterada ao aplicar (INC-017 R7)
+    bool skipEqualizer_ = false;
+    QString defaultProfile_;
+    bool persistentCamera_ = false;
+    bool persistentEqualizer_ = false;
     AutomaticProfileSwitcher switcher_;
     QTimer settleTimer_;
     std::optional<ApplicationId> pending_;  // aguardando o prazo de foco

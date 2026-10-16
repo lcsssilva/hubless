@@ -4,10 +4,12 @@
 #include "modules/profiles/application/CameraSettingsPort.hpp"
 #include "modules/profiles/application/EqualizerSettingsPort.hpp"
 #include "modules/profiles/application/ProfileRepository.hpp"
+#include "modules/profiles/application/ProfileTransfer.hpp"
 
 #include <array>
 #include <cstdint>
 #include <map>
+#include <optional>
 #include <string>
 #include <thread>
 #include <utility>
@@ -79,6 +81,32 @@ public:
             lastSaved = library;
         }
         return saveResult;
+    }
+};
+
+// Exportação/importação falsa: guarda o último perfil exportado e devolve o que o teste configurou.
+class FakeProfileTransfer final : public profiles::ProfileTransfer {
+public:
+    shared_kernel::Result<void> exportResult{};
+    std::optional<shared_kernel::Result<profiles::ImportedProfile>> importResult;
+    std::vector<std::string> exportedPaths;
+    std::vector<profiles::Profile> exported;
+    std::vector<std::string> importedPaths;
+
+    shared_kernel::Result<void> exportProfile(const profiles::Profile& profile, const std::string& path) override
+    {
+        exportedPaths.push_back(path);
+        exported.push_back(profile);
+        return exportResult;
+    }
+
+    shared_kernel::Result<profiles::ImportedProfile> importProfile(const std::string& path) override
+    {
+        importedPaths.push_back(path);
+        if (!importResult) {
+            return shared_kernel::fail(shared_kernel::ErrorCode::MalformedData, "sem resultado configurado");
+        }
+        return *importResult;
     }
 };
 

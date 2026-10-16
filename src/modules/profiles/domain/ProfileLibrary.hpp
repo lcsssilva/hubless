@@ -1,9 +1,11 @@
 #pragma once
 
 #include "modules/profiles/domain/Profile.hpp"
+#include "modules/profiles/domain/ProfileSection.hpp"
 #include "shared_kernel/Result.hpp"
 
 #include <cstddef>
+#include <optional>
 #include <vector>
 
 namespace ghub::profiles {
@@ -22,6 +24,21 @@ public:
     // Nome existente sem `replace` -> InvalidArgument ("já existe"); com `replace` substitui na mesma posição.
     // O 51º perfil -> InvalidArgument. Em falha a biblioteca não muda.
     [[nodiscard]] shared_kernel::Result<void> put(Profile profile, bool replace);
+
+    // Copia as seções de `source` para um perfil novo `copyName`, sem aplicativos associados (INC-017 R4).
+    // Origem inexistente, nome já existente ou 51º perfil -> InvalidArgument; em falha a biblioteca não muda.
+    [[nodiscard]] shared_kernel::Result<void> duplicate(const ProfileName& source, ProfileName copyName);
+
+    // Perfil padrão da troca automática (INC-017 R6): aplicado quando o aplicativo em foco não casa com nenhum
+    // perfil. nullopt = nenhum. Perfil inexistente -> InvalidArgument. Remover o perfil limpa o padrão.
+    [[nodiscard]] const std::optional<ProfileName>& defaultProfile() const noexcept { return defaultProfile_; }
+    [[nodiscard]] shared_kernel::Result<void> setDefaultProfile(std::optional<ProfileName> name);
+
+    // Seções "iguais em todos os perfis" (INC-017 R7). `propagatePersistent` copia as seções persistentes
+    // NÃO vazias de `source` para todos os outros perfis (chamado ao salvar).
+    [[nodiscard]] bool isPersistent(ProfileSection section) const noexcept;
+    void setPersistent(ProfileSection section, bool persistent) noexcept;
+    void propagatePersistent(const Profile& source);
 
     // Nome inexistente -> InvalidArgument.
     [[nodiscard]] shared_kernel::Result<void> remove(const ProfileName& name);
@@ -44,6 +61,9 @@ public:
 private:
     std::vector<Profile> profiles_;
     bool automaticSwitching_ = false;
+    std::optional<ProfileName> defaultProfile_;
+    bool persistentCamera_ = false;
+    bool persistentEqualizer_ = false;
 };
 
 } // namespace ghub::profiles

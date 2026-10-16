@@ -10,6 +10,8 @@ Rectangle {
     objectName: "deviceCard"
 
     property string deviceName: ""
+    // Apelido do dispositivo (INC-017 R9), só no Hubless; vazio = mostra o nome do catálogo.
+    property string displayName: ""
     // "keyboard", "mouse", "headset" ou "camera": escolhe o desenho.
     property string deviceKind: "keyboard"
     property string connectionText: ""
@@ -35,7 +37,7 @@ Rectangle {
     activeFocusOnTab: true
 
     Accessible.role: Accessible.Button
-    Accessible.name: deviceName
+    Accessible.name: displayName !== "" ? displayName : deviceName
     Keys.onReturnPressed: card.clicked()
     Keys.onEnterPressed: card.clicked()
     Keys.onSpacePressed: card.clicked()
@@ -58,7 +60,7 @@ Rectangle {
             color: Theme.foreground
             width: parent.width
             elide: Text.ElideRight
-            text: card.deviceName
+            text: card.displayName !== "" ? card.displayName : card.deviceName
             font.pixelSize: 24
             font.bold: true
         }

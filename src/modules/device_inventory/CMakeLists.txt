@@ -4,7 +4,8 @@ target_sources(ghub_device_inventory_domain PRIVATE
     domain/DeviceCatalog.cpp
     domain/DeviceType.cpp
     domain/FirmwareVersion.cpp
-    domain/DeviceIdentity.cpp)
+    domain/DeviceIdentity.cpp
+    domain/DeviceNickname.cpp)
 target_link_libraries(ghub_device_inventory_domain PUBLIC ghub_shared_kernel)
 ghub_set_warnings(ghub_device_inventory_domain)
 

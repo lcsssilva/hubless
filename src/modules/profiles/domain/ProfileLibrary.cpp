@@ -72,7 +72,62 @@ shared_kernel::Result<void> ProfileLibrary::remove(const ProfileName& name)
         return shared_kernel::fail(shared_kernel::ErrorCode::InvalidArgument, "perfil inexistente: " + name.value());
     }
     profiles_.erase(existing);
+    if (defaultProfile_ == name) {
+        defaultProfile_.reset();
+    }
     return {};
+}
+
+shared_kernel::Result<void> ProfileLibrary::duplicate(const ProfileName& source, ProfileName copyName)
+{
+    using shared_kernel::ErrorCode;
+    const Profile* original = find(source);
+    if (original == nullptr) {
+        return shared_kernel::fail(ErrorCode::InvalidArgument, "perfil inexistente: " + source.value());
+    }
+    auto copy = Profile::create(std::move(copyName), original->camera(), original->equalizer());
+    if (!copy) {
+        return std::unexpected(copy.error());
+    }
+    return put(std::move(*copy), false);
+}
+
+shared_kernel::Result<void> ProfileLibrary::setDefaultProfile(std::optional<ProfileName> name)
+{
+    if (name.has_value() && find(*name) == nullptr) {
+        return shared_kernel::fail(shared_kernel::ErrorCode::InvalidArgument, "perfil inexistente: " + name->value());
+    }
+    defaultProfile_ = std::move(name);
+    return {};
+}
+
+bool ProfileLibrary::isPersistent(ProfileSection section) const noexcept
+{
+    return section == ProfileSection::Camera ? persistentCamera_ : persistentEqualizer_;
+}
+
+void ProfileLibrary::setPersistent(ProfileSection section, bool persistent) noexcept
+{
+    (section == ProfileSection::Camera ? persistentCamera_ : persistentEqualizer_) = persistent;
+}
+
+void ProfileLibrary::propagatePersistent(const Profile& source)
+{
+    const bool camera = persistentCamera_ && !source.camera().empty();
+    const bool equalizer = persistentEqualizer_ && source.equalizer().has_value();
+    if (!camera && !equalizer) {
+        return;
+    }
+    for (Profile& profile : profiles_) {
+        if (profile.name() == source.name()) {
+            continue;
+        }
+        auto rebuilt = Profile::create(profile.name(), camera ? source.camera() : profile.camera(),
+                                       equalizer ? source.equalizer() : profile.equalizer(), profile.applications());
+        if (rebuilt) {
+            profile = std::move(*rebuilt);
+        }
+    }
 }
 
 shared_kernel::Result<void> ProfileLibrary::assignApplication(const ProfileName& name, ApplicationId application)

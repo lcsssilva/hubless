@@ -63,6 +63,15 @@ int percentOf(const DeviceBatteryStatus& status)
     return -1;
 }
 
+// Carregando ou com carga completa: o aviso de bateria fraca rearma (INC-017 R1).
+bool chargingOf(const DeviceBatteryStatus& status)
+{
+    if (const auto* reading = std::get_if<BatteryReading>(&status.state)) {
+        return reading->chargeState() == ChargeState::Charging || reading->chargeState() == ChargeState::Full;
+    }
+    return false;
+}
+
 } // namespace
 
 BatteryViewModel::BatteryViewModel(const GetBatteryStatus& getBatteryStatus, std::chrono::milliseconds refreshInterval,
@@ -83,6 +92,7 @@ void BatteryViewModel::refresh()
             {QStringLiteral("name"), nameOf(status.model)},
             {QStringLiteral("summary"), summaryOf(status)},
             {QStringLiteral("percent"), percentOf(status)},
+            {QStringLiteral("charging"), chargingOf(status)},
         });
     }
     if (devices == devices_) {

@@ -319,3 +319,141 @@ TEST(ProfileBook, LoadErrorBlocksRuleChanges)
     EXPECT_EQ(f.book.setAutomaticSwitching(true).error().code, ErrorCode::MalformedData);
     EXPECT_EQ(f.repository.saveCalls, 0);
 }
+
+// ---- INC-017: duplicar, exportar, importar, padrão e persistente ----
+
+using ghub::profiles::ImportedProfile;
+using ghub::profiles::ProfileSection;
+using ghub::test::FakeProfileTransfer;
+
+namespace {
+struct TransferFixture {
+    FakeProfileRepository repository;
+    FakeCameraSettingsPort camera;
+    FakeProfileTransfer transfer;
+    ProfileBook book{repository, camera, &transfer};
+
+    TransferFixture()
+    {
+        repository.loadResult = *ProfileLibrary::create({*Profile::create(nameOf("a"), {{1, "x", 1}}, std::nullopt),
+                                                         *Profile::create(nameOf("b"), {{1, "x", 2}}, std::nullopt)});
+        (void)book.load();
+    }
+};
+} // namespace
+
+TEST(ProfileBookInc017, DuplicateSavesACopyAndRefusesExistingNames)
+{
+    TransferFixture f;
+    ASSERT_TRUE(f.book.duplicate("a", " a copia ").has_value());
+    ASSERT_NE(f.book.library().find(nameOf("a copia")), nullptr);
+    EXPECT_EQ(f.repository.saveCalls, 1);
+    EXPECT_EQ(f.book.duplicate("a", "b").error().code, ErrorCode::InvalidArgument);
+    EXPECT_EQ(f.book.duplicate("zz", "c").error().code, ErrorCode::InvalidArgument);
+    EXPECT_EQ(f.book.duplicate("a", "").error().code, ErrorCode::InvalidArgument);
+    EXPECT_EQ(f.repository.saveCalls, 1);
+}
+
+TEST(ProfileBookInc017, ExportSendsTheProfileToTheTransferAndSavesNothing)
+{
+    TransferFixture f;
+    ASSERT_TRUE(f.book.exportProfile("b", "/tmp/x.json").has_value());
+    ASSERT_EQ(f.transfer.exported.size(), 1U);
+    EXPECT_EQ(f.transfer.exported[0].name().value(), "b");
+    EXPECT_EQ(f.transfer.exportedPaths[0], "/tmp/x.json");
+    EXPECT_EQ(f.repository.saveCalls, 0);
+    EXPECT_FALSE(f.book.exportProfile("zz", "/tmp/y.json").has_value());
+}
+
+TEST(ProfileBookInc017, ImportAddsTheProfileStripsApplicationsAndReportsIgnoredFields)
+{
+    TransferFixture f;
+    f.transfer.importResult = ImportedProfile{*Profile::create(nameOf("novo"), {{1, "x", 9}}, std::nullopt,
+                                                               {*ghub::profiles::ApplicationId::create("steam")}),
+                                              {"extra"}};
+    const auto report = f.book.importProfile("/tmp/in.json", false);
+    ASSERT_TRUE(report.has_value());
+    EXPECT_EQ(report->name, "novo");
+    EXPECT_FALSE(report->replaced);
+    ASSERT_EQ(report->ignoredFields.size(), 1U);
+    EXPECT_EQ(report->ignoredFields[0], "extra");
+    const Profile* imported = f.book.library().find(nameOf("novo"));
+    ASSERT_NE(imported, nullptr);
+    EXPECT_TRUE(imported->applications().empty());
+    EXPECT_EQ(f.repository.saveCalls, 1);
+    EXPECT_TRUE(f.camera.applied.empty()); // nada é aplicado ao importar
+}
+
+TEST(ProfileBookInc017, ImportOfExistingNameNeedsReplaceAndKeepsItsApplications)
+{
+    TransferFixture f;
+    ASSERT_TRUE(f.book.assignApplication("a", "firefox").has_value());
+    f.repository.saveCalls = 0;
+    f.transfer.importResult = ImportedProfile{*Profile::create(nameOf("a"), {{1, "x", 77}}, std::nullopt), {}};
+    const auto refused = f.book.importProfile("/tmp/in.json", false);
+    ASSERT_FALSE(refused.has_value());
+    EXPECT_NE(refused.error().detail.find("já existe"), std::string::npos);
+    EXPECT_EQ(f.repository.saveCalls, 0);
+    EXPECT_EQ(f.book.library().find(nameOf("a"))->camera()[0].value, 1);
+    const auto replaced = f.book.importProfile("/tmp/in.json", true);
+    ASSERT_TRUE(replaced.has_value());
+    EXPECT_TRUE(replaced->replaced);
+    EXPECT_EQ(f.book.library().find(nameOf("a"))->camera()[0].value, 77);
+    EXPECT_EQ(f.book.library().find(nameOf("a"))->applications().size(), 1U);
+}
+
+TEST(ProfileBookInc017, ImportFailureLeavesTheLibraryAlone)
+{
+    TransferFixture f;
+    f.transfer.importResult = ghub::shared_kernel::fail(ErrorCode::MalformedData, "versão desconhecida");
+    const auto result = f.book.importProfile("/tmp/in.json", false);
+    ASSERT_FALSE(result.has_value());
+    EXPECT_EQ(result.error().code, ErrorCode::MalformedData);
+    EXPECT_EQ(f.book.library().profiles().size(), 2U);
+    EXPECT_EQ(f.repository.saveCalls, 0);
+}
+
+TEST(ProfileBookInc017, DefaultProfileIsPersistedAndCanBeCleared)
+{
+    TransferFixture f;
+    ASSERT_TRUE(f.book.setDefaultProfile("b").has_value());
+    EXPECT_EQ(f.book.library().defaultProfile()->value(), "b");
+    EXPECT_EQ(f.repository.lastSaved.defaultProfile()->value(), "b");
+    EXPECT_FALSE(f.book.setDefaultProfile("zz").has_value());
+    ASSERT_TRUE(f.book.setDefaultProfile(std::optional<std::string_view>{}).has_value());
+    EXPECT_FALSE(f.book.library().defaultProfile().has_value());
+}
+
+TEST(ProfileBookInc017, PersistentEqualizerIsWrittenToAllProfilesOnSave)
+{
+    TransferFixture f;
+    ASSERT_TRUE(f.book.setPersistent(ProfileSection::Equalizer, true).has_value());
+    EXPECT_TRUE(f.repository.lastSaved.isPersistent(ProfileSection::Equalizer));
+    ASSERT_TRUE(f.book.saveCurrent("a", kGains, true).has_value());
+    EXPECT_EQ(f.book.library().find(nameOf("b"))->equalizer()->values()[9], 10);
+    EXPECT_EQ(f.repository.lastSaved.find(nameOf("b"))->equalizer()->values()[9], 10);
+}
+
+TEST(ProfileBookInc017, NewOperationsAreRefusedAfterALoadError)
+{
+    FakeProfileRepository repository;
+    FakeCameraSettingsPort camera;
+    FakeProfileTransfer transfer;
+    ProfileBook book{repository, camera, &transfer};
+    repository.loadResult = ghub::shared_kernel::fail(ErrorCode::MalformedData, "ruim");
+    (void)book.load();
+    EXPECT_FALSE(book.duplicate("a", "b").has_value());
+    EXPECT_FALSE(book.setDefaultProfile(std::optional<std::string_view>{}).has_value());
+    EXPECT_FALSE(book.setPersistent(ProfileSection::Camera, true).has_value());
+    EXPECT_FALSE(book.importProfile("/tmp/x", true).has_value());
+    EXPECT_EQ(repository.saveCalls, 0);
+}
+
+TEST(ProfileBookInc017, WithoutTransferExportAndImportAreUnavailable)
+{
+    FakeProfileRepository repository;
+    FakeCameraSettingsPort camera;
+    ProfileBook book{repository, camera};
+    EXPECT_EQ(book.importProfile("/tmp/x", false).error().code, ErrorCode::BackendUnavailable);
+    EXPECT_EQ(book.exportProfile("a", "/tmp/x").error().code, ErrorCode::BackendUnavailable);
+}

@@ -12,8 +12,8 @@ namespace ghub::profiles {
 // de eventos ficam na apresentação.
 class AutomaticProfileSwitcher {
 public:
-    // nullopt se a troca está desligada, se o aplicativo é o próprio app, se não há regra ou se o perfil da
-    // regra já é o atual.
+    // nullopt se a troca está desligada, se o aplicativo é o próprio app, se não há regra nem perfil padrão ou se o
+    // perfil decidido (da regra, ou o padrão sem regra) já é o atual.
     [[nodiscard]] std::optional<ProfileName> decide(const ProfileLibrary& library,
                                                     const ApplicationId& application) const;
 
