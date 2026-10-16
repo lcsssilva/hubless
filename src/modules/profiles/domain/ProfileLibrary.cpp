@@ -85,7 +85,7 @@ shared_kernel::Result<void> ProfileLibrary::duplicate(const ProfileName& source,
     if (original == nullptr) {
         return shared_kernel::fail(ErrorCode::InvalidArgument, "perfil inexistente: " + source.value());
     }
-    auto copy = Profile::create(std::move(copyName), original->camera(), original->equalizer());
+    auto copy = original->copiedAs(std::move(copyName));
     if (!copy) {
         return std::unexpected(copy.error());
     }
@@ -103,27 +103,56 @@ shared_kernel::Result<void> ProfileLibrary::setDefaultProfile(std::optional<Prof
 
 bool ProfileLibrary::isPersistent(ProfileSection section) const noexcept
 {
-    return section == ProfileSection::Camera ? persistentCamera_ : persistentEqualizer_;
+    return persistent_[static_cast<std::size_t>(section)];
 }
 
 void ProfileLibrary::setPersistent(ProfileSection section, bool persistent) noexcept
 {
-    (section == ProfileSection::Camera ? persistentCamera_ : persistentEqualizer_) = persistent;
+    persistent_[static_cast<std::size_t>(section)] = persistent;
+}
+
+SectionSet ProfileLibrary::persistentSections() const noexcept
+{
+    SectionSet set;
+    for (std::size_t i = 0; i < profileSectionCount; ++i) {
+        set.set(i, persistent_[i]);
+    }
+    return set;
 }
 
 void ProfileLibrary::propagatePersistent(const Profile& source)
 {
-    const bool camera = persistentCamera_ && !source.camera().empty();
-    const bool equalizer = persistentEqualizer_ && source.equalizer().has_value();
-    if (!camera && !equalizer) {
+    const auto wanted = [this](ProfileSection section, bool present) { return isPersistent(section) && present; };
+    const HardwareSections& from = source.hardware();
+    const bool camera = wanted(ProfileSection::Camera, !source.camera().empty());
+    const bool equalizer = wanted(ProfileSection::Equalizer, source.equalizer().has_value());
+    const bool sidetone = wanted(ProfileSection::Sidetone, from.sidetone.has_value());
+    const bool lights = wanted(ProfileSection::HeadsetLights, !from.headsetLights.empty());
+    const bool effect = wanted(ProfileSection::KeyboardEffect, from.keyboardEffect.has_value());
+    const bool pointer = wanted(ProfileSection::PointerDpi, from.pointerDpi.has_value());
+    if (!camera && !equalizer && !sidetone && !lights && !effect && !pointer) {
         return;
     }
     for (Profile& profile : profiles_) {
         if (profile.name() == source.name()) {
             continue;
         }
+        HardwareSections hardware = profile.hardware();
+        if (sidetone) {
+            hardware.sidetone = from.sidetone;
+        }
+        if (lights) {
+            hardware.headsetLights = from.headsetLights;
+        }
+        if (effect) {
+            hardware.keyboardEffect = from.keyboardEffect;
+        }
+        if (pointer) {
+            hardware.pointerDpi = from.pointerDpi;
+        }
         auto rebuilt = Profile::create(profile.name(), camera ? source.camera() : profile.camera(),
-                                       equalizer ? source.equalizer() : profile.equalizer(), profile.applications());
+                                       equalizer ? source.equalizer() : profile.equalizer(), profile.applications(),
+                                       std::move(hardware));
         if (rebuilt) {
             profile = std::move(*rebuilt);
         }
@@ -146,7 +175,7 @@ shared_kernel::Result<void> ProfileLibrary::assignApplication(const ProfileName&
     }
     std::vector<ApplicationId> applications = target->applications();
     applications.push_back(std::move(application));
-    auto rebuilt = Profile::create(target->name(), target->camera(), target->equalizer(), std::move(applications));
+    auto rebuilt = target->withApplications(std::move(applications));
     if (!rebuilt) {
         return std::unexpected(rebuilt.error());
     }
@@ -163,7 +192,7 @@ shared_kernel::Result<void> ProfileLibrary::unassignApplication(const Applicatio
     }
     std::vector<ApplicationId> applications = owner->applications();
     std::erase(applications, application);
-    auto rebuilt = Profile::create(owner->name(), owner->camera(), owner->equalizer(), std::move(applications));
+    auto rebuilt = owner->withApplications(std::move(applications));
     if (!rebuilt) {
         return std::unexpected(rebuilt.error());
     }

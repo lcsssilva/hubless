@@ -22,6 +22,11 @@ target_link_libraries(ghub_pointer_application_tests PRIVATE
 ghub_set_warnings(ghub_pointer_application_tests)
 gtest_discover_tests(ghub_pointer_application_tests TEST_PREFIX "pointer.")
 
+add_executable(ghub_pointer_api_tests api/G703DpiSettingsTest.cpp)
+target_link_libraries(ghub_pointer_api_tests PRIVATE ghub_pointer_api ghub_test_fakes GTest::gtest_main)
+ghub_set_warnings(ghub_pointer_api_tests)
+gtest_discover_tests(ghub_pointer_api_tests TEST_PREFIX "pointer.")
+
 add_executable(ghub_pointer_hidpp_tests
     infrastructure/G703OnboardPolicyTest.cpp
     infrastructure/G703NodeLocatorTest.cpp

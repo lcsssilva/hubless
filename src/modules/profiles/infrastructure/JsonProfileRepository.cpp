@@ -26,7 +26,7 @@ using shared_kernel::ErrorCode;
 namespace fmt = json_format;
 
 constexpr const char* kFormat = "ghub-linux-profiles";
-constexpr int kVersion = 3; // versão gravada; a 1 e a 2 ainda são lidas (ADR-0022 R3, ADR-0028)
+constexpr int kVersion = 4; // versão gravada; de 1 a 3 ainda são lidas (ADR-0022 R3, ADR-0028)
 constexpr const char* kContext = "profiles.json inválido";
 
 std::unexpected<shared_kernel::DomainError> malformed(const QString& reason)
@@ -42,11 +42,6 @@ bool onlyKeys(const QJsonObject& object, const std::set<QString>& allowed)
         }
     }
     return true;
-}
-
-QString sectionKey(ProfileSection section)
-{
-    return section == ProfileSection::Camera ? QStringLiteral("camera") : QStringLiteral("equalizer");
 }
 
 } // namespace
@@ -73,11 +68,12 @@ shared_kernel::Result<ProfileLibrary> JsonProfileRepository::parseDocument(const
     }
     const QJsonObject root = document.object();
     const auto version = fmt::exactInteger(root.value("version"), 0, 1'000'000);
-    if (!version || (*version != 1 && *version != 2 && *version != kVersion)) {
-        return malformed("\"version\" não suportada (esperada 1, 2 ou 3)");
+    if (!version || *version < 1 || *version > kVersion) {
+        return malformed("\"version\" não suportada (esperada de 1 a 4)");
     }
     const bool version2 = *version >= 2;
-    const bool version3 = *version == kVersion;
+    const bool version3 = *version >= 3;
+    const bool version4 = *version >= 4;
     std::set<QString> rootKeys{"format", "version", "profiles"};
     if (version2) {
         rootKeys.insert("automaticSwitching");
@@ -104,7 +100,8 @@ shared_kernel::Result<ProfileLibrary> JsonProfileRepository::parseDocument(const
     }
     std::vector<Profile> profiles;
     for (const QJsonValue& entry : root.value("profiles").toArray()) {
-        auto profile = fmt::parseProfile(entry, {.context = kContext, .allowApplications = version2});
+        auto profile = fmt::parseProfile(entry, {.context = kContext, .allowApplications = version2,
+                                                      .allowHardware = version4});
         if (!profile) {
             return std::unexpected(profile.error());
         }
@@ -134,13 +131,11 @@ shared_kernel::Result<ProfileLibrary> JsonProfileRepository::parseDocument(const
         std::set<QString> seen;
         for (const QJsonValue& entry : root.value("persistentSections").toArray()) {
             const QString key = entry.toString();
-            const bool known =
-                key == sectionKey(ProfileSection::Camera) || key == sectionKey(ProfileSection::Equalizer);
-            if (!entry.isString() || !known || !seen.insert(key).second) {
+            const auto section = fmt::sectionFromKey(key, version4);
+            if (!entry.isString() || !section.has_value() || !seen.insert(key).second) {
                 return malformed("\"persistentSections\" com seção desconhecida ou repetida");
             }
-            library->setPersistent(
-                key == sectionKey(ProfileSection::Camera) ? ProfileSection::Camera : ProfileSection::Equalizer, true);
+            library->setPersistent(*section, true);
         }
     }
     return library;
@@ -186,9 +181,10 @@ shared_kernel::Result<void> JsonProfileRepository::save(const ProfileLibrary& li
         root.insert("defaultProfile", QString::fromStdString(library.defaultProfile()->value()));
     }
     QJsonArray persistent;
-    for (const ProfileSection section : {ProfileSection::Camera, ProfileSection::Equalizer}) {
+    for (std::size_t i = 0; i < profileSectionCount; ++i) {
+        const auto section = static_cast<ProfileSection>(i);
         if (library.isPersistent(section)) {
-            persistent.append(sectionKey(section));
+            persistent.append(fmt::sectionKey(section));
         }
     }
     if (!persistent.isEmpty()) {

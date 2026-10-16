@@ -41,6 +41,12 @@ target_sources(ghub_lighting_application PRIVATE
 target_link_libraries(ghub_lighting_application PUBLIC ghub_lighting_domain ghub_device_access_api ghub_audio_processing_api)
 ghub_set_warnings(ghub_lighting_application)
 
+# API pública (INC-017 parte 2, ADR-0028): fachada do efeito de prévia do G915 para o módulo profiles.
+add_library(ghub_lighting_api STATIC)
+target_sources(ghub_lighting_api PRIVATE api/KeyboardEffectSettings.cpp)
+target_link_libraries(ghub_lighting_api PUBLIC ghub_lighting_domain)
+ghub_set_warnings(ghub_lighting_api)
+
 # INC-008 parte C (apresentação): controlador do modo ao vivo do G915 para a janela. Só depende da camada
 # application; a infraestrutura é montada no composition root.
 if(GHUB_BUILD_APP)

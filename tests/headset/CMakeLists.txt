@@ -15,6 +15,11 @@ target_link_libraries(ghub_headset_application_tests PRIVATE
 ghub_set_warnings(ghub_headset_application_tests)
 gtest_discover_tests(ghub_headset_application_tests TEST_PREFIX "headset.")
 
+add_executable(ghub_headset_api_tests api/HeadsetProfileSettingsTest.cpp)
+target_link_libraries(ghub_headset_api_tests PRIVATE ghub_headset_api ghub_test_fakes GTest::gtest_main)
+ghub_set_warnings(ghub_headset_api_tests)
+gtest_discover_tests(ghub_headset_api_tests TEST_PREFIX "headset.")
+
 add_executable(ghub_headset_hidpp_tests
     infrastructure/G733StatusPolicyTest.cpp
     infrastructure/HidppHeadsetStatusSourceTest.cpp

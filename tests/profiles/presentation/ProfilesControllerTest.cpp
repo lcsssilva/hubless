@@ -859,7 +859,7 @@ private slots:
     {
         fixture->loadLibrary(libraryOf({makeProfile("A", {{brightnessId, "Brightness", 1}}, true)}));
 
-        fixture->controller.setPersistent("sidetone", true);
+        fixture->controller.setPersistent("nao-existe", true);
 
         QVERIFY2(fixture->controller.status().startsWith("Falha"), qPrintable(fixture->controller.status()));
         QCOMPARE(fixture->repository.saveCalls, 0);

@@ -51,6 +51,11 @@ class ProfilesController final : public QObject {
     Q_PROPERTY(QString defaultProfile READ defaultProfile NOTIFY profilesChanged)
     Q_PROPERTY(bool persistentCamera READ persistentCamera NOTIFY profilesChanged)
     Q_PROPERTY(bool persistentEqualizer READ persistentEqualizer NOTIFY profilesChanged)
+    // INC-017 parte 2: as seções de hardware (sidetone, luzes do G733, efeito do G915, DPI do G703).
+    Q_PROPERTY(bool persistentSidetone READ persistentSidetone NOTIFY profilesChanged)
+    Q_PROPERTY(bool persistentHeadsetLights READ persistentHeadsetLights NOTIFY profilesChanged)
+    Q_PROPERTY(bool persistentKeyboardEffect READ persistentKeyboardEffect NOTIFY profilesChanged)
+    Q_PROPERTY(bool persistentPointerDpi READ persistentPointerDpi NOTIFY profilesChanged)
 
 public:
     static constexpr std::chrono::milliseconds defaultSettleDelay{500};
@@ -77,6 +82,10 @@ public:
     [[nodiscard]] QString defaultProfile() const { return defaultProfile_; }
     [[nodiscard]] bool persistentCamera() const { return persistentCamera_; }
     [[nodiscard]] bool persistentEqualizer() const { return persistentEqualizer_; }
+    [[nodiscard]] bool persistentSidetone() const { return isPersistent(ProfileSection::Sidetone); }
+    [[nodiscard]] bool persistentHeadsetLights() const { return isPersistent(ProfileSection::HeadsetLights); }
+    [[nodiscard]] bool persistentKeyboardEffect() const { return isPersistent(ProfileSection::KeyboardEffect); }
+    [[nodiscard]] bool persistentPointerDpi() const { return isPersistent(ProfileSection::PointerDpi); }
 
     // Lê o arquivo de perfis (só leitura). Chamado uma vez pelo composition root.
     Q_INVOKABLE void load();
@@ -94,7 +103,8 @@ public:
     Q_INVOKABLE void duplicate(const QString& source, const QString& copyName);
     Q_INVOKABLE void exportProfile(const QString& name, const QString& path);
     Q_INVOKABLE void importProfile(const QString& path, bool replace);
-    // INC-017 R6/R7: perfil padrão (vazio = nenhum) e seção persistente ("camera" ou "equalizer").
+    // INC-017 R6/R7: perfil padrão (vazio = nenhum) e seção persistente ("camera", "equalizer", "sidetone",
+    // "headsetLights", "keyboardEffect" ou "pointerDpi").
     Q_INVOKABLE void setDefaultProfile(const QString& name);
     Q_INVOKABLE void setPersistent(const QString& section, bool persistent);
 
@@ -127,6 +137,7 @@ private:
         std::optional<ProfileBook::SaveReport> saved;
         std::vector<ApplyProfile::CameraItemResult> cameraItems;
         std::optional<ProfileBook::ImportReport> imported;
+        std::vector<ApplyProfile::SectionResult> hardwareItems; // sidetone, luzes e DPI (worker)
     };
 
     // `viaApplication` vazio = aplicação manual.
@@ -148,6 +159,10 @@ private:
     void finishApply(const Outcome& outcome);
     void finishImport(const Outcome& outcome);
     void refreshFromBook();
+    [[nodiscard]] bool isPersistent(ProfileSection section) const
+    {
+        return persistent_.test(static_cast<std::size_t>(section));
+    }
 
     ProfileBook* book_;                // não nulo
     ActiveApplicationSource* source_;  // não nulo
@@ -159,11 +174,11 @@ private:
     QString operationApplication_; // aplicação automática em curso (vazio = manual)
     QString operationPath_;        // arquivo da importação em curso
     bool operationPersistent_ = false;
-    bool skipCamera_ = false; // seção persistente: não é alterada ao aplicar (INC-017 R7)
-    bool skipEqualizer_ = false;
+    SectionSet skip_; // seções persistentes: não são alteradas ao aplicar (INC-017 R7)
     QString defaultProfile_;
     bool persistentCamera_ = false;
     bool persistentEqualizer_ = false;
+    SectionSet persistent_; // todas as seções persistentes, publicadas ao fim de cada operação
     AutomaticProfileSwitcher switcher_;
     QTimer settleTimer_;
     std::optional<ApplicationId> pending_;  // aguardando o prazo de foco

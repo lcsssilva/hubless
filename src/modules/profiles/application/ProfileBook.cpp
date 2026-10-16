@@ -2,8 +2,25 @@
 
 namespace ghub::profiles {
 
-ProfileBook::ProfileBook(ProfileRepository& repository, CameraSettingsPort& camera, ProfileTransfer* transfer) noexcept
-    : repository_(repository), camera_(camera), transfer_(transfer)
+namespace {
+
+constexpr auto noHardwareModule = "módulo indisponível";
+
+ProfileBook::SectionNote included(ProfileSection section)
+{
+    return {.section = section, .included = true, .omittedReason = {}};
+}
+
+ProfileBook::SectionNote omitted(ProfileSection section, std::string reason)
+{
+    return {.section = section, .included = false, .omittedReason = std::move(reason)};
+}
+
+} // namespace
+
+ProfileBook::ProfileBook(ProfileRepository& repository, CameraSettingsPort& camera, ProfileTransfer* transfer,
+                         HardwarePorts hardware) noexcept
+    : repository_(repository), camera_(camera), transfer_(transfer), hardware_(hardware)
 {
 }
 
@@ -60,14 +77,17 @@ ProfileBook::saveCurrent(std::string_view name, std::optional<std::array<int, 10
         report.equalizerIncluded = true;
     }
 
+    HardwareSections hardware;
+    captureHardware(hardware, report);
+
     // Sem seção nenhuma o Profile::create recusa com InvalidArgument e nada é gravado.
     // Substituir mantém os aplicativos associados ao perfil (ADR-0022, R2).
     std::vector<ApplicationId> applications;
     if (const Profile* existing = library_.find(*profileName); existing != nullptr) {
         applications = existing->applications();
     }
-    auto profile =
-        Profile::create(std::move(*profileName), std::move(cameraSection), equalizer, std::move(applications));
+    auto profile = Profile::create(std::move(*profileName), std::move(cameraSection), equalizer,
+                                   std::move(applications), std::move(hardware));
     if (!profile) {
         return std::unexpected(profile.error());
     }
@@ -84,6 +104,45 @@ ProfileBook::saveCurrent(std::string_view name, std::optional<std::array<int, 10
     }
     library_ = std::move(candidate);
     return report;
+}
+
+void ProfileBook::captureHardware(HardwareSections& hardware, SaveReport& report)
+{
+    using enum ProfileSection;
+    if (hardware_.headset == nullptr) {
+        report.hardware.push_back(omitted(Sidetone, noHardwareModule));
+        report.hardware.push_back(omitted(HeadsetLights, noHardwareModule));
+    } else {
+        if (const auto sidetone = hardware_.headset->lastSidetone(); sidetone.has_value()) {
+            hardware.sidetone = sidetone;
+            report.hardware.push_back(included(Sidetone));
+        } else {
+            report.hardware.push_back(omitted(Sidetone, "nenhum sidetone aplicado nesta sessão"));
+        }
+        if (auto lights = hardware_.headset->lastLights(); !lights.empty()) {
+            hardware.headsetLights = std::move(lights);
+            report.hardware.push_back(included(HeadsetLights));
+        } else {
+            report.hardware.push_back(omitted(HeadsetLights, "nenhuma luz do headset aplicada nesta sessão"));
+        }
+    }
+    if (hardware_.keyboard == nullptr) {
+        report.hardware.push_back(omitted(KeyboardEffect, noHardwareModule));
+    } else if (auto effect = hardware_.keyboard->last(); effect.has_value()) {
+        hardware.keyboardEffect = std::move(effect);
+        report.hardware.push_back(included(KeyboardEffect));
+    } else {
+        report.hardware.push_back(omitted(KeyboardEffect, "nenhum efeito do teclado aplicado nesta sessão"));
+    }
+    if (hardware_.pointer == nullptr) {
+        report.hardware.push_back(omitted(PointerDpi, noHardwareModule));
+    } else if (auto dpi = hardware_.pointer->readCurrent(); dpi.has_value()) {
+        hardware.pointerDpi = std::move(*dpi);
+        report.hardware.push_back(included(PointerDpi));
+    } else {
+        report.hardware.push_back(omitted(
+            PointerDpi, dpi.error().detail.empty() ? "mouse indisponível" : dpi.error().detail));
+    }
 }
 
 shared_kernel::Result<void> ProfileBook::remove(std::string_view name)
@@ -186,7 +245,7 @@ shared_kernel::Result<void> ProfileBook::exportProfile(std::string_view name, co
     if (profile == nullptr) {
         return shared_kernel::fail(ErrorCode::InvalidArgument, "perfil inexistente: " + profileName->value());
     }
-    auto plain = Profile::create(profile->name(), profile->camera(), profile->equalizer());
+    auto plain = profile->withoutApplications();
     if (!plain) {
         return std::unexpected(plain.error());
     }
@@ -213,8 +272,8 @@ shared_kernel::Result<ProfileBook::ImportReport> ProfileBook::importProfile(cons
                                    std::string{alreadyExistsPrefix} + incoming.name().value());
     }
     // Aplicativos associados nunca vêm do arquivo; ao substituir, ficam os do perfil existente.
-    auto profile = Profile::create(incoming.name(), incoming.camera(), incoming.equalizer(),
-                                   existing != nullptr ? existing->applications() : std::vector<ApplicationId>{});
+    auto profile = incoming.withApplications(existing != nullptr ? existing->applications()
+                                                                 : std::vector<ApplicationId>{});
     if (!profile) {
         return std::unexpected(profile.error());
     }

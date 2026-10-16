@@ -106,7 +106,11 @@
 #include "modules/pointer/presentation/PointerViewModel.hpp"
 #include "modules/profiles/application/ApplyProfile.hpp"
 #include "modules/profiles/application/ProfileBook.hpp"
+#include "modules/headset/api/HeadsetProfileSettings.hpp"
+#include "modules/lighting/api/KeyboardEffectSettings.hpp"
+#include "modules/pointer/api/G703DpiSettings.hpp"
 #include "modules/profiles/infrastructure/CameraSettingsAdapter.hpp"
+#include "modules/profiles/infrastructure/HardwareSettingsAdapters.hpp"
 #include "modules/profiles/infrastructure/EqualizerSettingsAdapter.hpp"
 #include "modules/profiles/infrastructure/InactiveApplicationSource.hpp"
 #include "modules/profiles/infrastructure/JsonProfileRepository.hpp"
@@ -404,8 +408,41 @@ int main(int argc, char* argv[])
     ghub::profiles::EqualizerSettingsAdapter profilesEqualizerAdapter{hostEqualizerController};
     ghub::profiles::JsonProfileRepository profileRepository{ghub::profiles::JsonProfileRepository::defaultFilePath()};
     ghub::profiles::JsonProfileTransfer profileTransfer;
-    ghub::profiles::ProfileBook profileBook{profileRepository, profilesCameraAdapter, &profileTransfer};
-    const ghub::profiles::ApplyProfile applyProfile{profilesCameraAdapter, profilesEqualizerAdapter};
+    // Seções de hardware do perfil (INC-017 parte 2): só pela api/ dos módulos donos. Sidetone e luzes do G733 e o
+    // efeito do G915 não têm leitura no dispositivo: "Salvar estado atual" guarda o último valor aplicado pelo perfil.
+    ghub::headset::HeadsetProfileSettings headsetProfileSettings{changeHeadsetSetting, changeHeadsetLighting};
+    ghub::profiles::HeadsetSettingsAdapter profilesHeadsetAdapter{headsetProfileSettings};
+    // O efeito do G915 só vale com o modo ao vivo ligado pelo usuário (volátil); sem ele, a seção falha.
+    class LiveKeyboardEffectApplier final : public ghub::lighting::KeyboardEffectApplier {
+    public:
+        explicit LiveKeyboardEffectApplier(ghub::lighting::presentation::KeyboardLightingController& controller)
+            : controller_(&controller)
+        {
+        }
+        [[nodiscard]] ghub::shared_kernel::Result<void>
+        applyEffect(const ghub::lighting::KeyboardEffectValue& value) override
+        {
+            if (!controller_->live()) {
+                return ghub::shared_kernel::fail(ghub::shared_kernel::ErrorCode::BackendUnavailable,
+                                                 "ligue o modo ao vivo do G915 antes de aplicar o efeito");
+            }
+            controller_->setBrightness(value.brightness);
+            controller_->applyEffect(QString::fromStdString(value.kind), QColor(value.red, value.green, value.blue));
+            return {};
+        }
+
+    private:
+        ghub::lighting::presentation::KeyboardLightingController* controller_;
+    };
+    LiveKeyboardEffectApplier liveKeyboardEffectApplier{keyboardLightingController};
+    ghub::lighting::KeyboardEffectSettings keyboardEffectSettings{liveKeyboardEffectApplier};
+    ghub::profiles::KeyboardEffectAdapter profilesKeyboardAdapter{keyboardEffectSettings};
+    const ghub::pointer::G703DpiSettings g703DpiSettings{g703OnboardSettings};
+    ghub::profiles::PointerSettingsAdapter profilesPointerAdapter{g703DpiSettings};
+    const ghub::profiles::HardwarePorts hardwarePorts{
+        .headset = &profilesHeadsetAdapter, .keyboard = &profilesKeyboardAdapter, .pointer = &profilesPointerAdapter};
+    ghub::profiles::ProfileBook profileBook{profileRepository, profilesCameraAdapter, &profileTransfer, hardwarePorts};
+    const ghub::profiles::ApplyProfile applyProfile{profilesCameraAdapter, profilesEqualizerAdapter, hardwarePorts};
     // Troca automática por aplicativo (ADR-0022): a fonte só é iniciada com a opção ligada pelo usuário (e persistida);
     // declarada ANTES do controlador, que a para no destrutor. No smoke test a fonte é inerte (nunca toca no KWin
     // nem no barramento de sessão).
