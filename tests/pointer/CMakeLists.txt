@@ -7,6 +7,7 @@ add_executable(ghub_pointer_domain_tests
     domain/G703ProfileSettingsTest.cpp
     domain/LedSettingTest.cpp
     domain/OnboardButtonsTest.cpp
+    domain/ButtonAssignmentsTest.cpp
     domain/OnboardPointerProfileTest.cpp
     domain/PointerSensorStatusTest.cpp)
 target_link_libraries(ghub_pointer_domain_tests PRIVATE ghub_pointer_domain ghub_test_fakes GTest::gtest_main)

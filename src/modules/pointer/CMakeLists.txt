@@ -9,6 +9,7 @@ target_sources(ghub_pointer_domain PRIVATE
     domain/G703ProfileSettings.cpp
     domain/LedSetting.cpp
     domain/OnboardButtons.cpp
+    domain/ButtonAssignments.cpp
     domain/OnboardPointerProfile.cpp
     domain/PointerSensorStatus.cpp)
 target_link_libraries(ghub_pointer_domain PUBLIC ghub_shared_kernel)

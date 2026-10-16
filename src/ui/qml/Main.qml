@@ -759,6 +759,15 @@ ApplicationWindow {
                         onEditedChanged: onboardEditor.editLogoLed = edited
                     }
 
+                    SectionHeader { text: qsTr("Botões") }
+
+                    OnboardButtonsEditor {
+                        id: buttonsEditor
+                        objectName: "onboardButtonsEditor"
+                        buttons: window.g703OnboardController.buttons
+                        keyChoices: window.g703OnboardController.keyChoices
+                    }
+
                     RowLayout {
                         Layout.fillWidth: true
 
@@ -795,7 +804,8 @@ ApplicationWindow {
                             enabled: !window.g703OnboardController.busy
                             onClicked: window.g703OnboardController.writeToMouse(
                                 onboardEditor.editRate, onboardEditor.editStages, onboardEditor.editDefault,
-                                onboardEditor.editShift, onboardEditor.editPrimaryLed, onboardEditor.editLogoLed)
+                                onboardEditor.editShift, onboardEditor.editPrimaryLed, onboardEditor.editLogoLed,
+                                buttonsEditor.edited, buttonsEditor.confirmPrimary)
                         }
                         GHubButton {
                             objectName: "onboardRestoreButton"

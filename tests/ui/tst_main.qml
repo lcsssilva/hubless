@@ -279,14 +279,18 @@ TestCase {
             property var logoLed: ({kind: "off", color: "#000000", periodMs: 0, brightness: 0, raw: ""})
             property bool backupExists: false
             property int activeSector: 0
+            property var buttons: []
+            property var keyChoices: [{code: 4, label: "A"}, {code: 6, label: "C"}, {code: 58, label: "F1"}]
             property int readCalls: 0
             property int restoreCalls: 0
             property var writeCalls: []
             property var ledWrites: []
+            property var buttonWrites: []
             function readFromMouse() { readCalls++ }
-            function writeToMouse(rate, stages, defaultStage, shift, primary, logo) {
+            function writeToMouse(rate, stages, defaultStage, shift, primary, logo, buttonRequests, confirmPrimary) {
                 writeCalls = writeCalls.concat([[rate, stages.slice(), defaultStage, shift, primary.kind, logo.kind]])
                 ledWrites = ledWrites.concat([[primary, logo]])
+                buttonWrites = buttonWrites.concat([[buttonRequests, confirmPrimary]])
             }
             function restoreBackup() { restoreCalls++ }
         }
@@ -967,6 +971,42 @@ TestCase {
         compare(onboard.ledWrites[0][0].color, "#00ffff");
         compare(onboard.ledWrites[0][1].periodMs, 5000);
         compare(onboard.ledWrites[0][1].brightness, 100);
+    }
+
+    // INC-022: botões do G703 — tipo e valor repassados ao controlador; o botão 1 exige confirmação.
+    function test_onboardButtonsEditorForwardsKeyAssignmentAndPrimaryConfirmation() {
+        const buttons = [1, 2, 3, 4, 5].map(n => ({kind: "mouse", number: n, modifiers: 0, key: 0, raw: ""}))
+            .concat([{kind: "unknown", number: 0, modifiers: 0, key: 0, raw: "90 05 00 00"}]);
+        const onboard = createOnboardFake({loaded: true, dpiStages: [800], reportRateHz: 1000, buttons: buttons});
+        const window = createMainWithOnboard(onboard);
+        openDeviceTab(window, "G703", "onboard");
+        tryVerify(() => allItems(window).filter(i => i.objectName === "onboardButtonKindBox").length === 6);
+        const kinds = allItems(window).filter(i => i.objectName === "onboardButtonKindBox");
+        const labels = allItems(window).filter(i => i.objectName === "onboardButtonLabel");
+        verify(labels[5].text.indexOf("90 05 00 00") >= 0);
+        compare(findItem(window, "onboardPrimaryConfirmBox").visible, false);
+        kinds[3].activated(3);
+        const keyBox = allItems(window).filter(i => i.objectName === "onboardButtonKeyBox")[3];
+        tryCompare(keyBox, "visible", true);
+        keyBox.activated(1);
+        const ctrl = allItems(window).filter(i => i.objectName === "onboardButtonModifierCtrl")[3];
+        ctrl.checked = true;
+        ctrl.clicked();
+        findItem(window, "onboardWriteButton").clicked();
+        compare(onboard.buttonWrites[0][1], false);
+        compare(onboard.buttonWrites[0][0][3].kind, "key");
+        compare(onboard.buttonWrites[0][0][3].key, 6);
+        compare(onboard.buttonWrites[0][0][3].modifiers, 1);
+        compare(onboard.buttonWrites[0][0][0].kind, "keep");
+
+        kinds[0].activated(3);
+        const confirm = findItem(window, "onboardPrimaryConfirmBox");
+        tryCompare(confirm, "visible", true);
+        findItem(window, "onboardWriteButton").clicked();
+        compare(onboard.buttonWrites[1][1], false);
+        confirm.checked = true;
+        findItem(window, "onboardWriteButton").clicked();
+        compare(onboard.buttonWrites[2][1], true);
     }
 
     function test_onboardRawLedIsShownNotEditableAndSentBackUnchanged() {

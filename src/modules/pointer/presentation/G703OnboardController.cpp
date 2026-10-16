@@ -105,7 +105,89 @@ std::expected<LedSetting, QString> ledFromMap(const QVariantMap& map)
     return std::unexpected(QObject::tr("tipo de LED desconhecido"));
 }
 
+QVariantMap buttonMap(const ButtonAction& action)
+{
+    QVariantMap map{{QStringLiteral("kind"), QStringLiteral("unknown")},
+                    {QStringLiteral("number"), 0},
+                    {QStringLiteral("modifiers"), 0},
+                    {QStringLiteral("key"), 0},
+                    {QStringLiteral("raw"), QString{}}};
+    switch (action.kind()) {
+    case ButtonActionKind::Button:
+        map[QStringLiteral("kind")] = QStringLiteral("mouse");
+        map[QStringLiteral("number")] = static_cast<int>(action.value());
+        break;
+    case ButtonActionKind::Key:
+        map[QStringLiteral("kind")] = QStringLiteral("key");
+        map[QStringLiteral("modifiers")] = static_cast<int>(action.value() >> 8U);
+        map[QStringLiteral("key")] = static_cast<int>(action.value() & 0xFFU);
+        break;
+    case ButtonActionKind::None:
+        map[QStringLiteral("kind")] = QStringLiteral("none");
+        break;
+    default: {
+        const std::array<std::uint8_t, 4> bytes{
+            static_cast<std::uint8_t>(action.value() >> 24U), static_cast<std::uint8_t>(action.value() >> 16U),
+            static_cast<std::uint8_t>(action.value() >> 8U), static_cast<std::uint8_t>(action.value())};
+        map[QStringLiteral("raw")] = QString::fromLatin1(
+            QByteArray{reinterpret_cast<const char*>(bytes.data()), static_cast<qsizetype>(bytes.size())}.toHex(' '));
+        break;
+    }
+    }
+    return map;
+}
+
+QVariantMap keepButtonMap()
+{
+    return {{QStringLiteral("kind"), QStringLiteral("keep")}};
+}
+
+// Converte os mapas do QML em atribuições; a validade (botão 1..5, tecla da lista) é do domínio.
+std::expected<std::vector<ButtonAssignment>, QString> assignmentsFromList(const QVariantList& list)
+{
+    std::vector<ButtonAssignment> result;
+    result.reserve(static_cast<std::size_t>(list.size()));
+    for (const QVariant& item : list) {
+        const QVariantMap map = item.toMap();
+        const QString kind = map.value(QStringLiteral("kind")).toString();
+        const int number = map.value(QStringLiteral("number")).toInt();
+        const int modifiers = map.value(QStringLiteral("modifiers")).toInt();
+        const int key = map.value(QStringLiteral("key")).toInt();
+        if (kind == QLatin1String("keep")) {
+            result.push_back(ButtonAssignment::keep());
+        } else if (kind == QLatin1String("default")) {
+            result.push_back(ButtonAssignment::factoryDefault());
+        } else if (kind == QLatin1String("mouse") || kind == QLatin1String("key")) {
+            if (number < 0 || modifiers < 0 || key < 0) {
+                return std::unexpected(QObject::tr("valores de botão fora do intervalo"));
+            }
+            auto assignment =
+                kind == QLatin1String("mouse")
+                    ? ButtonAssignment::mouseButton(static_cast<std::uint32_t>(number))
+                    : ButtonAssignment::key(static_cast<std::uint32_t>(modifiers), static_cast<std::uint32_t>(key));
+            if (!assignment.has_value()) {
+                return std::unexpected(QString::fromStdString(assignment.error().detail));
+            }
+            result.push_back(*assignment);
+        } else {
+            return std::unexpected(QObject::tr("tipo de atribuição de botão desconhecido"));
+        }
+    }
+    return result;
+}
+
 } // namespace
+
+QVariantList G703OnboardController::keyChoices() const
+{
+    QVariantList choices;
+    for (const OnboardKey& key : onboardKeyCatalog()) {
+        choices.append(QVariantMap{
+            {QStringLiteral("code"), static_cast<int>(key.code)},
+            {QStringLiteral("label"), QString::fromUtf8(key.label.data(), static_cast<qsizetype>(key.label.size()))}});
+    }
+    return choices;
+}
 
 G703OnboardController::G703OnboardController(const G703OnboardSettings& settings, QObject* parent)
     : QObject(parent), settings_(&settings), primaryLed_(ledMap(LedSetting::off())), logoLed_(ledMap(LedSetting::off()))
@@ -148,6 +230,14 @@ void G703OnboardController::readFromMouse()
 void G703OnboardController::writeToMouse(int reportRateHz, const QVariantList& dpiStages, int defaultStage,
                                          int dpiShiftStage, const QVariantMap& primaryLed, const QVariantMap& logoLed)
 {
+    writeToMouse(reportRateHz, dpiStages, defaultStage, dpiShiftStage, primaryLed, logoLed,
+                 QVariantList(static_cast<qsizetype>(ButtonAssignments::kCount), keepButtonMap()), false);
+}
+
+void G703OnboardController::writeToMouse(int reportRateHz, const QVariantList& dpiStages, int defaultStage,
+                                         int dpiShiftStage, const QVariantMap& primaryLed, const QVariantMap& logoLed,
+                                         const QVariantList& buttons, bool confirmPrimaryChange)
+{
     if (!acceptRequest()) {
         return;
     }
@@ -182,7 +272,20 @@ void G703OnboardController::writeToMouse(int reportRateHz, const QVariantList& d
         fail(tr("Valores inválidos: %1").arg(QString::fromStdString(valid.error().detail)));
         return;
     }
-    start(Kind::Write, std::move(*valid));
+    auto parsed = assignmentsFromList(buttons);
+    if (!parsed.has_value()) {
+        fail(tr("Valores inválidos: %1").arg(parsed.error()));
+        return;
+    }
+    auto assignments = ButtonAssignments::make(std::move(*parsed), confirmPrimaryChange);
+    if (!assignments.has_value()) {
+        const QString detail = QString::fromStdString(assignments.error().detail);
+        fail(assignments.error().detail.find("confirma") != std::string::npos
+                 ? tr("Falta confirmar: %1").arg(detail)
+                 : tr("Valores inválidos: %1").arg(detail));
+        return;
+    }
+    start(Kind::Write, WriteRequest{std::move(*valid), std::move(*assignments)});
 }
 
 void G703OnboardController::restoreBackup()
@@ -192,7 +295,7 @@ void G703OnboardController::restoreBackup()
     }
 }
 
-void G703OnboardController::start(Kind kind, std::optional<G703ProfileSettings> request)
+void G703OnboardController::start(Kind kind, std::optional<WriteRequest> request)
 {
     running_ = true;
     status_ = tr("Aguarde: operação no mouse em andamento…");
@@ -206,11 +309,12 @@ void G703OnboardController::start(Kind kind, std::optional<G703ProfileSettings> 
             return {
                 .kind = kind,
                 .settings = snapshot->settings,
+                .buttons = snapshot->buttons,
                 .sector = snapshot->sector,
                 .backupExists = snapshot->backupExists,
             };
         }
-        auto done = kind == Kind::Write ? useCase.write(*request) : useCase.restoreBackup();
+        auto done = kind == Kind::Write ? useCase.write(request->settings, request->buttons) : useCase.restoreBackup();
         if (!done.has_value()) {
             return {.kind = kind, .settings = std::nullopt, .error = done.error().detail};
         }
@@ -220,7 +324,11 @@ void G703OnboardController::start(Kind kind, std::optional<G703ProfileSettings> 
         if (!after.has_value()) {
             return {.kind = kind, .settings = *done, .error = after.error().detail};
         }
-        return {.kind = kind, .settings = *done, .sector = after->sector, .backupExists = after->backupExists};
+        return {.kind = kind,
+                .settings = *done,
+                .buttons = after->buttons,
+                .sector = after->sector,
+                .backupExists = after->backupExists};
     }));
     emit stateChanged();
 }
@@ -245,6 +353,12 @@ void G703OnboardController::onFinished()
     dpiStages_.clear();
     for (const auto dpi : applied.dpiStages()) {
         dpiStages_.append(static_cast<int>(dpi));
+    }
+    if (outcome.buttons.has_value()) {
+        buttons_.clear();
+        for (const ButtonAction& action : *outcome.buttons) {
+            buttons_.append(buttonMap(action));
+        }
     }
     activeSector_ = static_cast<int>(outcome.sector.value_or(0));
     backupExists_ = outcome.backupExists;
