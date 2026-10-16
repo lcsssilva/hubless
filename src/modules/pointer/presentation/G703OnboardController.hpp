@@ -11,6 +11,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace ghub::pointer {
 
@@ -32,6 +33,8 @@ class G703OnboardController final : public QObject {
     Q_PROPERTY(QVariantMap primaryLed READ primaryLed NOTIFY stateChanged)
     Q_PROPERTY(QVariantMap logoLed READ logoLed NOTIFY stateChanged)
     Q_PROPERTY(bool backupExists READ backupExists NOTIFY stateChanged)
+    Q_PROPERTY(QVariantList buttons READ buttons NOTIFY stateChanged)
+    Q_PROPERTY(QVariantList keyChoices READ keyChoices CONSTANT)
     Q_PROPERTY(int activeSector READ activeSector NOTIFY stateChanged)
 
 public:
@@ -54,6 +57,10 @@ public:
     // Mapas {kind: "off"|"fixed"|"cycle"|"raw", color: "#rrggbb", periodMs, brightness, raw: "xx xx ..."}.
     [[nodiscard]] QVariantMap primaryLed() const { return primaryLed_; }
     [[nodiscard]] QVariantMap logoLed() const { return logoLed_; }
+    // Os 6 botões do setor: mapas {kind: "mouse"|"key"|"none"|"unknown", number, modifiers, key, raw: "xx xx xx xx"}.
+    [[nodiscard]] QVariantList buttons() const { return buttons_; }
+    // Teclas permitidas (lista fechada do domínio): mapas {code, label}.
+    [[nodiscard]] QVariantList keyChoices() const;
     [[nodiscard]] bool backupExists() const { return backupExists_; }
     [[nodiscard]] int activeSector() const { return activeSector_; }
 
@@ -63,6 +70,12 @@ public:
     // alterado.
     Q_INVOKABLE void writeToMouse(int reportRateHz, const QVariantList& dpiStages, int defaultStage, int dpiShiftStage,
                                   const QVariantMap& primaryLed, const QVariantMap& logoLed);
+    // Com atribuições de botão (INC-022): `buttons` tem 6 mapas {kind: "keep"|"default"|"mouse"|"key", number,
+    // modifiers, key}. Atribuir ao botão 1 algo diferente de "botão do mouse 1"/"default"/"keep" exige
+    // `confirmPrimaryChange`; sem ela o pedido é recusado com o motivo no status.
+    Q_INVOKABLE void writeToMouse(int reportRateHz, const QVariantList& dpiStages, int defaultStage, int dpiShiftStage,
+                                  const QVariantMap& primaryLed, const QVariantMap& logoLed,
+                                  const QVariantList& buttons, bool confirmPrimaryChange);
     Q_INVOKABLE void restoreBackup();
 
 signals:
@@ -73,9 +86,10 @@ private:
 
     struct Outcome {
         Kind kind;
-        std::optional<G703ProfileSettings> settings = std::nullopt; // vazio = falha
-        std::optional<std::uint16_t> sector = std::nullopt;         // da leitura (também relida após gravar)
-        bool backupExists = false;                                  // idem
+        std::optional<G703ProfileSettings> settings = std::nullopt;      // vazio = falha
+        std::optional<std::vector<ButtonAction>> buttons = std::nullopt; // da releitura
+        std::optional<std::uint16_t> sector = std::nullopt;              // da leitura (também relida após gravar)
+        bool backupExists = false;                                       // idem
         // NOLINTNEXTLINE(readability-redundant-member-init): o GCC exige (-Wmissing-field-initializers).
         std::string error = {};
     };
@@ -83,7 +97,11 @@ private:
     // Recusa se ocupado; devolve true se o pedido pode prosseguir.
     [[nodiscard]] bool acceptRequest();
     void fail(const QString& message);
-    void start(Kind kind, std::optional<G703ProfileSettings> request);
+    struct WriteRequest {
+        G703ProfileSettings settings;
+        ButtonAssignments buttons;
+    };
+    void start(Kind kind, std::optional<WriteRequest> request);
     void onFinished();
 
     const G703OnboardSettings* settings_; // não nulo
@@ -95,6 +113,7 @@ private:
     int dpiShiftStage_ = -1;
     QVariantMap primaryLed_;
     QVariantMap logoLed_;
+    QVariantList buttons_;
     int activeSector_ = 0;
     bool loaded_ = false;
     bool backupExists_ = false;

@@ -30,3 +30,4 @@ GHubBusyRing 1.0 GHubBusyRing.qml
 AnimationPanel 1.0 AnimationPanel.qml
 OnboardLedEditor 1.0 OnboardLedEditor.qml
 KeyboardControlsPanel 1.0 KeyboardControlsPanel.qml
+OnboardButtonsEditor 1.0 OnboardButtonsEditor.qml

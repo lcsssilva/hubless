@@ -163,6 +163,76 @@ TEST_F(G703OnboardSettingsTest, WriteOfStagesShiftRateAndLedsChangesNoOtherByteO
     EXPECT_TRUE(OnboardSector::fromBytes(after)->hasValidCrc());
 }
 
+// INC-022 R2: botões gravados junto com o resto; nenhum byte fora das entradas editadas muda.
+TEST_F(G703OnboardSettingsTest, ReadAlsoReturnsTheSixButtonsOfTheActiveSector)
+{
+    const auto snapshot = useCase().read();
+    ASSERT_TRUE(snapshot.has_value());
+    ASSERT_EQ(snapshot->buttons.size(), 6U);
+    EXPECT_EQ(snapshot->buttons[0], ButtonAction::button(1));
+    EXPECT_EQ(snapshot->buttons[5], ButtonAction::unrecognized(0x90050000U));
+}
+
+TEST_F(G703OnboardSettingsTest, WriteWithButtonsChangesOnlyTheEditedButtonEntriesOfTheRealSector)
+{
+    auto list = std::vector<ButtonAssignment>(ButtonAssignments::kCount, ButtonAssignment::keep());
+    list[3] = *ButtonAssignment::key(0x01, 0x06); // Ctrl+C
+    list[4] = *ButtonAssignment::mouseButton(2);
+    const auto buttons = ButtonAssignments::make(list, false).value();
+    const auto current = G703ProfileSettings::read(sector0001()).value();
+    const auto result = useCase().write(current, buttons);
+    ASSERT_TRUE(result.has_value());
+
+    const auto& after = connector.state.sectors.at(1);
+    const auto before = sector0001();
+    ASSERT_EQ(after.size(), before.size());
+    for (std::size_t i = 0; i < before.size() - 2; ++i) {
+        if (i < 0x2c || i >= 0x34) {
+            EXPECT_EQ(after[i], before[i]) << "byte " << i;
+        }
+    }
+    EXPECT_EQ((Bytes{after.begin() + 0x2c, after.begin() + 0x34}),
+              (Bytes{0x80, 0x02, 0x01, 0x06, 0x80, 0x01, 0x00, 0x02}));
+    EXPECT_TRUE(OnboardSector::fromBytes(after)->hasValidCrc());
+    EXPECT_EQ(connector.state.count("write:1"), 1);
+    EXPECT_EQ(backup.stored.at(1), before);
+}
+
+// "Padrão" = entrada da cópia original, não a atual.
+TEST_F(G703OnboardSettingsTest, FactoryDefaultButtonComesFromTheBackupWhenOneExists)
+{
+    Bytes edited = sector0001();
+    edited[0x2b] = 0x04; // botão 3 atual = botão 3 -> trocado
+    edited[0x23] = 0x10; // botão 1 atual = botão 5
+    connector.state.sectors[1] = OnboardSector::fromBytes(edited)->withCrc().bytes();
+    backup.stored[1] = sector0001();
+    auto list = std::vector<ButtonAssignment>(ButtonAssignments::kCount, ButtonAssignment::keep());
+    list[0] = ButtonAssignment::factoryDefault();
+    const auto current = G703ProfileSettings::read(sector0001()).value();
+    ASSERT_TRUE(useCase().write(current, ButtonAssignments::make(list, false).value()).has_value());
+    EXPECT_EQ(connector.state.sectors.at(1)[0x23], 0x01);
+    EXPECT_EQ(connector.state.sectors.at(1)[0x2b], 0x04); // mantido
+}
+
+TEST_F(G703OnboardSettingsTest, FactoryDefaultWithoutBackupKeepsTheCurrentEntryBecauseItIsTheOriginal)
+{
+    auto list = std::vector<ButtonAssignment>(ButtonAssignments::kCount, ButtonAssignment::keep());
+    list[1] = ButtonAssignment::factoryDefault();
+    const auto current = G703ProfileSettings::read(sector0001()).value();
+    ASSERT_TRUE(useCase().write(current, ButtonAssignments::make(list, false).value()).has_value());
+    EXPECT_TRUE(wroteNothing());
+}
+
+TEST_F(G703OnboardSettingsTest, FailedBackupReadRefusesAFactoryDefaultWithoutWriting)
+{
+    backup.loadError = shared_kernel::DomainError{ErrorCode::BackendUnavailable, "falha"};
+    auto list = std::vector<ButtonAssignment>(ButtonAssignments::kCount, ButtonAssignment::keep());
+    list[1] = ButtonAssignment::factoryDefault();
+    const auto current = G703ProfileSettings::read(sector0001()).value();
+    EXPECT_FALSE(useCase().write(current, ButtonAssignments::make(list, false).value()).has_value());
+    EXPECT_TRUE(wroteNothing());
+}
+
 TEST_F(G703OnboardSettingsTest, WriteOfTheValuesAlreadyOnTheMouseSendsNothing)
 {
     const auto current = G703ProfileSettings::read(sector0001()).value();
