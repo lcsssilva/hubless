@@ -42,6 +42,10 @@ ApplicationWindow {
     // M1–M3 do G915 só por clique (INC-019).
     required property QtObject keyboardControlsController
 
+    // G915OnboardController (módulo lighting), fornecido pelo composition root: efeito gravado e teclas G do perfil
+    // onboard do G915 só por clique (INC-019 R4, INC-022).
+    required property QtObject g915OnboardController
+
     // HeadsetSettingsController (módulo headset), fornecido pelo composition root: sidetone e luzes do G733 só
     // são gravados por clique (ADR-0015).
     required property QtObject headsetSettingsController
@@ -612,6 +616,14 @@ ApplicationWindow {
                     objectName: "keyboardControlsPanel"
                     visible: lightingTabs.currentIndex === 3
                     controller: window.keyboardControlsController
+                    liveModeOn: window.keyboardLightingController.live
+                    animationRunning: window.softwareAnimationController.running
+                }
+
+                G915OnboardPanel {
+                    objectName: "g915OnboardPanel"
+                    visible: lightingTabs.currentIndex === 3
+                    controller: window.g915OnboardController
                     liveModeOn: window.keyboardLightingController.live
                     animationRunning: window.softwareAnimationController.running
                 }
