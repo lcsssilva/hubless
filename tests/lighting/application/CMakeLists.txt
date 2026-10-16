@@ -1,5 +1,5 @@
 add_executable(ghub_lighting_application_tests LiveKeyboardSessionTest.cpp SaveKeyboardEffectTest.cpp RunSoftwareAnimationTest.cpp
-    ReadKeyboardStatusTest.cpp AudioVisualizerTest.cpp)
+    ReadKeyboardStatusTest.cpp AudioVisualizerTest.cpp ControlKeyboardTest.cpp)
 target_link_libraries(ghub_lighting_application_tests PRIVATE
     ghub_lighting_application ghub_test_fakes GTest::gtest_main)
 ghub_set_warnings(ghub_lighting_application_tests)

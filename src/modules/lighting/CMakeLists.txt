@@ -5,7 +5,9 @@ target_sources(ghub_lighting_infrastructure PRIVATE
     infrastructure/G915PerKeyFrames.cpp
     infrastructure/G915EffectFrames.cpp
     infrastructure/G915HidppSession.cpp
+    infrastructure/G915HidppControlSession.cpp
     infrastructure/G915HidppLighting.cpp
+    infrastructure/G915HidppControl.cpp
     infrastructure/HidppKeyboardStatusSource.cpp)
 target_link_libraries(ghub_lighting_infrastructure PUBLIC ghub_shared_kernel ghub_platform_hidpp ghub_lighting_application)
 ghub_set_warnings(ghub_lighting_infrastructure)
@@ -19,7 +21,8 @@ target_sources(ghub_lighting_domain PRIVATE
     domain/G915KeyCatalog.cpp
     domain/KeyColorMap.cpp
     domain/AnimationFrames.cpp
-    domain/KeyboardStatus.cpp)
+    domain/KeyboardStatus.cpp
+    domain/GameModeKeys.cpp)
 target_link_libraries(ghub_lighting_domain PUBLIC ghub_shared_kernel)
 ghub_set_warnings(ghub_lighting_domain)
 
@@ -28,6 +31,7 @@ add_library(ghub_lighting_application STATIC)
 target_sources(ghub_lighting_application PRIVATE
     application/KeyboardAccess.cpp
     application/LiveKeyboardSession.cpp
+    application/ControlKeyboard.cpp
     application/SaveKeyboardEffect.cpp
     application/RunSoftwareAnimation.cpp
     application/AudioVisualizer.cpp
@@ -43,6 +47,8 @@ if(GHUB_BUILD_APP)
     target_sources(ghub_lighting_presentation PRIVATE
         presentation/KeyboardLightingController.hpp
         presentation/KeyboardLightingController.cpp
+        presentation/KeyboardControlsController.hpp
+        presentation/KeyboardControlsController.cpp
         presentation/KeyboardStatusViewModel.hpp
         presentation/KeyboardStatusViewModel.cpp
         presentation/SoftwareAnimationController.hpp

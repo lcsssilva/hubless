@@ -14,8 +14,8 @@ TEST_F(HidppChannelTest, DeniedPairsFailWithoutAnyWrite)
         std::uint16_t feature;
         std::uint8_t function;
     };
-    for (const Pair pair : {Pair{0x4522, 0}, Pair{0x4522, 1}, Pair{0x4522, 2}, Pair{0x4522, 3}, Pair{0x8071, 3},
-                            Pair{0x8071, 7}, Pair{0x8070, 8}, Pair{0x1234, 0}}) {
+    for (const Pair pair : {Pair{0x4522, 0}, Pair{0x4522, 2}, Pair{0x4522, 4}, Pair{0x8071, 3}, Pair{0x8071, 7},
+                            Pair{0x8070, 8}, Pair{0x1234, 0}}) {
         const auto result = channel->call(device, pair.feature, pair.function);
         ASSERT_FALSE(result.has_value());
         EXPECT_EQ(result.error().kind, hidpp::HidppErrorKind::PolicyDenied);

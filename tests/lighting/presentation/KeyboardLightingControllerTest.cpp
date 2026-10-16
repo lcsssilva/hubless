@@ -294,6 +294,62 @@ private slots:
         QVERIFY(env->keyboard.saved().back() == KeyboardEffect::cycle(period, brightness));
     }
 
+    void brightness_DefaultsToOneHundredPercent()
+    {
+        KeyboardLightingController controller{env->useCase};
+
+        QCOMPARE(controller.brightness(), 100);
+    }
+
+    void brightness_IsTheBrightnessParameterOfTheNextEffects_KeysAndLogoCompanion()
+    {
+        // NOLINTBEGIN(bugprone-unchecked-optional-access)
+        const auto period = *EffectPeriod::create(5000);
+        const auto half = *EffectBrightness::create(49); // C-04: 49 % = 0x31
+        const RgbColor red{255, 0, 0};
+        const std::vector<std::pair<QString, KeyboardEffect>> expected{
+            {QStringLiteral("wave"), KeyboardEffect::wave(period, half)},
+            {QStringLiteral("cycle"), KeyboardEffect::cycle(period, half)},
+            {QStringLiteral("breathing"), KeyboardEffect::breathing(red, period, half)},
+        };
+        // NOLINTEND(bugprone-unchecked-optional-access)
+        KeyboardLightingController controller{env->useCase};
+        startAndWait(controller);
+        controller.setBrightness(49);
+        QCOMPARE(controller.brightness(), 49);
+
+        for (const auto& [kind, effect] : expected) {
+            controller.applyEffect(kind, QColor(255, 0, 0));
+            QTRY_VERIFY(!controller.busy());
+            const auto& saved = env->keyboard.saved();
+            QVERIFY(saved.at(saved.size() - 2) == effect);
+            QVERIFY(saved.back() == logoCompanion(effect));
+        }
+    }
+
+    void brightness_OutOfRange_IsClampedToOneToOneHundred()
+    {
+        KeyboardLightingController controller{env->useCase};
+
+        controller.setBrightness(0);
+        QCOMPARE(controller.brightness(), 1);
+        controller.setBrightness(250);
+        QCOMPARE(controller.brightness(), 100);
+        controller.setBrightness(-5);
+        QCOMPARE(controller.brightness(), 1);
+    }
+
+    void brightness_ChangingItWritesNothing()
+    {
+        KeyboardLightingController controller{env->useCase};
+        startAndWait(controller);
+        const auto before = env->keyboard.calls().size();
+
+        controller.setBrightness(30);
+
+        QCOMPARE(env->keyboard.calls().size(), before);
+    }
+
     void applyEffect_Ripple_SendsStaticWithTheSameColorToLogo()
     {
         KeyboardLightingController controller{env->useCase};

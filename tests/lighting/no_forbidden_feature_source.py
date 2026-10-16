@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Garantia do módulo lighting (ADR-0013 decisão 7, INC-008 R3).
 
-Falha se algum arquivo de src/modules/lighting/ montar a feature 0x4522 (handshake de semântica desconhecida)
-fora de LightingHidppPolicy.cpp, onde ela só pode constar na lista de bloqueio.
+Falha se algum arquivo de src/modules/lighting/ montar a feature 0x4522 (modo de jogo, ADR-0029) fora dos dois
+arquivos que a usam: LightingHidppPolicy.cpp (política) e G915HidppControlSession.cpp (único emissor).
 
 Uso: python3 -I no_forbidden_feature_source.py <raiz-do-repositório>
 """
@@ -13,7 +13,7 @@ import sys
 from pathlib import Path
 
 FORBIDDEN = re.compile(r"0[xX]4522|0[xX]45\s*,\s*0[xX]22|0[xX]22\s*,\s*0[xX]45")
-ALLOWED_FILE = "LightingHidppPolicy.cpp"
+ALLOWED_FILES = {"LightingHidppPolicy.cpp", "G915HidppControlSession.cpp"}
 
 
 def check(root: Path) -> list[str]:
@@ -24,12 +24,12 @@ def check(root: Path) -> list[str]:
     for path in sorted(module.rglob("*")):
         if not path.is_file() or path.suffix not in {".hpp", ".h", ".cpp", ".cc", ".txt", ".cmake"}:
             continue
-        if path.name == ALLOWED_FILE:
+        if path.name in ALLOWED_FILES:
             continue
         for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
             match = FORBIDDEN.search(line)
             if match:
-                found.append(f"{path.relative_to(root)}:{number}: '{match.group(0)}' proibido fora de {ALLOWED_FILE}")
+                found.append(f"{path.relative_to(root)}:{number}: '{match.group(0)}' proibido fora de {sorted(ALLOWED_FILES)}")
     return found
 
 
@@ -41,7 +41,7 @@ def main(argv: list[str]) -> int:
     if violations:
         print(f"FALHA: {len(violations)} ocorrência(s) da feature 0x4522 no módulo lighting", file=sys.stderr)
         return 1
-    print(f"OK: src/modules/lighting/ não contém 0x4522 fora de {ALLOWED_FILE}")
+    print(f"OK: src/modules/lighting/ não contém 0x4522 fora de {sorted(ALLOWED_FILES)}")
     return 0
 
 

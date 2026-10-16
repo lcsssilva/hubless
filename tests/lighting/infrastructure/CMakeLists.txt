@@ -5,7 +5,9 @@ add_executable(ghub_lighting_infrastructure_tests
     G915PerKeyFramesTest.cpp
     G915EffectFramesTest.cpp
     G915HidppSessionTest.cpp
+    G915HidppControlSessionTest.cpp
     G915HidppLightingTest.cpp
+    G915HidppControlTest.cpp
     HidppKeyboardStatusSourceTest.cpp)
 target_include_directories(ghub_lighting_infrastructure_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(ghub_lighting_infrastructure_tests PRIVATE

@@ -76,10 +76,13 @@
 #include "modules/headset/presentation/HeadsetLightingController.hpp"
 #include "modules/headset/presentation/HeadsetSettingsController.hpp"
 #include "modules/headset/presentation/HeadsetStatusViewModel.hpp"
+#include "modules/lighting/application/ControlKeyboard.hpp"
 #include "modules/lighting/application/LiveKeyboardSession.hpp"
 #include "modules/lighting/application/ReadKeyboardStatus.hpp"
+#include "modules/lighting/infrastructure/G915HidppControl.hpp"
 #include "modules/lighting/infrastructure/G915HidppLighting.hpp"
 #include "modules/lighting/infrastructure/HidppKeyboardStatusSource.hpp"
+#include "modules/lighting/presentation/KeyboardControlsController.hpp"
 #include "modules/lighting/presentation/KeyboardLightingController.hpp"
 #include "modules/lighting/presentation/KeyboardStatusViewModel.hpp"
 #include "modules/lighting/presentation/SoftwareAnimationController.hpp"
@@ -332,9 +335,16 @@ int main(int argc, char* argv[])
     const ghub::lighting::application::StartLiveKeyboardSession startLiveKeyboardSession{
         g915Lighting, accessRegistry, externalProcessProbe, *keyboardInterface};
     ghub::lighting::presentation::KeyboardLightingController keyboardLightingController{startLiveKeyboardSession};
+    // Modo de jogo e troca de slot do G915 (INC-019, ADR-0029): só por clique em KeyboardControlsController; nada é
+    // aberto nem enviado na construção. Usa o mesmo lease do teclado e a mesma sonda de processos do modo ao vivo.
+    ghub::lighting::infrastructure::G915HidppControl g915Control{ghub::platform::hidpp::HidppNodeLocator{}, steadyClock,
+                                                                 traceHidppCommand};
+    const ghub::lighting::application::ControlKeyboard controlKeyboard{g915Control, accessRegistry,
+                                                                       externalProcessProbe, *keyboardInterface};
+    ghub::lighting::presentation::KeyboardControlsController keyboardControlsController{controlKeyboard};
     // Animações por software do G915 (INC-021, ADR-0030): só por clique em SoftwareAnimationController::start(); a
-    // captura de áudio do visualizador só existe enquanto a animação "audio" roda (nada é aberto na construção). A fonte
-    // de áudio é declarada antes do controlador, que é destruído primeiro (devolve o controle e fecha a captura).
+    // captura de áudio do visualizador só existe enquanto a animação "audio" roda (nada é aberto na construção). A
+    // fonte de áudio é declarada antes do controlador, que é destruído primeiro (devolve o controle e fecha a captura).
     ghub::audio_processing::PipeWireAudioLevelSource audioLevelSource;
     ghub::lighting::presentation::SoftwareAnimationController softwareAnimationController{
         startLiveKeyboardSession, steadyClock, audioLevelSource, QRandomGenerator::global()->generate()};
@@ -445,6 +455,7 @@ int main(int argc, char* argv[])
         {QStringLiteral("g703OnboardController"), QVariant::fromValue(&g703OnboardController)},
         {QStringLiteral("keyboardLightingController"), QVariant::fromValue(&keyboardLightingController)},
         {QStringLiteral("softwareAnimationController"), QVariant::fromValue(&softwareAnimationController)},
+        {QStringLiteral("keyboardControlsController"), QVariant::fromValue(&keyboardControlsController)},
         {QStringLiteral("headsetSettingsController"), QVariant::fromValue(&headsetSettingsController)},
         {QStringLiteral("headsetLightingController"), QVariant::fromValue(&headsetLightingController)},
         {QStringLiteral("hostEqualizerController"), QVariant::fromValue(&hostEqualizerController)},
@@ -489,7 +500,8 @@ int main(int argc, char* argv[])
     ghub::device_access::LogindSleepMonitor sleepMonitor{QDBusConnection::systemBus()};
     QObject::connect(&sleepMonitor, &ghub::device_access::LogindSleepMonitor::aboutToSleep, &keyboardLightingController,
                      &ghub::lighting::presentation::KeyboardLightingController::releaseForSleep);
-    QObject::connect(&sleepMonitor, &ghub::device_access::LogindSleepMonitor::aboutToSleep, &softwareAnimationController,
+    QObject::connect(&sleepMonitor, &ghub::device_access::LogindSleepMonitor::aboutToSleep,
+                     &softwareAnimationController,
                      &ghub::lighting::presentation::SoftwareAnimationController::releaseForSleep);
     if (!sleepMonitor.start()) {
         qWarning("app: aviso de suspensão do logind indisponível (%s); o modo ao vivo não é desligado antes de "

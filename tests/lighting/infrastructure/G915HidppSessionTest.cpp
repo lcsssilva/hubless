@@ -414,3 +414,30 @@ TEST_F(G915HidppSaveEffectTest, KeyboardWithout8071IsUnavailable)
 }
 
 } // namespace
+
+// INC-019 R1: o brilho é o último parâmetro do efeito (captura C-04, 2026-10-15 18:23:42 e 18:23:47). O período de
+// 2100 ms é o que o G HUB usava na captura (0x0834).
+TEST_F(G915HidppSaveEffectTest, BrightnessFortyNineAndOneHundredMatchTheCaptureBytesOnKeysAndLogo)
+{
+    struct Case {
+        std::uint32_t percent;
+        std::uint8_t byte;
+    };
+    std::vector<Frame> expected;
+    for (const auto& [percent, byte] : {Case{49, 0x31}, Case{100, 0x64}}) {
+        const auto wave =
+            KeyboardEffect::wave(*EffectPeriod::create(2100), *EffectBrightness::create(percent)); // NOLINT
+        const auto cycle =
+            KeyboardEffect::cycle(*EffectPeriod::create(2100), *EffectBrightness::create(percent)); // NOLINT
+        ASSERT_TRUE(session.setEffect(KeyboardZone::Keys, wave).has_value());
+        ASSERT_TRUE(session.setEffect(KeyboardZone::Logo, cycle).has_value());
+        // Teclas (cluster 1, efeito 4): 01 04 00*6 34 01 <brilho> 08 01. Logo (cluster 0, efeito 2): 00 02 00*5 08 34
+        // <brilho> 00 00 01.
+        expected.push_back(
+            longReport(device, indexOf(0x8071), fn(1), {0x01, 0x04, 0, 0, 0, 0, 0, 0, 0x34, 0x01, byte, 0x08, 0x01}));
+        expected.push_back(
+            longReport(device, indexOf(0x8071), fn(1), {0x00, 0x02, 0, 0, 0, 0, 0, 0x08, 0x34, byte, 0, 0, 0x01}));
+    }
+
+    EXPECT_EQ(framesOfFunction(1), expected);
+}

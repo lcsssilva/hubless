@@ -79,10 +79,32 @@ TestCase {
             property int stopCalls: 0
             property var paintCalls: []
             property var effectCalls: []
+            property int brightness: 100
             function startLive() { startCalls++ }
             function stopLive() { stopCalls++ }
             function paintAll(color) { paintCalls = paintCalls.concat([String(color)]) }
             function applyEffect(kind, color) { effectCalls = effectCalls.concat([[kind, String(color)]]) }
+        }
+    }
+
+    // Controles do teclado falsos (modo de jogo e slots): registram os pedidos; nada chega ao teclado.
+    Component {
+        id: fakeControlsComponent
+        QtObject {
+            property bool busy: false
+            property string status: ""
+            property var gameModeKeys: ["Left Windows", "Right Windows", "Menu"]
+            property var gameModeChoices: ["F1", "F2"]
+            property var enabledSlots: []
+            property int activeSlot: 0
+            property var calls: []
+            function addGameKey(name) { calls = calls.concat([["add", name]]) }
+            function removeGameKey(name) { calls = calls.concat([["remove", name]]) }
+            function resetGameKeys() { calls = calls.concat([["reset"]]) }
+            function activateGameMode() { calls = calls.concat([["activate"]]) }
+            function deactivateGameMode() { calls = calls.concat([["deactivate"]]) }
+            function refreshSlots() { calls = calls.concat([["refresh"]]) }
+            function selectSlot(n) { calls = calls.concat([["select", n]]) }
         }
     }
 
@@ -306,7 +328,7 @@ TestCase {
     function createMain(fake, inventoryFake, cameraFake, previewFake, editorFake, pointerFake, lightingFake,
                         headsetFake, equalizerFake, onboardFake, noiseFake, desktopFake, diagnosticsFake,
                         profilesFake, identityFake, keyboardStatusFake, pointerStatusFake, headsetStatusFake,
-                        lightingColorFake, animationFake) {
+                        lightingColorFake, animationFake, controlsFake) {
         const component = Qt.createComponent(Qt.resolvedUrl("../../src/ui/qml/Main.qml"));
         compare(component.status, Component.Ready, component.errorString());
         const window = component.createObject(null, {batteryViewModel: fake,
@@ -317,6 +339,7 @@ TestCase {
                                                      pointerViewModel: pointerFake || createPointerFake(),
                                                      keyboardLightingController: lightingFake || createLightingFake(),
                                                      softwareAnimationController: animationFake || createAnimationFake(),
+                                                     keyboardControlsController: controlsFake || createControlsFake(),
                                                      headsetSettingsController: headsetFake || createHeadsetFake(),
                                                      headsetLightingController: lightingColorFake || createHeadsetLightingFake(),
                                                      hostEqualizerController: equalizerFake || createEqualizerFake(),
@@ -366,6 +389,12 @@ TestCase {
 
     function createLightingFake(props) {
         const fake = fakeLightingComponent.createObject(null, props || {});
+        fakes.push(fake);
+        return fake;
+    }
+
+    function createControlsFake(props) {
+        const fake = fakeControlsComponent.createObject(null, props || {});
         fakes.push(fake);
         return fake;
     }
@@ -790,7 +819,8 @@ TestCase {
     // Fora dos controles há dois botões na janela: o de pré-visualização e o de leitura do mouse (INC-007);
     // os demais são os "Padrão" (um por controle). Desde o INC-015 as abas Informações de G915, G703 e G733 (não a
     // da Brio 100) têm "Ler identidade" e o botão que expande os IDs das features. O painel de animações do G915
-    // (INC-021) soma "Iniciar" e "Parar".
+    // (INC-021) soma "Iniciar" e "Parar"; o de modo de jogo e perfis (INC-019) soma "Ativar", "Desativar", "Padrão" e
+    // "Ler perfis" (os chips das teclas e os M1–M3 são delegates de tipo próprio).
     function test_cameraSectionButtons_ArePreviewToggleAndOneDefaultPerControl() {
         const window = createMain(createFake([]), null, createCameraFake("Brio 100",
             [{text: "MJPG: até 1920×1080 a 30 fps"}], [integerControl(), booleanControl()]));
@@ -803,12 +833,13 @@ TestCase {
         compare(buttons.map(b => b.objectName).sort().join(","),
                 "animationStartButton,animationStopButton,cameraControlDefault,cameraControlDefault,"
                 + "cameraPreviewToggle,diagnosticsExportButton,"
-                + "diagnosticsRefreshButton,eqFlatButton,headsetLightingApplyButton,headsetLightsOffButton,"
+                + "diagnosticsRefreshButton,eqFlatButton,gameModeActivateButton,gameModeDeactivateButton,gameModeResetButton,"
+                + "headsetLightingApplyButton,headsetLightsOffButton,"
                 + "headsetLightsOnButton,headsetSidetoneApplyButton,"
                 + "onboardAddStageButton,onboardReadButton,onboardRemoveStageButton,"
                 + "onboardRestoreButton,onboardWriteButton,pointerReadButton,profileSaveButton,"
                 + "readIdentityButton,readIdentityButton,readIdentityButton,"
-                + "readStatusButton,readStatusButton,readStatusButton,"
+                + "readStatusButton,readStatusButton,readStatusButton,slotRefreshButton,"
                 + "toggleFeatureIdsButton,toggleFeatureIdsButton,toggleFeatureIdsButton"); // amostras: delegates de tipo próprio, testadas à parte
     }
 
@@ -1288,7 +1319,7 @@ TestCase {
         showMinimum(window);
         openDevice(window, "G915");
         const tabs = findItem(window, "lightingTabs");
-        compare(tabs.model.join(","), "Cores,Efeitos,Animações");
+        compare(tabs.model.join(","), "Cores,Efeitos,Animações,Jogo");
         compare(tabs.currentIndex, 0);
         const colorsVisible = () => swatches(window)[0].visible;
         const effectsVisible = () => effectCombo(window).visible;
@@ -3453,5 +3484,126 @@ TestCase {
     function test_animationsLiveSwitchIsDisabledWhileAnAnimationRuns() {
         const window = createAnimationMain(createAnimationFake({running: true}));
         compare(findItem(window, "lightingLiveSwitch").enabled, false);
+    }
+
+    // INC-019: modo de jogo, slots M1-M3 e brilho do G915. O QML só encaminha pedidos ao controlador.
+    function createControlsMain(controls, lighting, animation) {
+        const window = createMain(createFake([]), sampleInventory(), null, null, null, null,
+                                  lighting || createLightingFake(), null, null, null, null, null, null, null, null,
+                                  null, null, null, null, animation || null, controls);
+        showMinimum(window);
+        openDevice(window, "G915");
+        const tabs = findItem(window, "lightingTabs");
+        const gameTab = descendants(tabs).filter(i => i.objectName === "innerTab")[3];
+        mouseClick(gameTab);
+        tryVerify(() => findItem(window, "gameModeActivateButton").visible);
+        return window;
+    }
+
+    function test_controlsDoNothingOnLoad() {
+        const controls = createControlsFake();
+        createControlsMain(controls);
+        compare(controls.calls.length, 0);
+    }
+
+    function test_controlsGameModeButtonsForwardTheClicks() {
+        const controls = createControlsFake();
+        const window = createControlsMain(controls);
+        findItem(window, "gameModeActivateButton").clicked();
+        findItem(window, "gameModeDeactivateButton").clicked();
+        findItem(window, "gameModeResetButton").clicked();
+        compare(JSON.stringify(controls.calls), JSON.stringify([["activate"], ["deactivate"], ["reset"]]));
+    }
+
+    function test_controlsGameModeNoticeSaysItIsVolatileUntilThePhysicalTest() {
+        const window = createControlsMain(createControlsFake());
+        const notice = findItem(window, "gameModeNotice").text;
+        verify(notice.indexOf("volátil") >= 0 && notice.indexOf("teste físico") >= 0, notice);
+    }
+
+    function test_controlsGameModeKeysAreChipsThatRemoveOnClick() {
+        const controls = createControlsFake();
+        const window = createControlsMain(controls);
+        const chips = allItems(window).filter(i => i.objectName === "gameModeKeyChip");
+        compare(chips.length, 3);
+        compare(chips[2].text.indexOf("Menu") >= 0, true);
+        chips[2].clicked();
+        compare(JSON.stringify(controls.calls), JSON.stringify([["remove", "Menu"]]));
+    }
+
+    function test_controlsGameModeAddComboOffersTheChoicesAndAddsTheChosenKey() {
+        const controls = createControlsFake();
+        const window = createControlsMain(controls);
+        const combo = findItem(window, "gameModeAddCombo");
+        compare(combo.count, 2);
+        combo.activated(1);
+        compare(JSON.stringify(controls.calls), JSON.stringify([["add", "F2"]]));
+    }
+
+    function test_controlsBusyDisablesEveryButton() {
+        const window = createControlsMain(createControlsFake({busy: true, enabledSlots: [1, 2, 3]}));
+        for (const name of ["gameModeActivateButton", "gameModeDeactivateButton", "slotRefreshButton"])
+            compare(findItem(window, name).enabled, false, name);
+        for (const button of allItems(window).filter(i => i.objectName === "slotButton"))
+            compare(button.enabled, false);
+    }
+
+    function test_controlsSlotButtonsAreEnabledOnlyForTheEnabledSlotsAndForwardTheNumber() {
+        const controls = createControlsFake({enabledSlots: [1, 3], activeSlot: 3});
+        const window = createControlsMain(controls);
+        const buttons = allItems(window).filter(i => i.objectName === "slotButton");
+        compare(buttons.length, 3);
+        compare(buttons.map(b => b.enabled).join(","), "true,false,true");
+        compare(buttons.map(b => b.text).join(","), "M1,M2,M3");
+        buttons[2].clicked();
+        compare(JSON.stringify(controls.calls), JSON.stringify([["select", 3]]));
+    }
+
+    function test_controlsSlotButtonsStayDisabledUntilTheSlotsAreRead() {
+        const controls = createControlsFake();
+        const window = createControlsMain(controls);
+        for (const button of allItems(window).filter(i => i.objectName === "slotButton"))
+            compare(button.enabled, false);
+        findItem(window, "slotRefreshButton").clicked();
+        compare(JSON.stringify(controls.calls), JSON.stringify([["refresh"]]));
+    }
+
+    function test_controlsAreBlockedAndExplainWhyWhileLiveModeRuns() {
+        const window = createControlsMain(createControlsFake({enabledSlots: [1]}), createLightingFake({live: true}));
+        compare(findItem(window, "gameModeActivateButton").enabled, false);
+        compare(findItem(window, "slotRefreshButton").enabled, false);
+        verify(findItem(window, "controlsLiveNotice").visible);
+    }
+
+    function test_controlsAreBlockedWhileAnAnimationRuns() {
+        const window = createControlsMain(createControlsFake(), null, createAnimationFake({running: true}));
+        compare(findItem(window, "gameModeActivateButton").enabled, false);
+    }
+
+    function test_controlsStatusFollowsController() {
+        const controls = createControlsFake({status: "modo de jogo ativado"});
+        const window = createControlsMain(controls);
+        const label = findItem(window, "controlsStatusLabel");
+        compare(label.text, "modo de jogo ativado");
+        controls.status = "teclado ocupado: openrgb";
+        tryCompare(label, "text", "teclado ocupado: openrgb");
+    }
+
+    function test_brightnessSliderShowsTheControllerValueAndForwardsMoves() {
+        const lighting = createLightingFake({live: true, brightness: 49});
+        const window = createMain(createFake([]), null, null, null, null, null, lighting);
+        const slider = findItem(window, "lightingBrightnessSlider");
+        compare(slider.from, 1);
+        compare(slider.to, 100);
+        compare(slider.value, 49);
+        slider.value = 80;
+        slider.moved();
+        compare(lighting.brightness, 80);
+        compare(lighting.effectCalls.length, 0, "mover o controle não envia nada");
+    }
+
+    function test_brightnessSliderIsOnlyEnabledWhileLive() {
+        const idle = createMain(createFake([]), null, null, null, null, null, createLightingFake());
+        compare(findItem(idle, "lightingBrightnessSlider").enabled, false);
     }
 }
