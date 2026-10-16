@@ -67,7 +67,9 @@ ColumnLayout {
         }
     }
 
-    RowLayout {
+    // Flow em vez de RowLayout: na janela mínima os três botões não cabem lado a lado sem cortar o texto.
+    Flow {
+        Layout.fillWidth: true
         spacing: 8
 
         GHubButton {
@@ -97,7 +99,8 @@ ColumnLayout {
         help: qsTr("Troca o perfil onboard ativo do G915 (M1, M2 ou M3). Só os perfis habilitados na memória do teclado podem ser escolhidos; leia os perfis primeiro. Nada é gravado: apenas o perfil ativo muda.")
     }
 
-    RowLayout {
+    Flow {
+        Layout.fillWidth: true
         spacing: 8
 
         Repeater {

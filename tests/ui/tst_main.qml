@@ -1348,12 +1348,14 @@ TestCase {
         tryCompare(label, "text", "falha ao exportar o relatório: sem espaço");
     }
 
-    function test_pointerSectionWarnsAboutRatbagdAndDoesNotReadOnLoad() {
+    // ADR-0027: a leitura vem do setor onboard por HID++ próprio; o texto não pode mais falar em ratbagd.
+    function test_pointerSectionSaysItOnlyReadsTheMouseMemoryAndDoesNotReadOnLoad() {
         const pointer = createPointerFake();
         const window = createMain(createFake([]), null, null, null, null, pointer);
         const warning = findItem(window, "pointerNoticeLabel");
-        verify(warning.text.indexOf("ratbagd") >= 0, warning.text);
-        verify(warning.text.indexOf("G733") >= 0, warning.text);
+        verify(warning.text.indexOf("ratbagd") < 0, warning.text);
+        verify(warning.text.indexOf("memória do mouse") >= 0, warning.text);
+        verify(warning.text.indexOf("não grava") >= 0, warning.text);
         compare(findItem(window, "pointerStatusLabel").text, "nenhuma leitura feita");
         compare(pointer.readCalls, 0);
     }
@@ -1398,7 +1400,8 @@ TestCase {
         tryVerify(() => labelTexts(window, "pointerProfileHeader").length === 2);
         const headers = labelTexts(window, "pointerProfileHeader");
         verify(headers[0].indexOf("Perfil 0") >= 0 && headers[0].indexOf("1000 Hz") >= 0, headers[0]);
-        verify(headers[1].indexOf("ativo segundo o ratbagd") >= 0 && headers[1].indexOf("desabilitado") >= 0, headers[1]);
+        verify(headers[1].indexOf(" · ativo") >= 0 && headers[1].indexOf("desabilitado") >= 0, headers[1]);
+        verify(headers[1].indexOf("ratbagd") < 0, headers[1]);
         compare(labelTexts(window, "pointerStageLabel").length, 2);
         verify(labelTexts(window, "pointerStageLabel")[0].indexOf("7050 dpi") >= 0);
         verify(labelTexts(window, "pointerButtonLabel")[0].indexOf("especial 0x40000007") >= 0);
@@ -2281,12 +2284,12 @@ TestCase {
         compare(preview.stopCalls, 0);
     }
 
-    // R8: aviso antes do botão de leitura do ratbagd.
-    function test_ratbagTabWarnsAboutBlocking() {
+    // R8 revisto (ADR-0027): a leitura não usa mais o ratbagd; a linha visível diz que só lê.
+    function test_readTabSaysItOnlyReadsBeforeTheButton() {
         const window = createMain(createFake([]), sampleInventory());
         const warning = findItem(window, "ratbagBlockWarningLabel");
-        verify(warning.text.indexOf("ratbagd") >= 0, warning.text);
-        verify(warning.text.indexOf("20 minutos") >= 0, warning.text);
+        verify(warning.text.indexOf("ratbagd") < 0, warning.text);
+        verify(warning.text.indexOf("Só lê") >= 0, warning.text);
         const button = findItem(window, "pointerReadButton");
         verify(warning.parent === button.parent, "mesma coluna");
         const siblings = Array.from(warning.parent.children);
@@ -2927,7 +2930,7 @@ TestCase {
         tryVerify(() => warning.visible && warning.width > 0);
     }
 
-    function test_ratbagWarningIsOneShortVisibleLineThatStillNamesTheBlocking() {
+    function test_readTabNoticeIsOneShortVisibleLineWithoutRatbagd() {
         const window = createMain(createFake([]), sampleInventory());
         showMinimum(window);
         openDeviceTab(window, "G703", "ratbag");
@@ -2935,9 +2938,9 @@ TestCase {
         tryVerify(() => warning.visible && warning.width > 0);
         verify(warning.text.length < 110, warning.text);
         const notice = findItem(window, "pointerNoticeLabel");
-        // O texto longo (com a menção à memória do mouse) vai inteiro para o balão.
+        // O texto longo vai inteiro para o balão.
         verify(notice.text.indexOf("memória do mouse") >= 0, notice.text);
-        verify(notice.text.indexOf("ratbagd") >= 0, notice.text);
+        verify(notice.text.indexOf("ratbagd") < 0, notice.text);
     }
 
     // Item 4/5: iluminação do G915 com abas CORES/EFEITOS e "+" para outra cor.
@@ -4041,6 +4044,20 @@ TestCase {
         const controls = createControlsFake();
         createControlsMain(controls);
         compare(controls.calls.length, 0);
+    }
+
+    // Visto no teste físico de 2026-10-16: na janela mínima os botões apareciam cortados ("ATIV…", "LER …").
+    function test_controlsButtonsShowTheWholeLabelInTheMinimumWindow() {
+        const window = createControlsMain(createControlsFake());
+        const names = ["gameModeActivateButton", "gameModeDeactivateButton", "gameModeResetButton", "slotButton",
+                       "slotRefreshButton", "g915MemReadButton"];
+        const buttons = descendants(window.contentItem).filter(i => names.indexOf(i.objectName) >= 0);
+        compare(buttons.length, names.length + 2, "três botões de slot");
+        waitForRendering(window.contentItem);
+        for (const button of buttons) {
+            verify(button.width > 0, button.objectName);
+            verify(!button.contentItem.truncated, button.objectName + ": " + button.text);
+        }
     }
 
     function test_controlsGameModeButtonsForwardTheClicks() {

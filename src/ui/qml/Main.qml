@@ -667,7 +667,7 @@ ApplicationWindow {
             batteryText: window.batteryTextOf("G703")
             batteryPercent: window.batteryPercentOf("G703")
             tabs: [{key: "onboard", text: qsTr("Sensibilidade (DPI)"), icon: "speedometer"},
-                   {key: "ratbag", text: qsTr("Leitura (ratbagd)"), icon: "refresh"},
+                   {key: "ratbag", text: qsTr("Leitura"), icon: "refresh"},
                    {key: "info", text: qsTr("Informações"), icon: "gear"}]
             currentTab: window.g703Tab
             onTabSelected: key => window.g703Tab = key
@@ -887,16 +887,16 @@ ApplicationWindow {
 
             TabPage {
                 SectionHeader {
-                    text: qsTr("Leitura (ratbagd)")
-                    help: qsTr("Ler a configuração ativa o serviço ratbagd (root). Enquanto ele estiver ativo (até ~20 min), a bateria do G733 fica suspensa.\n\nAtenção: esta leitura ativa o ratbagd, que pode bloquear a memória do mouse (aba Sensibilidade) e a bateria do G733 por cerca de 20 minutos.")
+                    text: qsTr("Leitura")
+                    help: qsTr("Lê o perfil ativo direto da memória do mouse (HID++): taxa, estágios de DPI, botões e LEDs. A leitura não grava nada no mouse; para mudar valores use a aba Sensibilidade.")
                     helpObjectName: "pointerNoticeLabel"
                 }
 
-                // Exceção de segurança: ativar o ratbagd tem efeito fora do app, então o aviso curto fica visível.
+                // ADR-0027: a leitura vem do setor onboard por HID++ próprio, sem ratbagd; a linha curta diz que só lê.
                 BodyLabel {
                     objectName: "ratbagBlockWarningLabel"
                     font.bold: true
-                    text: qsTr("Atenção: ativa o ratbagd e suspende a bateria do G733 por cerca de 20 minutos.")
+                    text: qsTr("Só lê a memória do mouse; nada é gravado.")
                 }
                 // A leitura só começa por clique; o QML apenas encaminha ao ViewModel.
                 GHubButton {
@@ -940,7 +940,7 @@ ApplicationWindow {
                             objectName: "pointerProfileHeader"
                             font.bold: true
                             text: qsTr("Perfil ") + profileColumn.modelData.index
-                                + (profileColumn.modelData.active ? qsTr(" · ativo segundo o ratbagd") : "")
+                                + (profileColumn.modelData.active ? qsTr(" · ativo") : "")
                                 + (profileColumn.modelData.enabled ? "" : qsTr(" · desabilitado"))
                                 + " · " + profileColumn.modelData.reportRate + " Hz ("
                                 + qsTr("taxas: ") + profileColumn.modelData.supportedReportRates.join(", ") + ")"
@@ -956,7 +956,7 @@ ApplicationWindow {
                                     + (modelData.active ? qsTr(" · ativo") : "")
                                     + (modelData.isDefault ? qsTr(" · padrão") : "")
                                     + (modelData.disabled ? qsTr(" · desabilitado") : "")
-                                    + (modelData.listed ? "" : qsTr(" · fora da lista do ratbagd"))
+                                    + (modelData.listed ? "" : qsTr(" · fora da lista de estágios"))
                             }
                         }
 

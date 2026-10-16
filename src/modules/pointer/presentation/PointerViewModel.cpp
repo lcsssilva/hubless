@@ -263,14 +263,14 @@ QStringList PointerViewModel::warnings() const
             result.append(tr("nenhum perfil ativo"));
             break;
         case PointerWarningKind::ActiveProfileDisabled:
-            result.append(tr("o ratbagd marca o perfil %1 como ativo, mas ele está desabilitado; o perfil em uso no "
-                             "mouse pode ser outro")
+            result.append(tr("o mouse marca o perfil %1 como ativo, mas ele está desabilitado; o perfil em uso pode "
+                             "ser outro")
                               .arg(warning.profileIndex.value_or(0)));
             break;
         case PointerWarningKind::ActiveDpiNotListed: {
             const auto* stage = findStage(ready->configuration, warning);
             if (stage != nullptr) {
-                result.append(tr("DPI ativo %1 fora da lista do ratbagd (perfil %2)")
+                result.append(tr("DPI ativo %1 fora da lista de estágios (perfil %2)")
                                   .arg(dpiValueText(*stage))
                                   .arg(warning.profileIndex.value_or(0)));
             }

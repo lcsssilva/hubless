@@ -363,9 +363,9 @@ private slots:
         model->onReadFinished();
 
         QCOMPARE(model->warnings(),
-                 (QStringList{QStringLiteral("DPI ativo 7050 fora da lista do ratbagd (perfil 0)"),
-                              QStringLiteral("o ratbagd marca o perfil 1 como ativo, mas ele está desabilitado; o "
-                                             "perfil em uso no mouse pode ser outro")}));
+                 (QStringList{QStringLiteral("DPI ativo 7050 fora da lista de estágios (perfil 0)"),
+                              QStringLiteral("o mouse marca o perfil 1 como ativo, mas ele está desabilitado; o "
+                                             "perfil em uso pode ser outro")}));
     }
 
     void warningWhenNoActiveProfile()
