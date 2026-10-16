@@ -14,7 +14,8 @@ Slider {
     property string valueText: String(Math.round(control.value))
 
     padding: 0
-    rightPadding: horizontal && showValue ? 48 : 0
+    // Com valor, o trilho ocupa 65 % da linha (CSS computado §5.3).
+    rightPadding: horizontal && showValue ? Math.round(width * 0.35) : 0
     bottomPadding: horizontal && showExtremes ? 16 : 0
     implicitWidth: horizontal ? 200 : 20
     implicitHeight: horizontal ? (showExtremes ? 36 : 20) : 200
@@ -52,6 +53,21 @@ Slider {
         height: 12
         radius: 6
         color: control.enabled ? Theme.foreground : Theme.foregroundMedium
+    }
+
+    // Sombra do polegar (-4px 0 4px #000): degradê preto à esquerda dele.
+    Rectangle {
+        visible: control.horizontal
+        x: control.handle.x - 6
+        y: control.handle.y
+        width: 6
+        height: control.handle.height
+        z: -1
+        gradient: Gradient {
+            orientation: Gradient.Horizontal
+            GradientStop { position: 0; color: "transparent" }
+            GradientStop { position: 1; color: "#000000" }
+        }
     }
 
     Label {

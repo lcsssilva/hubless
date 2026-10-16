@@ -13,7 +13,7 @@ Item {
     property real boxHeight: 200
 
     readonly property var artSizes: ({
-        keyboard: Qt.size(450, 141),
+        keyboard: Qt.size(564, 177),
         mouse: Qt.size(112, 207),
         headset: Qt.size(165, 196),
         camera: Qt.size(140, 160)
@@ -36,33 +36,70 @@ Item {
         scale: drawing.fit
         transformOrigin: Item.TopLeft
 
-        // Teclado: corpo e 5 fileiras de teclas; a última tem a barra de espaço.
+        // Teclado low-profile de tamanho completo (G915): corpo, fileira de funções, bloco principal, navegação e
+        // bloco numérico, calculados em unidades de tecla (u = 23 px). Só formas; nenhum símbolo de marca.
         Item {
             anchors.fill: parent
             visible: drawing.kind === "keyboard"
 
+            readonly property real unit: 23
+            // Cada tecla: [x, y, largura, altura] em unidades, a partir do canto do conjunto de teclas.
+            readonly property var keys: {
+                const list = []
+                const add = (x, y, w, h) => list.push([x, y, w, h ?? 1])
+                // Fileira de funções (altura 0,75): Esc, F1-F4, F5-F8, F9-F12 e três teclas de sistema.
+                add(0, 0, 1, 0.75)
+                for (let i = 0; i < 12; ++i)
+                    add(2 + i + Math.floor(i / 4) * 0.5, 0, 1, 0.75)
+                for (let i = 0; i < 3; ++i)
+                    add(15.25 + i, 0, 1, 0.75)
+                // Fileiras do bloco principal (y = 1,35 + fileira).
+                const rows = [[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2],
+                              [1.5, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1.5],
+                              [1.75, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2.25],
+                              [2.25, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2.75],
+                              [1.25, 1.25, 1.25, 6.25, 1.25, 1.25, 1.25, 1.25]]
+                rows.forEach((row, r) => {
+                    let x = 0
+                    row.forEach(w => { add(x, 1.35 + r, w); x += w })
+                })
+                // Navegação: seis teclas e as setas.
+                for (let i = 0; i < 3; ++i) {
+                    add(15.25 + i, 1.35, 1)
+                    add(15.25 + i, 2.35, 1)
+                    add(15.25 + i, 5.35, 1)
+                }
+                add(16.25, 4.35, 1)
+                // Bloco numérico: três colunas, "+" e Enter altos, zero largo.
+                for (let r = 0; r < 4; ++r)
+                    for (let c = 0; c < 3; ++c)
+                        add(19.5 + c, 1.35 + r, 1)
+                add(22.5, 2.35, 1, 2)
+                add(22.5, 4.35, 1, 2)
+                add(19.5, 5.35, 2)
+                add(21.5, 5.35, 1)
+                return list
+            }
+
             Part {
                 anchors.fill: parent
-                radius: 12
+                radius: 10
                 color: Theme.deviceBody
                 border.width: 2
                 border.color: Theme.deviceEdge
             }
 
             Repeater {
-                model: 75
+                model: parent.keys
 
                 delegate: Rectangle {
-                    required property int index
-                    readonly property int row: Math.floor(index / 15)
-                    readonly property int column: index % 15
-                    readonly property bool spaceBar: row === 4 && column === 3
-                    visible: row < 4 || column < 3 || column > 11 || spaceBar
-                    x: 10 + column * 29
-                    y: 10 + row * 25
-                    width: spaceBar ? 9 * 24 + 8 * 5 : 24
-                    height: 20
-                    radius: 4
+                    required property var modelData
+                    x: 15 + modelData[0] * 23
+                    y: 18 + modelData[1] * 23
+                    width: modelData[2] * 23 - 3
+                    height: modelData[3] * 23 - 3
+                    radius: 3
+                    antialiasing: true
                     color: Theme.deviceDetail
                 }
             }
@@ -104,6 +141,47 @@ Item {
                 height: 32
                 radius: 6
                 color: Theme.deviceDetail
+                border.width: 1
+                border.color: Theme.deviceEdge
+            }
+
+            // Botão de DPI sob a roda e os dois botões laterais do polegar.
+            Part {
+                x: 51
+                y: 84
+                width: 10
+                height: 6
+                radius: 3
+                color: Theme.deviceDetail
+            }
+
+            Part {
+                x: 0
+                y: 84
+                width: 6
+                height: 24
+                radius: 3
+                color: Theme.deviceDetail
+            }
+
+            Part {
+                x: 0
+                y: 114
+                width: 6
+                height: 24
+                radius: 3
+                color: Theme.deviceDetail
+            }
+
+            // Faixa de luz na base.
+            Part {
+                x: 36
+                y: 176
+                width: 40
+                height: 4
+                radius: 2
+                color: Theme.primary
+                opacity: 0.8
             }
         }
 
@@ -159,6 +237,18 @@ Item {
                 width: 22
                 height: 54
                 radius: 11
+                color: Theme.deviceDetail
+                border.width: 1
+                border.color: Theme.deviceEdge
+            }
+
+            // Almofada da haste, no topo do arco.
+            Part {
+                x: 62
+                y: 7
+                width: 41
+                height: 8
+                radius: 4
                 color: Theme.deviceDetail
             }
 
@@ -228,6 +318,16 @@ Item {
                 color: Theme.background
                 border.width: 2
                 border.color: Theme.deviceEdge
+            }
+
+            Part {
+                x: 62
+                y: 34
+                width: 8
+                height: 8
+                radius: 4
+                color: Theme.deviceEdge
+                opacity: 0.7
             }
 
             Part {

@@ -210,7 +210,8 @@ ApplicationWindow {
     // Barra do topo (INC-014 parte 3, R19): 88 px, preta, divisor de 1 px na base. À esquerda, a marca própria
     // (tela inicial) ou a seta e o nome do dispositivo (páginas de dispositivo); depois as abas e a engrenagem.
     header: Item {
-        height: 88
+        // CSS computado §5.1: a página do dispositivo tem cabeçalho de 81 px; as demais, 88 px.
+        height: window.deviceOpen ? 81 : 88
 
         Rectangle {
             id: topBar
@@ -235,10 +236,10 @@ ApplicationWindow {
                 objectName: "backButton"
                 visible: window.currentPage !== window.homePage
                 // Na página do dispositivo a seta fica em x≈25, y≈48 (REFERENCIA-ESTILO-GHUB.md §4.1), sem fundo.
-                x: window.deviceOpen ? 12 : 13
-                y: window.deviceOpen ? 32 : 20
-                width: 48
-                height: 48
+                x: window.deviceOpen ? 16 : 13
+                y: window.deviceOpen ? 40 : 20
+                width: window.deviceOpen ? 42 : 48
+                height: window.deviceOpen ? 32 : 48
                 hoverEnabled: true
                 Accessible.name: qsTr("Voltar")
                 onClicked: window.openPage(window.homePage)
@@ -258,10 +259,10 @@ ApplicationWindow {
                 objectName: "deviceTitle"
                 color: Theme.foreground
                 visible: window.deviceOpen
-                x: 81
-                y: 27
+                x: 82
+                y: 36
                 text: window.deviceNames[window.currentPage] ?? ""
-                font.pixelSize: 36
+                font.pixelSize: 34
                 font.bold: true
             }
 
@@ -299,6 +300,14 @@ ApplicationWindow {
                 icon.width: 20
                 icon.height: 20
                 icon.color: window.currentPage === window.settingsPage ? Theme.primary : Theme.tabForeground
+                // CSS computado §3: botão de ícone de 40×40, redondo, com fundo #021d2c quando ativo ou em hover.
+                implicitWidth: 40
+                implicitHeight: 40
+                padding: 7
+                background: Rectangle {
+                    radius: 20
+                    color: parent.hovered || window.currentPage === window.settingsPage ? Theme.iconButtonActive : "transparent"
+                }
                 Accessible.name: qsTr("Configurações")
                 ToolTip.visible: hovered
                 ToolTip.text: qsTr("Configurações")
@@ -322,6 +331,23 @@ ApplicationWindow {
         objectName: "pageStack"
         anchors.fill: parent
         currentIndex: window.currentPage
+
+        // Troca de página: a nova entra com fade de 0,35 s (CSS computado §8). A saída de 0,2 s não é feita: o
+        // StackLayout esconde a página antiga na hora.
+        onCurrentIndexChanged: {
+            pageStack.opacity = 0
+            pageFadeIn.restart()
+        }
+
+        NumberAnimation {
+            id: pageFadeIn
+            target: pageStack
+            property: "opacity"
+            from: 0
+            to: 1
+            duration: Theme.pageFadeInDuration
+            easing.type: Easing.OutQuad
+        }
 
         // 0 Início: um cartão por dispositivo do catálogo, em grade centralizada (intervalo de 24 px).
         ScrollView {

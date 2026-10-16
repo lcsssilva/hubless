@@ -1,0 +1,13 @@
+{
+  "comment": "Mapeamento tela renderizada -> captura da V-01 (~/ghub-capturas/estilo). Máscaras [x, y, w, h] em px da janela de 1022x752; cobrem logotipo, fotos e textos de marca. Os dispositivos e valores das capturas diferem dos do teste, então a % é um indicador de layout, não de pixels.",
+  "window_crop": "1022x752+129+0",
+  "render_crop": "1022x752+0+0",
+  "fuzz": "8%",
+  "masks": [[39, 40, 40, 40]],
+  "screens": [
+    {"render": "01-inicio", "capture": "c01-c02-c05/v01-inicio-g733.png", "masks": [[203, 184, 616, 450]]},
+    {"render": "06-g733-headset", "capture": "c01-c02-c05/v01-g733-fones.png", "masks": [[400, 100, 622, 600]]},
+    {"render": "08-g733-microfone", "capture": "c01-c02-c05/v01-g733-mic.png", "masks": [[400, 100, 622, 600]]},
+    {"render": "15-g733-informacoes", "capture": "c01-c02-c05/v01-g733-config.png"}
+  ]
+}
