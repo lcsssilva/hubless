@@ -68,6 +68,7 @@ Item {
                 required property var modelData
                 Layout.preferredWidth: 48
                 Layout.preferredHeight: 48
+                outlined: true
                 tabKey: modelData.key
                 text: modelData.text
                 icon.source: Qt.resolvedUrl("icons/" + modelData.icon + ".svg")

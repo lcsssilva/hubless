@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Controls
 
 // Ícone "?" de 20 px (REFERENCIA-ESTILO-GHUB.md §4.3): leva ao lado do cabeçalho de uma seção o texto explicativo
-// longo, que aparece num balão branco (texto preto, 12 px, raio 5) ao passar o mouse ou clicar. O texto completo
+// longo, que aparece num balão branco (texto #222425, 12 px, raio 6) ao passar o mouse ou clicar. O texto completo
 // continua disponível em `text` (e como descrição acessível): nada é apagado, só movido para o balão.
 AbstractButton {
     id: icon
@@ -43,38 +43,12 @@ AbstractButton {
         border.color: icon.hovered ? Theme.foreground : Theme.helpIcon
     }
 
-    ToolTip {
+    GHubToolTip {
         id: balloon
+        placement: "bottom"
         visible: (icon.hovered || icon.pinned) && icon.text !== ""
         text: icon.text
         delay: 0
         timeout: -1
-        margins: 8
-        x: 0
-        y: icon.height + 6
-        width: Math.min(300, metrics.width) + leftPadding + rightPadding
-        leftPadding: 10
-        rightPadding: 10
-        topPadding: 8
-        bottomPadding: 8
-
-        contentItem: Text {
-            width: Math.min(300, metrics.width)
-            text: balloon.text
-            wrapMode: Text.Wrap
-            font.pixelSize: 12
-            color: "#000000"
-        }
-
-        background: Rectangle {
-            radius: 5
-            color: "#ffffff"
-        }
-    }
-
-    TextMetrics {
-        id: metrics
-        font.pixelSize: 12
-        text: icon.text
     }
 }

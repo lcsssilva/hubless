@@ -2381,6 +2381,32 @@ TestCase {
         compare(findItem(window, "brandLabel").text, "Hubless");
     }
 
+    function test_topBarNavigationStripIs48pxAtTheBaseOfTheBar() {
+        const window = createMain(createFake([]), sampleInventory());
+        showMinimum(window);
+        const devices = findItem(window, "devicesTabButton");
+        const profiles = findItem(window, "profilesPageButton");
+        const brand = findItem(window, "brandLabel");
+        compare(devices.height, 48);
+        compare(devices.mapToItem(null, 0, 0).y, 40);
+        const text = devices.contentItem;
+        verify(Math.abs(text.mapToItem(null, 0, text.height / 2).y - 59) <= 1, "texto da aba em y≈59");
+        const underline = descendants(devices).find(i => i.objectName === "tabUnderline");
+        compare(underline.mapToItem(null, 0, underline.height).y, 88);
+        compare(devices.mapToItem(null, 0, 0).x, brand.mapToItem(null, brand.width, 0).x + 32);
+        compare(profiles.mapToItem(null, 0, 0).x, devices.mapToItem(null, devices.width, 0).x);
+        compare(brand.mapToItem(null, 0, 0).x, 39);
+        verify(Math.abs(brand.mapToItem(null, 0, brand.height / 2).y - 59) <= 1, "marca em y≈59");
+        const gear = findItem(window, "settingsPageButton");
+        verify(Math.abs(gear.mapToItem(null, 0, gear.height / 2).y - 59) <= 1, "engrenagem em y≈59");
+        compare(gear.mapToItem(null, gear.width, 0).x, window.width - 32);
+        compare(gear.icon.width, 24);
+        compare(gear.icon.height, 24);
+        clickButton(window, "profilesPageButton");
+        const back = findItem(window, "backButton");
+        verify(Math.abs(back.mapToItem(null, 0, back.height / 2).y - 59) <= 1, "seta em y≈59");
+    }
+
     function test_topBarTabsMarkTheActivePageWithPrimaryAndA24x2Underline() {
         const window = createMain(createFake([]), sampleInventory());
         const devices = findItem(window, "devicesTabButton");
@@ -2425,8 +2451,8 @@ TestCase {
         const window = createMain(createFake([]), sampleInventory());
         const gear = findItem(window, "settingsPageButton");
         verify(String(gear.icon.source).endsWith("icons/gear.svg"), String(gear.icon.source));
-        compare(gear.icon.width, 20);
-        compare(gear.icon.height, 20);
+        compare(gear.icon.width, 24);
+        compare(gear.icon.height, 24);
         compare(gear.text, "");
         compare(gear.Accessible.name, "Configurações");
         clickButton(window, "settingsPageButton");
@@ -2489,6 +2515,12 @@ TestCase {
         const row = descendants(wide).find(i => i.objectName === "cardBatteryRow");
         compare(row.visible, true);
         compare(descendants(row).find(i => i.objectName === "cardBatteryText").text, "63% · descarregando");
+        const batteryText = descendants(row).find(i => i.objectName === "cardBatteryText");
+        compare(batteryText.font.pixelSize, 16);
+        compare(batteryText.font.bold, false);
+        compare(batteryText.lineHeight, 24);
+        compare(batteryText.lineHeightMode, Text.FixedHeight);
+        verify(Qt.colorEqual(batteryText.color, Theme.foregroundMedium), String(batteryText.color));
         compare(descendants(row).find(i => i.objectName === "deviceCardBattery").value, 63);
         // Sem bateria (Brio 100), a linha inteira some.
         const brio = deviceCards(window)[3];
@@ -2602,14 +2634,32 @@ TestCase {
         compare(new Set(buttons.map(b => String(b.icon.source))).size, 4);
     }
 
-    function test_railSelectedButtonIsPrimaryWithWhiteIconAndOthersAreDim() {
+    function test_railFooterGearIsAnOutlinedButtonThatIgnoresTheDimmingRule() {
         const window = createMain(createFake([]), sampleInventory());
         showMinimum(window);
         openDevice(window, "G915");
+        const gear = railButtons(window).find(b => b.tabKey === "info");
+        compare(gear.outlined, true);
+        compare(gear.opacity, 1);
+        const frame = descendants(gear).find(i => i.objectName === "outlineFrame");
+        compare(frame.border.width, 1);
+        verify(Qt.colorEqual(frame.border.color, Theme.outline), String(frame.border.color));
+        compare(frame.radius, Theme.radius);
+        mouseMove(gear, 20, 10);
+        tryVerify(() => gear.hovered);
+        compare(gear.opacity, 1);
+        mouseMove(gear, -100, 10);
+        compare(railButtons(window).find(b => b.tabKey === "lighting").outlined, false);
+    }
+
+    function test_railSelectedButtonIsPrimaryWithWhiteIconAndOthersAreDim() {
+        const window = createMain(createFake([]), sampleInventory());
+        showMinimum(window);
+        openDevice(window, "G733");
         const buttons = railButtons(window);
         const selected = buttons.find(t => t.selected);
-        const other = buttons.find(t => !t.selected);
-        compare(selected.tabKey, "lighting");
+        const other = buttons.find(t => !t.selected && !t.outlined);
+        compare(selected.tabKey, "headset");
         verify(selected !== undefined && other !== undefined);
         // CSS computado §5.2: o ícone é sempre branco; quem muda é a opacidade do item.
         verify(Qt.colorEqual(selected.icon.color, Theme.foreground), String(selected.icon.color));
@@ -2683,7 +2733,7 @@ TestCase {
         const part = name => descendants(block).find(i => i.objectName === name);
         compare(part("batteryHeader").text, "Nível de bateria");
         compare(part("batteryPercentText").text, "93%");
-        compare(part("batteryPercentText").font.pixelSize, 18);
+        compare(part("batteryPercentText").font.pixelSize, 16);
         compare(part("batteryStateText").text, "descarregando");
         compare(part("batteryIcon").value, 93);
         verify(part("batteryIcon").mapToItem(block, 0, 0).x >= part("batteryPercentText").width, "ícone à direita do número");

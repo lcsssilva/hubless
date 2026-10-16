@@ -45,14 +45,6 @@ Rectangle {
     Keys.onEnterPressed: card.clicked()
     Keys.onSpacePressed: card.clicked()
 
-    Behavior on color {
-        ColorAnimation {
-            duration: Theme.shortDuration
-            easing.type: Easing.BezierSpline
-            easing.bezierCurve: Theme.easingCurve
-        }
-    }
-
     Item {
         objectName: "cardContent"
         anchors.fill: parent
@@ -79,8 +71,9 @@ Rectangle {
                 objectName: "cardBatteryText"
                 anchors.verticalCenter: parent.verticalCenter
                 text: card.batteryText
-                font.pixelSize: 14
-                font.bold: true
+                font.pixelSize: 16
+                lineHeight: 24
+                lineHeightMode: Text.FixedHeight
                 color: card.dimmed ? Theme.foregroundDisabled : Theme.foregroundMedium
             }
 

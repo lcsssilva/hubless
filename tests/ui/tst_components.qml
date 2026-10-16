@@ -322,9 +322,9 @@ TestCase {
         tryVerify(() => help.tip.visible);
         compare(help.tip.text, "Texto longo explicativo");
         verify(Qt.colorEqual(help.tip.background.color, "#ffffff"), String(help.tip.background.color));
-        verify(Qt.colorEqual(help.tip.contentItem.color, "#000000"), String(help.tip.contentItem.color));
+        verify(Qt.colorEqual(help.tip.contentItem.color, "#222425"), String(help.tip.contentItem.color));
         compare(help.tip.contentItem.font.pixelSize, 12);
-        compare(help.tip.background.radius, 5);
+        compare(help.tip.background.radius, 6);
         mouseMove(help, 300, 300);
         tryVerify(() => !help.tip.visible);
     }
@@ -334,6 +334,94 @@ TestCase {
         mouseClick(help);
         tryVerify(() => help.tip.visible);
         compare(help.Accessible.description, "Explicação");
+    }
+
+    // ---- GHubToolTip / SideTab / DeviceCard (estilo CSS computado §5.2 e §4) ----
+
+    function makeTip(host, props) {
+        return Qt.createQmlObject("import QtQuick\nimport \"../../src/ui/qml\"\nGHubToolTip { visible: true; " + props + " }",
+                                  host, Qt.resolvedUrl("tst_components.qml"));
+    }
+
+    function test_toolTip_hasGHubStyleAndWrapsAtMost250px() {
+        const host = make("Item", "width: 40; height: 30; x: 100; y: 100");
+        const tip = makeTip(host, "text: \"Um texto bastante longo que precisa quebrar em varias linhas porque passa de duzentos e cinquenta pixels de largura\"");
+        verify(tip !== null);
+        compare(tip.background.radius, 6);
+        verify(Qt.colorEqual(tip.background.color, "#ffffff"), String(tip.background.color));
+        verify(Qt.colorEqual(tip.contentItem.color, "#222425"), String(tip.contentItem.color));
+        compare(tip.contentItem.font.pixelSize, 12);
+        compare(tip.topPadding, 8);
+        compare(tip.bottomPadding, 8);
+        compare(tip.leftPadding, 20);
+        compare(tip.rightPadding, 20);
+        verify(tip.contentItem.width <= 250, String(tip.contentItem.width));
+        verify(tip.contentItem.height > 20, "deveria quebrar linha");
+    }
+
+    function test_toolTip_placementRightAndBottom() {
+        const host = make("Item", "width: 40; height: 30; x: 100; y: 100");
+        const right = makeTip(host, "text: \"Dica\"; placement: \"right\"");
+        verify(right.x >= host.width + 8, String(right.x));
+        const bottom = makeTip(host, "text: \"Dica\"; placement: \"bottom\"");
+        verify(bottom.y >= host.height + 8, String(bottom.y));
+    }
+
+    function test_sideTab_showsGHubToolTipOnTheRightOnHover() {
+        const tab = make("SideTab", "text: \"Iluminação\"; x: 100; y: 100");
+        const tips = Array.from(tab.data).filter(o => o.objectName === "sideTabTip");
+        compare(tips.length, 1);
+        const tip = tips[0];
+        compare(tip.visible, false);
+        mouseMove(tab, 24, 24);
+        tryCompare(tip, "visible", true);
+        compare(tip.text, "Iluminação");
+        verify(tip.x >= tab.width + 8, String(tip.x));
+        compare(tab.ToolTip.visible, false);
+        compare(tab.ToolTip.text, "Iluminação");
+    }
+
+    function test_topBarTab_isA48pxStripTabWithPaddings10_16_19() {
+        const tab = make("TopBarTab", "text: \"Perfis\"; x: 100; y: 40");
+        compare(tab.height, 48);
+        compare(tab.contentItem.font.pixelSize, 14);
+        fuzzyCompare(tab.contentItem.font.letterSpacing, -0.42, 0.02);
+        compare(tab.contentItem.x, 16);
+        compare(tab.contentItem.y, 10);
+        compare(tab.height - tab.contentItem.y - tab.contentItem.height, 19);
+        compare(tab.width, tab.contentItem.implicitWidth + 32);
+        const underline = Array.from(tab.background.data).find(o => o.objectName === "tabUnderline");
+        compare(underline.y + underline.height, 48);
+    }
+
+    function test_sideTab_outlinedIsAFlatBorderedButtonWithOpacity1() {
+        const tab = make("SideTab", "outlined: true; text: \"Informações\"; x: 100; y: 100");
+        const frame = Array.from(tab.background.data).find(o => o.objectName === "outlineFrame");
+        verify(frame !== undefined, "outlineFrame");
+        compare(frame.border.width, 1);
+        verify(Qt.colorEqual(frame.border.color, "#1affffff"), String(frame.border.color));
+        compare(frame.radius, 8);
+        verify(Qt.colorEqual(frame.color, "transparent"), String(frame.color));
+        compare(tab.opacity, 1);
+        mouseMove(tab, 24, 24);
+        tryVerify(() => tab.hovered);
+        compare(tab.opacity, 1);
+        const hover = Array.from(tab.background.data).find(o => o.objectName === "stateLayer");
+        verify(hover !== undefined, "stateLayer");
+        tryCompare(hover, "opacity", 0.06);
+        mousePress(tab, 24, 24);
+        tryCompare(hover, "opacity", 0.15);
+        compare(tab.opacity, 1);
+        mouseRelease(tab, 24, 24);
+        mouseMove(tab, -100, -100);
+    }
+
+    function test_deviceCard_hoverFillIsImmediate() {
+        const card = make("DeviceCard", "x: 100; y: 100; detected: true");
+        verify(!Qt.colorEqual(card.color, Theme.cardHover));
+        mouseMove(card, 50, 50);
+        tryVerify(() => card.highlighted, 1000);
+        verify(Qt.colorEqual(card.color, Theme.cardHover), String(card.color));
     }
 
     // ---- SectionHeader: título de seção MAIÚSCULO com "?" opcional ----
@@ -387,11 +475,17 @@ TestCase {
         const header = named(block, "batteryHeader");
         compare(header.text, "Nível de bateria");
         compare(header.font.capitalization, Font.AllUppercase);
-        compare(header.font.pixelSize, 13);
+        compare(header.font.pixelSize, 12);
+        compare(header.font.weight, Font.Medium);
+        compare(header.font.letterSpacing, 1);
+        verify(Qt.colorEqual(header.color, Theme.sliderFill), String(header.color));
         const value = named(block, "batteryPercentText");
         compare(value.text, "63%");
-        compare(value.font.bold, true);
-        compare(value.font.pixelSize, 18);
+        compare(value.font.bold, false);
+        compare(value.font.pixelSize, 16);
+        fuzzyCompare(value.font.letterSpacing, 0.8, 0.02);
+        compare(value.opacity, 0.6);
+        verify(Qt.colorEqual(value.color, Theme.foreground), String(value.color));
         const icon = named(block, "batteryIcon");
         compare(icon.value, 63);
         compare(icon.width, 20);
@@ -401,7 +495,10 @@ TestCase {
         compare(state.text, "descarregando");
         compare(state.font.capitalization, Font.AllUppercase);
         compare(state.font.pixelSize, 12);
-        compare(state.font.bold, true);
+        compare(state.font.bold, false);
+        fuzzyCompare(state.font.letterSpacing, 0.8, 0.02);
+        compare(state.opacity, 0.6);
+        verify(Qt.colorEqual(state.color, Theme.foreground), String(state.color));
         verify(state.mapToItem(block, 0, 0).y > value.mapToItem(block, 0, value.height).y - 1, "estado abaixo");
         // As linhas ficam alinhadas à esquerda do bloco.
         compare(header.mapToItem(block, 0, 0).x, 0);

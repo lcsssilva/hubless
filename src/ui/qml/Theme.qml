@@ -43,6 +43,7 @@ QtObject {
     readonly property real hoverMonoOpacity: 0.06       // hover do branco sobre a superfície (cartões, botões)
     readonly property int radiusSmall: 4
     readonly property int tooltipRadius: 6
+    readonly property color tooltipText: "#222425"
     readonly property int pageFadeInDuration: 350
     readonly property int pageFadeOutDuration: 200
 

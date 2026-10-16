@@ -268,12 +268,14 @@ ApplicationWindow {
             color: Theme.background
 
             Label {
+                id: brandLabel
                 objectName: "brandLabel"
                 color: Theme.foreground
                 visible: !window.deviceOpen
                 // Com a seta de voltar à esquerda (Perfis e Configurações), a marca vem depois dela.
                 x: window.currentPage === window.homePage ? 39 : 81
-                anchors.verticalCenter: parent.verticalCenter
+                // Centro da faixa de navegação (y 40–88), não da barra inteira.
+                y: 59 - height / 2
                 text: qsTr("Hubless")
                 font.pixelSize: 24
                 font.bold: true
@@ -285,7 +287,7 @@ ApplicationWindow {
                 visible: window.currentPage !== window.homePage
                 // Na página do dispositivo a seta fica em x≈25, y≈48 (REFERENCIA-ESTILO-GHUB.md §4.1), sem fundo.
                 x: window.deviceOpen ? 16 : 13
-                y: window.deviceOpen ? 40 : 20
+                y: window.deviceOpen ? 40 : 59 - 24
                 width: window.deviceOpen ? 42 : 48
                 height: window.deviceOpen ? 32 : 48
                 hoverEnabled: true
@@ -318,9 +320,11 @@ ApplicationWindow {
             // a página do dispositivo tem só a seta e o título (item 1 do pedido de estilo).
             Row {
                 visible: !window.deviceOpen
-                x: 280
-                height: parent.height
-                spacing: 16
+                // Faixa de 48 px colada à base da barra; 32 px depois da marca.
+                x: brandLabel.x + brandLabel.width + 32
+                y: 40
+                height: 48
+                spacing: 0
 
                 TopBarTab {
                     objectName: "devicesTabButton"
@@ -341,12 +345,12 @@ ApplicationWindow {
                 objectName: "settingsPageButton"
                 visible: !window.deviceOpen
                 anchors.right: parent.right
-                anchors.rightMargin: 40
-                anchors.verticalCenter: parent.verticalCenter
+                anchors.rightMargin: 32
+                y: 59 - 20
                 display: AbstractButton.IconOnly
                 icon.source: Qt.resolvedUrl("icons/gear.svg")
-                icon.width: 20
-                icon.height: 20
+                icon.width: 24
+                icon.height: 24
                 icon.color: window.currentPage === window.settingsPage ? Theme.primary : Theme.tabForeground
                 // CSS computado §3: botão de ícone de 40×40, redondo, com fundo #021d2c quando ativo ou em hover.
                 implicitWidth: 40
@@ -357,8 +361,13 @@ ApplicationWindow {
                     color: parent.hovered || window.currentPage === window.settingsPage ? Theme.iconButtonActive : "transparent"
                 }
                 Accessible.name: qsTr("Configurações")
-                ToolTip.visible: hovered
                 ToolTip.text: qsTr("Configurações")
+                GHubToolTip {
+                    objectName: "settingsTip"
+                    placement: "bottom"
+                    visible: parent.hovered
+                    text: qsTr("Configurações")
+                }
                 onClicked: window.openPage(window.settingsPage)
             }
 

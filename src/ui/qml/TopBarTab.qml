@@ -8,8 +8,13 @@ AbstractButton {
 
     property bool active: false
 
-    implicitWidth: label.implicitWidth + 2 * 14
-    implicitHeight: 88
+    // CSS computado §3: faixa de navegação de 48 px; preenchimento 10 em cima, 16 nas laterais e 19 embaixo.
+    topPadding: 10
+    leftPadding: 16
+    rightPadding: 16
+    bottomPadding: 19
+    implicitWidth: label.implicitWidth + 32
+    implicitHeight: 48
     hoverEnabled: true
     focusPolicy: Qt.TabFocus
     Accessible.name: text
@@ -20,6 +25,7 @@ AbstractButton {
         horizontalAlignment: Text.AlignHCenter
         verticalAlignment: Text.AlignVCenter
         font.pixelSize: 14
+        font.letterSpacing: -0.42
         font.bold: tab.active
         color: tab.active || tab.hovered ? Theme.primary : Theme.tabForeground
     }
