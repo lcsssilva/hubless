@@ -50,3 +50,13 @@ if(GHUB_BUILD_APP)
     add_test(NAME lighting.KeyboardControlsControllerTest COMMAND ghub_lighting_controls_controller_tests)
     set_tests_properties(lighting.KeyboardControlsControllerTest PROPERTIES TIMEOUT 30)
 endif()
+
+if(GHUB_BUILD_APP)
+    add_executable(ghub_lighting_g915_onboard_controller_tests presentation/G915OnboardControllerTest.cpp)
+    set_target_properties(ghub_lighting_g915_onboard_controller_tests PROPERTIES AUTOMOC ON)
+    target_link_libraries(ghub_lighting_g915_onboard_controller_tests PRIVATE
+        ghub_lighting_presentation ghub_test_fakes Qt6::Test)
+    ghub_set_warnings(ghub_lighting_g915_onboard_controller_tests)
+    add_test(NAME lighting.G915OnboardControllerTest COMMAND ghub_lighting_g915_onboard_controller_tests)
+    set_tests_properties(lighting.G915OnboardControllerTest PROPERTIES TIMEOUT 30 ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+endif()

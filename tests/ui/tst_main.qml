@@ -108,6 +108,29 @@ TestCase {
         }
     }
 
+    // Controlador da memória onboard do G915 falso: registra os pedidos; nada chega ao teclado.
+    Component {
+        id: fakeG915OnboardComponent
+        QtObject {
+            signal stateChanged()
+            property bool busy: false
+            property string status: ""
+            property bool loaded: false
+            property var logoEffect: ({kind: "static", color: "#000000", periodMs: 0, brightness: 0, speed: 0})
+            property var keysEffect: ({kind: "ripple", color: "#000000", periodMs: 0, brightness: 0, speed: 20})
+            property var gKeys: []
+            property var keyChoices: ["C", "F1"]
+            property bool backupExists: false
+            property int activeSector: 1
+            property int readCalls: 0
+            property int restoreCalls: 0
+            property var writeCalls: []
+            function readFromKeyboard() { readCalls++ }
+            function restoreBackup() { restoreCalls++ }
+            function writeToKeyboard(logo, keys, g) { writeCalls = writeCalls.concat([[logo, keys, g]]) }
+        }
+    }
+
     // Controlador de animações falso: registra os pedidos; nada chega ao teclado nem ao áudio.
     Component {
         id: fakeAnimationComponent
@@ -414,6 +437,7 @@ TestCase {
                                                      hostEqualizerController: equalizerFake || createEqualizerFake(),
                                                      noiseSuppressionController: noiseFake || createNoiseSuppressionFake(),
                                                      g703OnboardController: onboardFake || createOnboardFake(),
+                                                     g915OnboardController: createG915OnboardFake(),
                                                      desktopController: desktopFake || createDesktopFake(),
                                                      diagnosticsViewModel: diagnosticsFake || createDiagnosticsFake(),
                                                      profilesController: profilesFake || createProfilesFake(),
@@ -466,6 +490,12 @@ TestCase {
 
     function createControlsFake(props) {
         const fake = fakeControlsComponent.createObject(null, props || {});
+        fakes.push(fake);
+        return fake;
+    }
+
+    function createG915OnboardFake(props) {
+        const fake = fakeG915OnboardComponent.createObject(null, props || {});
         fakes.push(fake);
         return fake;
     }
@@ -934,7 +964,7 @@ TestCase {
         compare(buttons.map(b => b.objectName).sort().join(","),
                 "animationStartButton,animationStopButton,backupMakeButton,cameraControlDefault,cameraControlDefault,"
                 + "cameraPreviewToggle,diagnosticsExportButton,"
-                + "diagnosticsRefreshButton,eqFlatButton,gameModeActivateButton,gameModeDeactivateButton,gameModeResetButton,"
+                + "diagnosticsRefreshButton,eqFlatButton,g915MemReadButton,g915MemRestoreButton,g915MemWriteButton,gameModeActivateButton,gameModeDeactivateButton,gameModeResetButton,"
                 + "headsetLightingApplyButton,headsetLightsOffButton,"
                 + "headsetLightsOnButton,headsetSidetoneApplyButton,"
                 + "nicknameResetButton,nicknameResetButton,nicknameResetButton,nicknameResetButton,"
@@ -3878,6 +3908,21 @@ TestCase {
         mouseClick(gameTab);
         tryVerify(() => findItem(window, "gameModeActivateButton").visible);
         return window;
+    }
+
+    function test_g915MemoryPanelDoesNothingOnLoadAndReadButtonForwardsTheClick() {
+        const window = createMain(createFake([]), sampleInventory());
+        showMinimum(window);
+        openDevice(window, "G915");
+        const tabs = findItem(window, "lightingTabs");
+        mouseClick(descendants(tabs).filter(i => i.objectName === "innerTab")[3]);
+        tryVerify(() => findItem(window, "g915MemReadButton").visible);
+        compare(findItem(window, "g915MemEditor").visible, false);
+        findItem(window, "g915MemReadButton").clicked();
+        const fake = window.g915OnboardController;
+        compare(fake.readCalls, 1);
+        compare(fake.writeCalls.length, 0);
+        compare(fake.restoreCalls, 0);
     }
 
     function test_controlsDoNothingOnLoad() {

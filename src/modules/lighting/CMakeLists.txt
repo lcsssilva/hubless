@@ -2,6 +2,8 @@
 add_library(ghub_lighting_infrastructure STATIC)
 target_sources(ghub_lighting_infrastructure PRIVATE
     infrastructure/LightingHidppPolicy.cpp
+    infrastructure/G915OnboardPolicy.cpp
+    infrastructure/G915OnboardConnector.cpp
     infrastructure/G915PerKeyFrames.cpp
     infrastructure/G915EffectFrames.cpp
     infrastructure/G915HidppSession.cpp
@@ -9,7 +11,8 @@ target_sources(ghub_lighting_infrastructure PRIVATE
     infrastructure/G915HidppLighting.cpp
     infrastructure/G915HidppControl.cpp
     infrastructure/HidppKeyboardStatusSource.cpp)
-target_link_libraries(ghub_lighting_infrastructure PUBLIC ghub_shared_kernel ghub_platform_hidpp ghub_lighting_application)
+target_link_libraries(ghub_lighting_infrastructure PUBLIC ghub_shared_kernel ghub_platform_hidpp ghub_lighting_application
+                                                       ghub_onboard_memory_infrastructure)
 ghub_set_warnings(ghub_lighting_infrastructure)
 
 # INC-008 R1 (ADR-0013 decisão 2): domínio de iluminação. Só STL + shared_kernel; sem Qt, sem I/O.
@@ -23,7 +26,9 @@ target_sources(ghub_lighting_domain PRIVATE
     domain/AnimationFrames.cpp
     domain/ScreenRegions.cpp
     domain/KeyboardStatus.cpp
-    domain/GameModeKeys.cpp)
+    domain/GameModeKeys.cpp
+    domain/StoredEffect.cpp
+    domain/G915ProfileSettings.cpp)
 target_link_libraries(ghub_lighting_domain PUBLIC ghub_shared_kernel)
 ghub_set_warnings(ghub_lighting_domain)
 
@@ -37,8 +42,10 @@ target_sources(ghub_lighting_application PRIVATE
     application/RunSoftwareAnimation.cpp
     application/AudioVisualizer.cpp
     application/ScreenSampler.cpp
-    application/ReadKeyboardStatus.cpp)
-target_link_libraries(ghub_lighting_application PUBLIC ghub_lighting_domain ghub_device_access_api ghub_audio_processing_api)
+    application/ReadKeyboardStatus.cpp
+    application/G915OnboardSettings.cpp)
+target_link_libraries(ghub_lighting_application PUBLIC ghub_lighting_domain ghub_device_access_api ghub_audio_processing_api
+                                                    ghub_onboard_memory_api)
 ghub_set_warnings(ghub_lighting_application)
 
 # API pública (INC-017 parte 2, ADR-0028): fachada do efeito de prévia do G915 para o módulo profiles.
@@ -57,6 +64,8 @@ if(GHUB_BUILD_APP)
         presentation/KeyboardLightingController.cpp
         presentation/KeyboardControlsController.hpp
         presentation/KeyboardControlsController.cpp
+        presentation/G915OnboardController.hpp
+        presentation/G915OnboardController.cpp
         presentation/KeyboardStatusViewModel.hpp
         presentation/KeyboardStatusViewModel.cpp
         presentation/SoftwareAnimationController.hpp

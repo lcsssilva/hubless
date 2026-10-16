@@ -93,6 +93,9 @@
 #include "modules/lighting/presentation/KeyboardLightingController.hpp"
 #include "modules/lighting/presentation/KeyboardStatusViewModel.hpp"
 #include "modules/lighting/presentation/SoftwareAnimationController.hpp"
+#include "modules/lighting/application/G915OnboardSettings.hpp"
+#include "modules/lighting/infrastructure/G915OnboardConnector.hpp"
+#include "modules/lighting/presentation/G915OnboardController.hpp"
 #include "modules/onboard_memory/api/FileOnboardBackupStore.hpp"
 #include "modules/pointer/application/G703OnboardSettings.hpp"
 #include "modules/pointer/application/ReadPointerConfiguration.hpp"
@@ -363,6 +366,18 @@ int main(int argc, char* argv[])
     const ghub::lighting::application::ControlKeyboard controlKeyboard{g915Control, accessRegistry,
                                                                        externalProcessProbe, *keyboardInterface};
     ghub::lighting::presentation::KeyboardControlsController keyboardControlsController{controlKeyboard};
+    // Memória onboard do G915 (INC-019 R4, INC-022): HID++ próprio, só por clique em G915OnboardController; mesmo lease
+    // do teclado; cópia automática com prefixo próprio do G915.
+    ghub::lighting::infrastructure::G915OnboardConnector g915OnboardConnector{ghub::platform::hidpp::HidppNodeLocator{},
+                                                                              steadyClock};
+    const auto g915BackupStore = ghub::onboard_memory::makeFileOnboardBackupStore(
+        std::filesystem::path{(QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) +
+                               QStringLiteral("/ghub-linux/backup"))
+                                  .toStdString()},
+        "g915-407c-sector-");
+    const ghub::lighting::application::G915OnboardSettings g915OnboardSettings{
+        externalProcessProbe, accessRegistry, g915OnboardConnector, *g915BackupStore};
+    ghub::lighting::presentation::G915OnboardController g915OnboardController{g915OnboardSettings};
     // Animações por software do G915 (INC-021, ADR-0030): só por clique em SoftwareAnimationController::start(); a
     // captura de áudio do visualizador só existe enquanto a animação "audio" roda (nada é aberto na construção). A
     // fonte de áudio é declarada antes do controlador, que é destruído primeiro (devolve o controle e fecha a captura).
@@ -540,6 +555,7 @@ int main(int argc, char* argv[])
         {QStringLiteral("cameraControlEditor"), QVariant::fromValue(&cameraControlEditor)},
         {QStringLiteral("pointerViewModel"), QVariant::fromValue(&pointerViewModel)},
         {QStringLiteral("g703OnboardController"), QVariant::fromValue(&g703OnboardController)},
+        {QStringLiteral("g915OnboardController"), QVariant::fromValue(&g915OnboardController)},
         {QStringLiteral("keyboardLightingController"), QVariant::fromValue(&keyboardLightingController)},
         {QStringLiteral("softwareAnimationController"), QVariant::fromValue(&softwareAnimationController)},
         {QStringLiteral("keyboardControlsController"), QVariant::fromValue(&keyboardControlsController)},

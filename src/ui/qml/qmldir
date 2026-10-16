@@ -31,3 +31,4 @@ AnimationPanel 1.0 AnimationPanel.qml
 OnboardLedEditor 1.0 OnboardLedEditor.qml
 KeyboardControlsPanel 1.0 KeyboardControlsPanel.qml
 OnboardButtonsEditor 1.0 OnboardButtonsEditor.qml
+G915OnboardPanel 1.0 G915OnboardPanel.qml
