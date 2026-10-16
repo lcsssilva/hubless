@@ -6,9 +6,10 @@ target_sources(ghub_pointer_domain PRIVATE
     domain/LedState.cpp
     domain/PointerProfile.cpp
     domain/PointerConfiguration.cpp
-    domain/OnboardSector.cpp
     domain/G703ProfileSettings.cpp
-    domain/OnboardDirectory.cpp
+    domain/LedSetting.cpp
+    domain/OnboardButtons.cpp
+    domain/OnboardPointerProfile.cpp
     domain/PointerSensorStatus.cpp)
 target_link_libraries(ghub_pointer_domain PUBLIC ghub_shared_kernel)
 ghub_set_warnings(ghub_pointer_domain)
@@ -21,7 +22,7 @@ target_sources(ghub_pointer_application PRIVATE
     application/ReadPointerSensorStatus.cpp)
 # Outros módulos só pela API pública (ADR-0006).
 target_link_libraries(ghub_pointer_application PUBLIC
-    ghub_pointer_domain ghub_device_inventory_api ghub_device_access_api)
+    ghub_pointer_domain ghub_device_inventory_api ghub_device_access_api ghub_onboard_memory_api)
 ghub_set_warnings(ghub_pointer_application)
 
 # Infraestrutura: cliente D-Bus do ratbagd, somente leitura (ADR-0011); só com Qt (o preset tsan não compila Qt).
@@ -64,13 +65,11 @@ add_library(ghub_pointer_hidpp STATIC)
 target_sources(ghub_pointer_hidpp PRIVATE
     infrastructure/G703OnboardPolicy.hpp
     infrastructure/G703OnboardPolicy.cpp
-    infrastructure/HidppOnboardMemory.hpp
-    infrastructure/HidppOnboardMemory.cpp
     infrastructure/G703NodeLocator.hpp
     infrastructure/G703NodeLocator.cpp
-    infrastructure/FileOnboardBackupStore.hpp
-    infrastructure/FileOnboardBackupStore.cpp
     infrastructure/HidppPointerSensorSource.hpp
-    infrastructure/HidppPointerSensorSource.cpp)
-target_link_libraries(ghub_pointer_hidpp PUBLIC ghub_pointer_application ghub_platform_hidpp)
+    infrastructure/HidppPointerSensorSource.cpp
+    infrastructure/OnboardPointerBackend.hpp
+    infrastructure/OnboardPointerBackend.cpp)
+target_link_libraries(ghub_pointer_hidpp PUBLIC ghub_pointer_application ghub_onboard_memory_infrastructure ghub_platform_hidpp)
 ghub_set_warnings(ghub_pointer_hidpp)

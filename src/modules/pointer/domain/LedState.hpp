@@ -25,6 +25,8 @@ struct LedStateSpec {
     std::uint32_t brightness;
     std::uint32_t effectDuration;
     std::vector<LedMode> supportedModes; // sem repetição; Unknown não é modo suportado
+    // Bytes brutos de um formato não interpretado (setor onboard); vazio nos demais casos.
+    std::vector<std::uint8_t> rawBytes = {};
 
     friend bool operator==(const LedStateSpec&, const LedStateSpec&) = default;
 };
@@ -44,6 +46,7 @@ public:
     [[nodiscard]] std::uint32_t brightness() const noexcept { return spec_.brightness; }
     [[nodiscard]] std::uint32_t effectDuration() const noexcept { return spec_.effectDuration; }
     [[nodiscard]] const std::vector<LedMode>& supportedModes() const noexcept { return spec_.supportedModes; }
+    [[nodiscard]] const std::vector<std::uint8_t>& rawBytes() const noexcept { return spec_.rawBytes; }
 
     friend bool operator==(const LedState&, const LedState&) = default;
 

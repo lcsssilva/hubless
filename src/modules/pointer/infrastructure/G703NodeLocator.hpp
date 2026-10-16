@@ -1,6 +1,6 @@
 #pragma once
 
-#include "modules/pointer/application/OnboardMemory.hpp"
+#include "modules/onboard_memory/api/OnboardMemory.hpp"
 #include "shared_kernel/Clock.hpp"
 #include "shared_kernel/Result.hpp"
 
@@ -35,8 +35,9 @@ private:
     std::filesystem::path devRoot_;
 };
 
-// Abre o hidraw do G703 só durante a operação e entrega uma HidppOnboardMemory (fecha ao destruir).
-class G703OnboardConnector final : public OnboardMemoryConnector {
+// Abre o hidraw do G703 só durante a operação e entrega a memória onboard HID++ do módulo onboard_memory, com a
+// G703OnboardPolicy (fecha ao destruir).
+class G703OnboardConnector final : public onboard_memory::OnboardMemoryConnector {
 public:
     // O relógio precisa sobreviver ao conector e às memórias abertas por ele.
     G703OnboardConnector(G703NodeLocator locator, const shared_kernel::Clock& clock)
@@ -44,7 +45,7 @@ public:
     {
     }
 
-    [[nodiscard]] shared_kernel::Result<std::unique_ptr<OnboardMemory>> open() override;
+    [[nodiscard]] shared_kernel::Result<std::unique_ptr<onboard_memory::OnboardMemory>> open() override;
 
 private:
     G703NodeLocator locator_;

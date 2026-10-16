@@ -29,7 +29,7 @@ qt_add_executable(ghub-linux main.cpp)
 set(GHUB_QML_DIR "${PROJECT_SOURCE_DIR}/src/ui/qml")
 set(GHUB_QML_FILES Main.qml DeviceCard.qml DeviceDrawing.qml BatteryIcon.qml DevicePage.qml PanelCard.qml PanelPage.qml SideTab.qml TopBarTab.qml SectionTitle.qml GHubButton.qml GHubSlider.qml GHubCheckBox.qml
     GHubSwitch.qml GHubComboBox.qml GHubSpinBox.qml GHubRadioButton.qml GHubTextField.qml ColorSwatch.qml InnerTabs.qml
-    HelpIcon.qml SectionHeader.qml SwitchRow.qml BatteryBlock.qml EqualizerView.qml InfoPage.qml HeadsetLightingSection.qml
+    HelpIcon.qml OnboardLedEditor.qml SectionHeader.qml SwitchRow.qml BatteryBlock.qml EqualizerView.qml InfoPage.qml HeadsetLightingSection.qml
     GHubDialog.qml GHubBusyRing.qml AnimationPanel.qml Theme.qml)
 set(GHUB_QML_PATHS)
 foreach(qml_file IN LISTS GHUB_QML_FILES)

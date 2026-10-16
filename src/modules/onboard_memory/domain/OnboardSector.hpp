@@ -8,7 +8,7 @@
 #include <utility>
 #include <vector>
 
-namespace ghub::pointer {
+namespace ghub::onboard_memory {
 
 // Setor da memória onboard do mouse (HID++ 0x8100) como bytes brutos; os 2 últimos bytes são o CRC-16/CCITT
 // (big-endian) dos anteriores. Objeto de valor imutável; só existe com tamanho plausível.
@@ -40,4 +40,4 @@ private:
     std::vector<std::uint8_t> bytes_;
 };
 
-} // namespace ghub::pointer
+} // namespace ghub::onboard_memory

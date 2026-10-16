@@ -1,12 +1,12 @@
 #pragma once
 
-#include "modules/pointer/domain/OnboardSector.hpp"
+#include "modules/onboard_memory/domain/OnboardSector.hpp"
 #include "shared_kernel/Result.hpp"
 
 #include <cstdint>
 #include <vector>
 
-namespace ghub::pointer {
+namespace ghub::onboard_memory {
 
 // Diretório de perfis onboard (setor 0x0000 da feature 0x8100): entradas de 4 bytes
 // [setor BE16][habilitado][reservado], terminando em setor 0xFFFF (ou no fim, antes do CRC).
@@ -33,4 +33,4 @@ private:
     std::vector<Entry> entries_;
 };
 
-} // namespace ghub::pointer
+} // namespace ghub::onboard_memory

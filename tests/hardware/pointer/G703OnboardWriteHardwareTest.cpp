@@ -8,8 +8,8 @@
 #include "modules/device_access/api/DeviceAccess.hpp"
 #include "modules/device_access/infrastructure/ProcExternalProcessProbe.hpp"
 #include "modules/device_access/infrastructure/SteadyClock.hpp"
+#include "modules/onboard_memory/api/FileOnboardBackupStore.hpp"
 #include "modules/pointer/application/G703OnboardSettings.hpp"
-#include "modules/pointer/infrastructure/FileOnboardBackupStore.hpp"
 #include "modules/pointer/infrastructure/G703NodeLocator.hpp"
 
 #include <gtest/gtest.h>
@@ -20,6 +20,7 @@
 #include <fstream>
 #include <iostream>
 #include <iterator>
+#include <memory>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -32,6 +33,7 @@
 namespace {
 
 using ghub::pointer::G703ProfileSettings;
+using ghub::pointer::LedSetting;
 
 std::string env(const char* name)
 {
@@ -81,10 +83,14 @@ struct Rig {
     ghub::device_access::AccessRegistry registry{clock};
     ghub::pointer::infrastructure::G703OnboardConnector connector{ghub::pointer::infrastructure::G703NodeLocator{},
                                                                   clock};
-    ghub::pointer::infrastructure::FileOnboardBackupStore backup;
-    ghub::pointer::G703OnboardSettings useCase{probe, registry, connector, backup};
+    std::unique_ptr<ghub::onboard_memory::OnboardBackupStore> backup;
+    ghub::pointer::G703OnboardSettings useCase;
 
-    explicit Rig(std::filesystem::path backupDir) : backup(std::move(backupDir)) {}
+    explicit Rig(std::filesystem::path backupDir)
+        : backup(ghub::onboard_memory::makeFileOnboardBackupStore(std::move(backupDir), "g703-4086-sector-")),
+          useCase(probe, registry, connector, *backup)
+    {
+    }
 };
 
 } // namespace
@@ -133,7 +139,7 @@ TEST(PointerOnboardWriteHardware, B_WritesDpiThroughTheUseCase)
     }
     const auto backupDir = env("GHUB_HW_BACKUP_DIR");
     ASSERT_FALSE(backupDir.empty()) << "defina GHUB_HW_BACKUP_DIR";
-    const auto settings = G703ProfileSettings::make(1000, requestedDpis(), 0);
+    const auto settings = G703ProfileSettings::make(1000, requestedDpis(), 0, 0, LedSetting::off(), LedSetting::off());
     ASSERT_TRUE(settings.has_value()) << settings.error().detail;
     Rig rig{backupDir};
     const auto before = rig.useCase.read();

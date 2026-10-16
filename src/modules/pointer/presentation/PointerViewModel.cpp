@@ -26,6 +26,17 @@ QString dpiValueText(const ResolutionStage& stage)
     return QString::number(stage.dpiX());
 }
 
+// Os 4 bytes de uma entrada de botão (big-endian) em hexadecimal, separados por espaço.
+QString hexBytes(std::uint32_t value)
+{
+    QStringList parts;
+    for (int shift = 24; shift >= 0; shift -= 8) {
+        parts.append(
+            QStringLiteral("%1").arg((value >> static_cast<unsigned>(shift)) & 0xFFU, 2, 16, QLatin1Char('0')));
+    }
+    return parts.join(QLatin1Char(' '));
+}
+
 QString buttonText(const ButtonAction& action)
 {
     switch (action.kind()) {
@@ -35,11 +46,20 @@ QString buttonText(const ButtonAction& action)
         return PointerViewModel::tr("botão %1").arg(action.value());
     case ButtonActionKind::Special:
         return PointerViewModel::tr("especial 0x%1").arg(action.value(), 0, 16);
-    case ButtonActionKind::Key:
-        return PointerViewModel::tr("tecla %1").arg(action.value());
+    case ButtonActionKind::Key: {
+        const auto modifiers = action.value() >> 8U;
+        const auto key = action.value() & 0xFFU;
+        if (modifiers == 0) {
+            return PointerViewModel::tr("tecla %1").arg(key);
+        }
+        return PointerViewModel::tr("tecla %1 + modificadores 0x%2").arg(key).arg(modifiers, 2, 16, QLatin1Char('0'));
+    }
     case ButtonActionKind::Macro:
         return PointerViewModel::tr("macro (%1 passos)").arg(action.value());
     case ButtonActionKind::Unknown:
+        if (action.value() != 0) {
+            return PointerViewModel::tr("não interpretado: %1").arg(hexBytes(action.value()));
+        }
         return PointerViewModel::tr("desconhecida");
     }
     return {}; // inalcançável: o switch cobre todos os enumeradores
@@ -57,6 +77,13 @@ QString ledModeText(const LedState& led)
     case LedMode::Breathing:
         return PointerViewModel::tr("respiração");
     case LedMode::Unknown:
+        if (!led.rawBytes().empty()) {
+            QStringList parts;
+            for (const auto byte : led.rawBytes()) {
+                parts.append(QStringLiteral("%1").arg(byte, 2, 16, QLatin1Char('0')));
+            }
+            return PointerViewModel::tr("não interpretado: %1").arg(parts.join(QLatin1Char(' ')));
+        }
         return PointerViewModel::tr("desconhecido (%1)").arg(led.rawMode());
     }
     return {}; // inalcançável: o switch cobre todos os enumeradores

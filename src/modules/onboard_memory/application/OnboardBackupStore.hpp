@@ -7,7 +7,7 @@
 #include <span>
 #include <vector>
 
-namespace ghub::pointer {
+namespace ghub::onboard_memory {
 
 // Port: cópia de segurança do setor onboard original (ADR-0017 §8). Nunca sobrescreve.
 class OnboardBackupStore {
@@ -28,4 +28,4 @@ protected:
     OnboardBackupStore& operator=(OnboardBackupStore&&) = default;
 };
 
-} // namespace ghub::pointer
+} // namespace ghub::onboard_memory

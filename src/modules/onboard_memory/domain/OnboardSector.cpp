@@ -1,8 +1,8 @@
-#include "modules/pointer/domain/OnboardSector.hpp"
+#include "modules/onboard_memory/domain/OnboardSector.hpp"
 
 #include <string>
 
-namespace ghub::pointer {
+namespace ghub::onboard_memory {
 
 shared_kernel::Result<OnboardSector> OnboardSector::fromBytes(std::vector<std::uint8_t> bytes)
 {
@@ -47,4 +47,4 @@ OnboardSector OnboardSector::withCrc() const
     return copy;
 }
 
-} // namespace ghub::pointer
+} // namespace ghub::onboard_memory

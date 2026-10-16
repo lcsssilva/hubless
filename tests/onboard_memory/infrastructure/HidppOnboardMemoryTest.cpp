@@ -1,4 +1,4 @@
-#include "modules/pointer/infrastructure/HidppOnboardMemory.hpp"
+#include "modules/onboard_memory/infrastructure/HidppOnboardMemory.hpp"
 #include "fakes/FakeClock.hpp"
 #include "fakes/FakeHidReportIo.hpp"
 
@@ -10,16 +10,55 @@
 #include <memory>
 #include <numeric>
 #include <optional>
+#include <span>
 #include <utility>
 #include <vector>
 
 using ghub::fakes::FakeClock;
 using ghub::fakes::FakeHidReportIo;
-using ghub::pointer::infrastructure::HidppOnboardMemory;
+using ghub::onboard_memory::infrastructure::HidppOnboardMemory;
 using ghub::shared_kernel::ErrorCode;
 using Frame = FakeHidReportIo::Frame;
 
 namespace {
+
+// Política de teste no formato da dos módulos donos: Root/FeatureSet fn0-1; 0x8100 fn0/2/4/5/7/8; fn6 só para
+// setores 1..profileCount com offset 0.
+class ProfileRangePolicy final : public ghub::onboard_memory::OnboardProfilePolicy {
+public:
+    bool isAllowed(std::uint16_t featureId, std::uint8_t function,
+                   std::span<const std::uint8_t> params) const noexcept override
+    {
+        if (featureId == 0x0000 || featureId == 0x0001) {
+            return function == 0 || function == 1;
+        }
+        if (featureId != 0x8100) {
+            return false;
+        }
+        switch (function) {
+        case 0:
+        case 2:
+        case 4:
+        case 5:
+        case 7:
+        case 8:
+            return true;
+        case 6: {
+            if (params.size() < 6) {
+                return false;
+            }
+            const unsigned sector = (static_cast<unsigned>(params[0]) << 8U) | params[1];
+            return sector >= 1 && sector <= profileCount_ && params[2] == 0 && params[3] == 0;
+        }
+        default:
+            return false;
+        }
+    }
+    void setProfileCount(std::uint8_t profileCount) noexcept override { profileCount_ = profileCount; }
+
+private:
+    std::uint8_t profileCount_ = 0;
+};
 
 constexpr std::uint8_t kDevice = 0x01;
 constexpr std::uint8_t kOnboardIndex = 8; // de propósito diferente de qualquer índice "conhecido"
@@ -55,7 +94,8 @@ protected:
         auto fake = std::make_unique<FakeHidReportIo>(&clock);
         io = fake.get();
         io->setResponder([this](const Frame& frame) { return respond(frame); });
-        memory = std::make_unique<HidppOnboardMemory>(std::move(fake), clock, kDevice);
+        memory = std::make_unique<HidppOnboardMemory>(std::move(fake), clock, kDevice,
+                                                      std::make_unique<ProfileRangePolicy>());
         sectorData[1] = pattern(255, 1);
         sectorData[0x0101] = pattern(255, 101);
     }

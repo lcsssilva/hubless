@@ -1,8 +1,8 @@
-#include "modules/pointer/domain/OnboardDirectory.hpp"
+#include "modules/onboard_memory/domain/OnboardDirectory.hpp"
 
 #include <algorithm>
 
-namespace ghub::pointer {
+namespace ghub::onboard_memory {
 
 namespace {
 constexpr std::size_t kEntrySize = 4;
@@ -32,4 +32,4 @@ bool OnboardDirectory::isEnabled(std::uint16_t sector) const noexcept
     return std::ranges::any_of(entries_, [sector](const Entry& e) { return e.sector == sector && e.enabled; });
 }
 
-} // namespace ghub::pointer
+} // namespace ghub::onboard_memory

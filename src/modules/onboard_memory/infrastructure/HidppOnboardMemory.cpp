@@ -1,11 +1,11 @@
-#include "modules/pointer/infrastructure/HidppOnboardMemory.hpp"
+#include "modules/onboard_memory/infrastructure/HidppOnboardMemory.hpp"
 
 #include <algorithm>
 #include <array>
 #include <string>
 #include <utility>
 
-namespace ghub::pointer::infrastructure {
+namespace ghub::onboard_memory::infrastructure {
 
 namespace {
 
@@ -54,9 +54,11 @@ std::uint8_t low(unsigned value)
 } // namespace
 
 HidppOnboardMemory::HidppOnboardMemory(std::unique_ptr<hidpp::HidReportIo> io, const shared_kernel::Clock& clock,
-                                       std::uint8_t deviceIndex)
-    : policy_(0), channel_(std::move(io), clock, policy_), deviceIndex_(deviceIndex)
+                                       std::uint8_t deviceIndex, std::unique_ptr<OnboardProfilePolicy> policy)
+    : policy_(std::move(policy)), policyView_(*policy_), channel_(std::move(io), clock, policyView_),
+      deviceIndex_(deviceIndex)
 {
+    policy_->setProfileCount(0); // nenhuma escrita de perfil até um describe() bem-sucedido
 }
 
 shared_kernel::Result<hidpp::HidppChannel::Response> HidppOnboardMemory::call(std::uint8_t function,
@@ -81,7 +83,7 @@ shared_kernel::Result<OnboardLayout> HidppOnboardMemory::describe()
         .profileCount = std::get<3>(bytes),
     };
     layout_ = layout;
-    policy_.setProfileCount(layout.profileCount);
+    policy_->setProfileCount(layout.profileCount);
     return layout;
 }
 
@@ -151,4 +153,15 @@ shared_kernel::Result<void> HidppOnboardMemory::writeSector(std::uint16_t sector
     return {};
 }
 
-} // namespace ghub::pointer::infrastructure
+} // namespace ghub::onboard_memory::infrastructure
+
+namespace ghub::onboard_memory {
+
+std::unique_ptr<OnboardMemory> makeHidppOnboardMemory(std::unique_ptr<platform::hidpp::HidReportIo> io,
+                                                      const shared_kernel::Clock& clock, std::uint8_t deviceIndex,
+                                                      std::unique_ptr<OnboardProfilePolicy> policy)
+{
+    return std::make_unique<infrastructure::HidppOnboardMemory>(std::move(io), clock, deviceIndex, std::move(policy));
+}
+
+} // namespace ghub::onboard_memory

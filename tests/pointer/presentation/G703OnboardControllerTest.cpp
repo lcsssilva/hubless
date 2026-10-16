@@ -1,18 +1,21 @@
 #include "modules/pointer/presentation/G703OnboardController.hpp"
-#include "../application/FakeOnboardMemory.hpp"
-#include "../domain/G703SectorFixtures.hpp"
 #include "fakes/FakeClock.hpp"
 #include "fakes/FakeExternalProcessProbe.hpp"
+#include "fakes/FakeOnboardMemory.hpp"
+#include "fakes/G703SectorFixtures.hpp"
 
 #include <QSignalSpy>
 #include <QTest>
 #include <QVariantList>
+#include <QVariantMap>
 
+#include <algorithm>
 #include <atomic>
 #include <condition_variable>
 #include <memory>
 #include <mutex>
 #include <thread>
+#include <utility>
 #include <vector>
 
 using ghub::device_access::AccessRegistry;
@@ -54,7 +57,21 @@ private:
 
 Bytes sector0001()
 {
-    return {ghub::pointer::fixtures::kSector0001.begin(), ghub::pointer::fixtures::kSector0001.end()};
+    return {ghub::fixtures::kSector0001.begin(), ghub::fixtures::kSector0001.end()};
+}
+
+QVariantMap led(const QString& kind, const QString& color = {}, int periodMs = 0, int brightness = 0)
+{
+    return {{QStringLiteral("kind"), kind},
+            {QStringLiteral("color"), color},
+            {QStringLiteral("periodMs"), periodMs},
+            {QStringLiteral("brightness"), brightness},
+            {QStringLiteral("raw"), QString{}}};
+}
+
+QVariantMap offLed()
+{
+    return led(QStringLiteral("off"));
 }
 
 QVariantList stages(std::initializer_list<int> values)
@@ -123,7 +140,7 @@ private slots:
     {
         G703OnboardController controller{fixture->useCase};
 
-        controller.writeToMouse(1000, stages({7025}), 0);
+        controller.writeToMouse(1000, stages({7025}), 0, 0, offLed(), offLed());
 
         QVERIFY(!controller.busy());
         QVERIFY(!controller.status().isEmpty());
@@ -135,7 +152,7 @@ private slots:
     {
         G703OnboardController controller{fixture->useCase};
 
-        controller.writeToMouse(500, stages({7050, 1600}), 1);
+        controller.writeToMouse(500, stages({7050, 1600}), 1, 0, offLed(), offLed());
         QVERIFY(controller.busy());
         QTRY_VERIFY(!controller.busy());
 
@@ -153,7 +170,7 @@ private slots:
     {
         G703OnboardController controller{fixture->useCase};
 
-        controller.writeToMouse(1000, stages({7050}), 0);
+        controller.writeToMouse(1000, stages({7050}), 0, 0, offLed(), offLed());
         QTRY_VERIFY(!controller.busy());
 
         QCOMPARE(fixture->connector.state.count("write:1"), 0);
@@ -167,12 +184,127 @@ private slots:
         fixture->connector.state.mode = 2; // fora do modo onboard: a escrita é recusada
         G703OnboardController controller{fixture->useCase};
 
-        controller.writeToMouse(500, stages({7050}), 0);
+        controller.writeToMouse(500, stages({7050}), 0, 0, offLed(), offLed());
         QTRY_VERIFY(!controller.busy());
 
         QCOMPARE(fixture->connector.state.count("write:1"), 0);
         QVERIFY(!controller.status().isEmpty());
         QVERIFY(!controller.backupExists());
+    }
+
+    void readFromMouse_PublishesShiftStageAndLeds()
+    {
+        G703OnboardController controller{fixture->useCase};
+
+        controller.readFromMouse();
+        QTRY_VERIFY(!controller.busy());
+
+        QCOMPARE(controller.dpiShiftStage(), 0);
+        QCOMPARE(controller.primaryLed().value(QStringLiteral("kind")).toString(), QStringLiteral("off"));
+        QCOMPARE(controller.logoLed().value(QStringLiteral("kind")).toString(), QStringLiteral("off"));
+    }
+
+    void readFromMouse_PublishesCycleLedWithPeriodAndBrightnessAndNoShiftAsMinusOne()
+    {
+        Bytes raw = sector0001();
+        raw[2] = 0xff; // sem shift
+        const Bytes cycle{0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x1f, 0x40, 0x64, 0x00, 0x00};
+        std::copy(cycle.begin(), cycle.end(), raw.begin() + 0xD0);
+        fixture->connector.state.sectors[1] = ghub::onboard_memory::OnboardSector::fromBytes(raw)->withCrc().bytes();
+        G703OnboardController controller{fixture->useCase};
+
+        controller.readFromMouse();
+        QTRY_VERIFY(!controller.busy());
+
+        QCOMPARE(controller.dpiShiftStage(), -1);
+        const auto primary = controller.primaryLed();
+        QCOMPARE(primary.value(QStringLiteral("kind")).toString(), QStringLiteral("cycle"));
+        QCOMPARE(primary.value(QStringLiteral("periodMs")).toInt(), 8000);
+        QCOMPARE(primary.value(QStringLiteral("brightness")).toInt(), 100);
+    }
+
+    void readFromMouse_UnknownLedFormatIsPublishedAsRawHex()
+    {
+        Bytes raw = sector0001();
+        const Bytes ripple{0x0b, 0x00, 0x00, 0x00, 0x00, 0x00, 0x14, 0x00, 0x00, 0x00, 0x00};
+        std::copy(ripple.begin(), ripple.end(), raw.begin() + 0xD0);
+        fixture->connector.state.sectors[1] = ghub::onboard_memory::OnboardSector::fromBytes(raw)->withCrc().bytes();
+        G703OnboardController controller{fixture->useCase};
+
+        controller.readFromMouse();
+        QTRY_VERIFY(!controller.busy());
+
+        const auto primary = controller.primaryLed();
+        QCOMPARE(primary.value(QStringLiteral("kind")).toString(), QStringLiteral("raw"));
+        QCOMPARE(primary.value(QStringLiteral("raw")).toString(), QStringLiteral("0b 00 00 00 00 00 14 00 00 00 00"));
+    }
+
+    void writeToMouse_WritesShiftAndBothLedsAndPublishesWhatWasReadBack()
+    {
+        G703OnboardController controller{fixture->useCase};
+
+        controller.writeToMouse(500, stages({400, 1600, 3200}), 2, 1,
+                                led(QStringLiteral("fixed"), QStringLiteral("#00ffff")),
+                                led(QStringLiteral("cycle"), {}, 5000, 80));
+        QTRY_VERIFY(!controller.busy());
+
+        QCOMPARE(fixture->connector.state.count("write:1"), 1);
+        QCOMPARE(controller.dpiShiftStage(), 1);
+        QCOMPARE(controller.primaryLed().value(QStringLiteral("kind")).toString(), QStringLiteral("fixed"));
+        QCOMPARE(controller.primaryLed().value(QStringLiteral("color")).toString(), QStringLiteral("#00ffff"));
+        QCOMPARE(controller.logoLed().value(QStringLiteral("kind")).toString(), QStringLiteral("cycle"));
+        QCOMPARE(controller.logoLed().value(QStringLiteral("periodMs")).toInt(), 5000);
+        QCOMPARE(controller.logoLed().value(QStringLiteral("brightness")).toInt(), 80);
+    }
+
+    void writeToMouse_RawLedSentBackIsLeftUntouched()
+    {
+        Bytes raw = sector0001();
+        const Bytes ripple{0x0b, 0x00, 0x00, 0x00, 0x00, 0x00, 0x14, 0x00, 0x00, 0x00, 0x00};
+        std::copy(ripple.begin(), ripple.end(), raw.begin() + 0xD0);
+        fixture->connector.state.sectors[1] = ghub::onboard_memory::OnboardSector::fromBytes(raw)->withCrc().bytes();
+        G703OnboardController controller{fixture->useCase};
+        controller.readFromMouse();
+        QTRY_VERIFY(!controller.busy());
+
+        controller.writeToMouse(1000, stages({7050}), 0, 0, controller.primaryLed(), controller.logoLed());
+        QTRY_VERIFY(!controller.busy());
+
+        QCOMPARE(fixture->connector.state.count("write:1"), 0);
+        QCOMPARE(fixture->connector.state.sectors.at(1),
+                 ghub::onboard_memory::OnboardSector::fromBytes(raw)->withCrc().bytes());
+    }
+
+    void writeToMouse_ShiftMinusOneMeansNoShift()
+    {
+        G703OnboardController controller{fixture->useCase};
+
+        controller.writeToMouse(1000, stages({400, 800}), 0, -1, offLed(), offLed());
+        QTRY_VERIFY(!controller.busy());
+
+        QCOMPARE(fixture->connector.state.count("write:1"), 1);
+        QCOMPARE(controller.dpiShiftStage(), -1);
+    }
+
+    void writeToMouse_InvalidShiftOrLedDoesNotCallThePortAndExplainsInStatus()
+    {
+        G703OnboardController controller{fixture->useCase};
+        const std::vector<std::pair<int, QVariantMap>> bad{
+            {5, offLed()},                                               // shift fora dos estágios
+            {-2, offLed()},                                              // shift negativo inválido
+            {0, led(QStringLiteral("cycle"), {}, 5000, 101)},            // brilho > 100
+            {0, led(QStringLiteral("cycle"), {}, 0, 50)},                // período 0
+            {0, led(QStringLiteral("fixed"), QStringLiteral("00ffff"))}, // cor sem #
+            {0, led(QStringLiteral("fixed"), QStringLiteral("#00ff"))},  // cor curta
+            {0, led(QStringLiteral("desconhecido"))},                    // tipo inexistente
+        };
+        for (const auto& [shift, primary] : bad) {
+            controller.writeToMouse(1000, stages({400, 800}), 0, shift, primary, offLed());
+            QVERIFY(!controller.busy());
+            QVERIFY(!controller.status().isEmpty());
+        }
+        QCOMPARE(fixture->probe.calls(), 0);
+        QCOMPARE(fixture->connector.state.opens, 0);
     }
 
     void request_DuringBusyIsRefusedAndNotQueued()
@@ -181,9 +313,9 @@ private slots:
         fixture->backup.onSave = [&gate] { gate.wait(); };
         G703OnboardController controller{fixture->useCase};
 
-        controller.writeToMouse(500, stages({7050, 1600}), 0);
+        controller.writeToMouse(500, stages({7050, 1600}), 0, 0, offLed(), offLed());
         QTRY_VERIFY(gate.entered());
-        controller.writeToMouse(250, stages({1000}), 0);
+        controller.writeToMouse(250, stages({1000}), 0, 0, offLed(), offLed());
         QCOMPARE(controller.status(), QStringLiteral("aguarde a operação em andamento"));
         controller.readFromMouse();
         controller.restoreBackup();
@@ -209,7 +341,7 @@ private slots:
     void restoreBackup_RestoresAndPublishesTheOriginal()
     {
         G703OnboardController controller{fixture->useCase};
-        controller.writeToMouse(500, stages({7050, 1600}), 0);
+        controller.writeToMouse(500, stages({7050, 1600}), 0, 0, offLed(), offLed());
         QTRY_VERIFY(!controller.busy());
 
         controller.restoreBackup();
@@ -226,7 +358,7 @@ private slots:
         Gate gate;
         fixture->backup.onSave = [&gate] { gate.wait(); };
         auto controller = std::make_unique<G703OnboardController>(fixture->useCase);
-        controller->writeToMouse(500, stages({7050, 1600}), 0);
+        controller->writeToMouse(500, stages({7050, 1600}), 0, 0, offLed(), offLed());
         QTRY_VERIFY(gate.entered());
 
         std::thread opener{[&gate] { gate.open(); }};
@@ -250,11 +382,9 @@ private:
         Fixture()
         {
             probe.setResult(std::vector<ExternalOwner>{});
-            connector.state.sectors[0] = {ghub::pointer::fixtures::kDirectory0000.begin(),
-                                          ghub::pointer::fixtures::kDirectory0000.end()};
+            connector.state.sectors[0] = {ghub::fixtures::kDirectory0000.begin(), ghub::fixtures::kDirectory0000.end()};
             connector.state.sectors[1] = sector0001();
-            connector.state.sectors[2] = {ghub::pointer::fixtures::kSector0002.begin(),
-                                          ghub::pointer::fixtures::kSector0002.end()};
+            connector.state.sectors[2] = {ghub::fixtures::kSector0002.begin(), ghub::fixtures::kSector0002.end()};
         }
     };
 

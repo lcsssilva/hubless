@@ -12,7 +12,8 @@ namespace ghub::pointer {
 enum class ButtonActionKind : std::uint8_t { None, Button, Special, Key, Macro, Unknown };
 
 // Ação atribuída a um botão. `value` depende do tipo: Button = nº do botão (a partir de 1), Special = código
-// bruto do ratbagd, Key = keycode, Macro = nº de passos, None/Unknown = 0. Objeto de valor imutável.
+// bruto do ratbagd, Key = keycode, Macro = nº de passos, None = 0; Unknown = 0 ou, vindo do setor onboard, os 4 bytes
+// brutos. Objeto de valor imutável.
 class ButtonAction {
 public:
     [[nodiscard]] static ButtonAction none() noexcept { return {ButtonActionKind::None, 0}; }
@@ -24,6 +25,11 @@ public:
     [[nodiscard]] static ButtonAction key(std::uint32_t keycode) noexcept { return {ButtonActionKind::Key, keycode}; }
     [[nodiscard]] static ButtonAction macro(std::uint32_t steps) noexcept { return {ButtonActionKind::Macro, steps}; }
     [[nodiscard]] static ButtonAction unknown() noexcept { return {ButtonActionKind::Unknown, 0}; }
+    // Formato não interpretado do setor onboard: `bytes` são os 4 bytes da entrada em big-endian.
+    [[nodiscard]] static ButtonAction unrecognized(std::uint32_t bytes) noexcept
+    {
+        return {ButtonActionKind::Unknown, bytes};
+    }
 
     [[nodiscard]] ButtonActionKind kind() const noexcept { return kind_; }
     [[nodiscard]] std::uint32_t value() const noexcept { return value_; }

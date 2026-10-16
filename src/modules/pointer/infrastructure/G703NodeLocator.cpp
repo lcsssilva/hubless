@@ -1,6 +1,7 @@
 #include "modules/pointer/infrastructure/G703NodeLocator.hpp"
 
-#include "modules/pointer/infrastructure/HidppOnboardMemory.hpp"
+#include "modules/onboard_memory/api/HidppOnboardMemory.hpp"
+#include "modules/pointer/infrastructure/G703OnboardPolicy.hpp"
 #include "platform/hidpp/HidrawDevice.hpp"
 
 #include <algorithm>
@@ -137,7 +138,7 @@ shared_kernel::Result<G703Node> G703NodeLocator::locate() const
                                "G703 (046d:4086) com receptor c539 interface 2 não encontrado");
 }
 
-shared_kernel::Result<std::unique_ptr<OnboardMemory>> G703OnboardConnector::open()
+shared_kernel::Result<std::unique_ptr<onboard_memory::OnboardMemory>> G703OnboardConnector::open()
 {
     const auto node = locator_.locate();
     if (!node.has_value()) {
@@ -147,7 +148,8 @@ shared_kernel::Result<std::unique_ptr<OnboardMemory>> G703OnboardConnector::open
     if (!device.has_value()) {
         return std::unexpected(device.error());
     }
-    return std::make_unique<HidppOnboardMemory>(std::move(*device), *clock_, node->deviceIndex);
+    return onboard_memory::makeHidppOnboardMemory(std::move(*device), *clock_, node->deviceIndex,
+                                                  std::make_unique<G703OnboardPolicy>());
 }
 
 } // namespace ghub::pointer::infrastructure
