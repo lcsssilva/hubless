@@ -14,7 +14,7 @@ QtObject {
     readonly property color error: "#f54155"
     readonly property color foreground: "#ffffff"
     readonly property color foregroundMedium: "#99ffffff"
-    readonly property color foregroundDisabled: "#4dffffff"
+    readonly property color foregroundDisabled: "#6a6a6a"
     readonly property color outline: "#1affffff"
     readonly property color outlineHigh: "#4dffffff"
 
@@ -24,14 +24,27 @@ QtObject {
     readonly property color sliderFill: "#afb1b4"       // trecho cheio do trilho do slider
     readonly property color sliderTrack: "#393939"      // trecho vazio do trilho do slider
     readonly property color cardHover: "#2e2f31"       // fundo do cartão com o mouse em cima
+    readonly property color cardLoading: "#37383b"      // cartão em "Baixando recursos…"
     readonly property color buttonDisabledSurface: "#222222"
     readonly property color buttonDisabledText: "#999999"
-    readonly property color tabForeground: "#c8cdd7"    // abas inativas da barra do topo
+    readonly property color tabForeground: "#ced3de"    // abas inativas da barra do topo
     readonly property color switchOff: "#a6a6a7"        // trilho do interruptor desligado
-    readonly property color fieldUnderline: "#595b5e"   // sublinhado de campos de texto e de números
+    readonly property color fieldUnderline: "#afb1b4"   // sublinhado de campos de texto e de números
     readonly property color dropdownItem: "#888888"     // itens da lista aberta do dropdown (sem o cursor)
     readonly property color innerTabInactive: "#9d9e9f" // abas internas do painel
     readonly property color helpIcon: "#a6a6a8"         // ícone "?" ao lado do cabeçalho de seção
+
+    // Tokens do CSS computado do G HUB (ESTILO-GHUB-CSS-COMPUTADO.md §1).
+    readonly property color sectionHeader: "#aaaaaa"    // cabeçalhos de seção e texto em hover
+    readonly property color accent2: "#00a9e0"          // ciano de destaque (item escolhido, salvar)
+    readonly property color batteryLow: "#e02349"
+    readonly property color focusRing: "#f0f0f0"        // contorno de foco de teclado (3 px, para dentro)
+    readonly property color iconButtonActive: "#021d2c" // fundo do botão de ícone ativo/hover da barra do topo
+    readonly property real hoverMonoOpacity: 0.06       // hover do branco sobre a superfície (cartões, botões)
+    readonly property int radiusSmall: 4
+    readonly property int tooltipRadius: 6
+    readonly property int pageFadeInDuration: 350
+    readonly property int pageFadeOutDuration: 200
 
     // Desenhos próprios dos dispositivos (DeviceDrawing): corpo, contorno e detalhes, sem imagens de terceiros.
     readonly property color deviceBody: "#34363a"

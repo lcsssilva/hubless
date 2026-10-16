@@ -38,10 +38,10 @@ Item {
         // Acima da página Informações, que ocupa a largura toda e senão engoliria os cliques do trilho.
         z: 1
         // Acima da página Informações, que ocupa a largura toda e senão engoliria os cliques do trilho.
-        x: 13
-        y: 28
+        x: 14
+        y: 35
         width: 48
-        height: page.height - 28 - 5
+        height: page.height - 35 - 20
         spacing: 4
 
         Repeater {
@@ -53,7 +53,7 @@ Item {
                 Layout.preferredHeight: 48
                 tabKey: modelData.key
                 text: modelData.text
-                icon.name: modelData.icon
+                icon.source: Qt.resolvedUrl("icons/" + modelData.icon + ".svg")
                 selected: page.currentTab === modelData.key
                 onClicked: page.tabSelected(modelData.key)
             }
@@ -70,7 +70,7 @@ Item {
                 Layout.preferredHeight: 48
                 tabKey: modelData.key
                 text: modelData.text
-                icon.name: modelData.icon
+                icon.source: Qt.resolvedUrl("icons/" + modelData.icon + ".svg")
                 selected: page.currentTab === modelData.key
                 onClicked: page.tabSelected(modelData.key)
             }
@@ -80,10 +80,10 @@ Item {
     PanelCard {
         objectName: "devicePanel"
         visible: !page.infoMode
-        x: 75
-        y: 8
+        x: 76
+        y: 15
         width: 310
-        height: page.height - 8 - 5
+        height: page.height - 15 - 20
         title: page.currentTabEntry !== null ? page.currentTabEntry.text : page.deviceName
 
         StackLayout {
@@ -119,7 +119,7 @@ Item {
         BatteryBlock {
             objectName: "mainBatteryBlock"
             x: parent.width - 282
-            y: 9
+            y: 2
             summary: page.batteryText
             percent: page.batteryPercent
         }

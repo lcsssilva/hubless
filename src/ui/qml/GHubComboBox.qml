@@ -1,8 +1,9 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Effects
 
 // Dropdown no estilo do G HUB (REFERENCIA-ESTILO-GHUB.md §4.3): só o valor em MAIÚSCULAS e branco com um chevron
-// pequeno, sem caixa nem fundo; a lista aberta é uma caixa `buttonSurface` sem raio, de 240 px, com itens de passo
+// pequeno, sem caixa nem fundo; a lista aberta é uma caixa `buttonSurface` de raio 4 e sombra, com no mínimo 240 px, que abre por cima do campo, com itens de passo
 // 24 px (o item sob o cursor em branco, os demais em `dropdownItem`). O comportamento é o do ComboBox do Qt
 // Quick Controls (model, currentIndex, activated, currentText, currentValue...).
 ComboBox {
@@ -66,9 +67,11 @@ ComboBox {
 
     delegate: ItemDelegate {
         id: entry
+        objectName: "comboItem"
         required property int index
+        opacity: entryHover.hovered || entry.highlighted || control.currentIndex === entry.index ? 1 : 0.4
 
-        width: 240
+        width: ListView.view ? ListView.view.width : 240
         height: 24
         padding: 0
         leftPadding: 12
@@ -84,7 +87,7 @@ ComboBox {
             font.pixelSize: 13
             font.weight: Font.Medium
             font.capitalization: Font.AllUppercase
-            color: entryHover.hovered || entry.highlighted ? Theme.foreground : Theme.dropdownItem
+            color: Theme.foreground
         }
 
         background: null
@@ -95,10 +98,15 @@ ComboBox {
     }
 
     popup: Popup {
-        y: control.height + 4
-        width: 240
+        x: -8
+        y: -8
+        width: Math.max(240, control.width)
         margins: 4
-        padding: 0
+        padding: 8
+        topPadding: 8
+        bottomPadding: 8
+        leftPadding: 0
+        rightPadding: 0
 
         contentItem: ListView {
             clip: true
@@ -113,8 +121,16 @@ ComboBox {
         }
 
         background: Rectangle {
-            radius: 0
+            radius: Theme.radiusSmall
             color: Theme.buttonSurface
+            layer.enabled: true
+            layer.effect: MultiEffect {
+                shadowEnabled: true
+                shadowColor: "#80000000"
+                shadowBlur: 1.0
+                shadowVerticalOffset: 0
+                shadowHorizontalOffset: 0
+            }
         }
     }
 }

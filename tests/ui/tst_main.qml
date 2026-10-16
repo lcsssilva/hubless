@@ -1873,16 +1873,17 @@ TestCase {
         const cards = deviceCards(window);
         compare(cards[0].opacity, 1);
         compare(cards[1].connectionText, "não detectado");
-        verify(cards[1].opacity < 1);
-        verify(cards[3].opacity < 1);
+        verify(cards[1].dimmed);
+        verify(cards[3].dimmed);
+        compare(cards[0].dimmed, false);
         openDevice(window, "G703");
         compare(window.currentPage, 2);
     }
 
     function test_notDetectedSummaryDimsCard() {
         const window = createMain(createFake([]), sampleInventory());
-        verify(deviceCards(window)[2].opacity < 1); // G733: "não detectado"
-        compare(deviceCards(window)[3].opacity, 1);
+        verify(deviceCards(window)[2].dimmed); // G733: "não detectado"
+        compare(deviceCards(window)[3].dimmed, false);
     }
 
     function test_clickingCardOpensItsPageWithItsTabs() {
@@ -2026,7 +2027,7 @@ TestCase {
         verify(Qt.colorEqual(Theme.outline, "#1affffff"), String(Theme.outline));
         verify(Qt.colorEqual(Theme.outlineHigh, "#4dffffff"), String(Theme.outlineHigh));
         verify(Qt.colorEqual(Theme.foregroundMedium, "#99ffffff"), String(Theme.foregroundMedium));
-        verify(Qt.colorEqual(Theme.foregroundDisabled, "#4dffffff"), String(Theme.foregroundDisabled));
+        verify(Qt.colorEqual(Theme.foregroundDisabled, "#6a6a6a"), String(Theme.foregroundDisabled));
         compare(Theme.radius, 8);
         compare(Theme.hoverOpacity, 0.10);
         compare(Theme.pressOpacity, 0.15);
@@ -2043,8 +2044,16 @@ TestCase {
         verify(Qt.colorEqual(Theme.sliderFill, "#afb1b4"), String(Theme.sliderFill));
         verify(Qt.colorEqual(Theme.sliderTrack, "#393939"), String(Theme.sliderTrack));
         verify(Qt.colorEqual(Theme.cardHover, "#2e2f31"), String(Theme.cardHover));
-        verify(Qt.colorEqual(Theme.tabForeground, "#c8cdd7"), String(Theme.tabForeground));
+        verify(Qt.colorEqual(Theme.tabForeground, "#ced3de"), String(Theme.tabForeground));
         compare(Theme.cardRadius, 12);
+        verify(Qt.colorEqual(Theme.sectionHeader, "#aaaaaa"), String(Theme.sectionHeader));
+        verify(Qt.colorEqual(Theme.accent2, "#00a9e0"), String(Theme.accent2));
+        verify(Qt.colorEqual(Theme.batteryLow, "#e02349"), String(Theme.batteryLow));
+        verify(Qt.colorEqual(Theme.fieldUnderline, "#afb1b4"), String(Theme.fieldUnderline));
+        verify(Qt.colorEqual(Theme.focusRing, "#f0f0f0"), String(Theme.focusRing));
+        compare(Theme.hoverMonoOpacity, 0.06);
+        compare(Theme.radiusSmall, 4);
+        compare(Theme.tooltipRadius, 6);
     }
 
     function test_windowUsesThemeColors() {
@@ -2088,7 +2097,7 @@ TestCase {
         verify(Qt.colorEqual(profiles.contentItem.color, Theme.tabForeground), String(profiles.contentItem.color));
         compare(underline(devices).visible, true);
         compare(underline(devices).width, 24);
-        compare(underline(devices).height, 2);
+        compare(underline(devices).height, 1);
         verify(Qt.colorEqual(underline(devices).color, Theme.primary));
         compare(underline(profiles).visible, false);
         clickButton(window, "profilesPageButton");
@@ -2100,10 +2109,27 @@ TestCase {
         tryCompare(window, "currentPage", 0);
     }
 
+    function test_topBarTabHoverTurnsTextPrimaryAndWidensTheUnderlineTo40px() {
+        const window = createMain(createFake([]), sampleInventory());
+        showMinimum(window);
+        const devices = findItem(window, "devicesTabButton");
+        const profiles = findItem(window, "profilesPageButton");
+        const underline = tab => descendants(tab).find(i => i.objectName === "tabUnderline");
+        mouseMove(profiles, 10, 10);
+        tryVerify(() => Qt.colorEqual(profiles.contentItem.color, Theme.primary));
+        tryCompare(underline(profiles), "width", 40);
+        compare(underline(profiles).visible, true);
+        mouseMove(devices, 10, 10);
+        tryCompare(underline(devices), "width", 40);
+        mouseMove(devices, -300, 400);
+        tryCompare(underline(devices), "width", 24);
+        tryVerify(() => Qt.colorEqual(profiles.contentItem.color, Theme.tabForeground));
+    }
+
     function test_topBarGearOpensSettingsAndIsA20pxThemeIcon() {
         const window = createMain(createFake([]), sampleInventory());
         const gear = findItem(window, "settingsPageButton");
-        compare(gear.icon.name, "applications-system");
+        verify(String(gear.icon.source).endsWith("icons/gear.svg"), String(gear.icon.source));
         compare(gear.icon.width, 20);
         compare(gear.icon.height, 20);
         compare(gear.text, "");
@@ -2130,13 +2156,14 @@ TestCase {
         cards.forEach(c => {
             compare(c.height, 450, c.deviceName);
             compare(c.radius, Theme.cardRadius, c.deviceName);
-            verify(Qt.colorEqual(c.color, Theme.surface), String(c.color));
+            if (c.detected)
+                verify(Qt.colorEqual(c.color, Theme.surface), String(c.color));
         });
         const content = descendants(cards[1]).find(i => i.objectName === "cardContent");
-        compare(content.x, 25);
-        compare(content.y, 25);
-        compare(content.width, 296 - 50);
-        compare(content.height, 450 - 50);
+        compare(content.x, 24);
+        compare(content.y, 24);
+        compare(content.width, 296 - 48);
+        compare(content.height, 450 - 48);
     }
 
     function test_cardsFormACenteredGridWith24pxGaps() {
@@ -2173,9 +2200,9 @@ TestCase {
         compare(descendants(brio).find(i => i.objectName === "cardBatteryRow").visible, false);
         // Área de imagem: 246×200 no cartão comum, 566×177 no largo; o desenho fica no centro dela.
         const area = card => descendants(card).find(i => i.objectName === "cardImageArea");
-        compare(area(common).width, 246);
+        compare(area(common).width, 248);
         compare(area(common).height, 200);
-        compare(area(wide).width, 616 - 50);
+        compare(area(wide).width, 616 - 48);
         compare(area(wide).height, 177);
         [wide, common].forEach(card => {
             const drawing = descendants(area(card)).find(i => i.objectName === "deviceDrawing");
@@ -2191,7 +2218,8 @@ TestCase {
         showMinimum(window);
         const card = deviceCards(window)[1];
         tryVerify(() => card.visible && card.width > 0 && card.height > 0);
-        compare(card.border.width, 0);
+        compare(card.border.width, 1);
+        verify(Qt.colorEqual(card.border.color, "transparent"), String(card.border.color));
         verify(Qt.colorEqual(card.color, Theme.surface), String(card.color));
         mouseMove(card, 20, 20);
         tryVerify(() => Qt.colorEqual(card.color, Theme.cardHover));
@@ -2199,7 +2227,30 @@ TestCase {
         verify(Qt.colorEqual(card.border.color, Theme.foreground), String(card.border.color));
         mouseMove(card, -20, -20);
         tryVerify(() => Qt.colorEqual(card.color, Theme.surface));
-        compare(card.border.width, 0);
+        verify(Qt.colorEqual(card.border.color, "transparent"), String(card.border.color));
+    }
+
+    // INC-014 parte 5 (CSS computado §4): preenchimento de 24 px; desabilitado (não detectado) tem camada de 10 %,
+    // texto #6a6a6a, imagem a 0,6 e não reage ao mouse.
+    function test_cardPaddingIs24AndUndetectedCardLooksDisabledWithoutHover() {
+        const window = createMain(createFake([]), sampleInventory());
+        showMinimum(window);
+        const cards = deviceCards(window);
+        const content = descendants(cards[1]).find(i => i.objectName === "cardContent");
+        compare(content.x, 24);
+        const off = cards.find(c => c.deviceName === "G733");
+        verify(!off.detected);
+        compare(off.opacity, 1);
+        tryVerify(() => Qt.colorEqual(off.color, "#37383b"));
+        const title = descendants(off).find(i => i.objectName === "cardTitle");
+        verify(Qt.colorEqual(title.color, Theme.foregroundDisabled), String(title.color));
+        compare(descendants(off).find(i => i.objectName === "deviceDrawing").opacity, 0.6);
+        reveal(off);
+        mouseMove(off, 20, 20);
+        wait(50);
+        compare(off.highlighted, false);
+        compare(off.border.width, 1);
+        verify(Qt.colorEqual(off.border.color, "transparent"), String(off.border.color));
     }
 
     // ---- INC-014 parte 3 (R21): cabeçalho da página e trilho de ícones ----
@@ -2209,7 +2260,7 @@ TestCase {
                               .sort((a, b) => a.mapToItem(null, 0, 0).y - b.mapToItem(null, 0, 0).y);
     }
 
-    function test_deviceHeaderShowsPlainArrowAndTitle36pxBold() {
+    function test_deviceHeaderShowsPlainArrowAndTitle34pxBold() {
         const window = createMain(createFake([]), sampleInventory());
         showMinimum(window);
         compare(findItem(window, "deviceTitle").visible, false);
@@ -2217,9 +2268,14 @@ TestCase {
         const title = findItem(window, "deviceTitle");
         compare(title.visible, true);
         compare(title.text, "G703");
-        compare(title.font.pixelSize, 36);
+        compare(title.font.pixelSize, 34);
         compare(title.font.bold, true);
+        compare(window.header.height, 81);
         const back = findItem(window, "backButton");
+        compare(back.width, 42);
+        compare(back.height, 32);
+        compare(back.mapToItem(null, 0, 0).x, 16);
+        compare(back.mapToItem(null, 0, 0).y, 40);
         compare(back.background, null);
         compare(back.contentItem.text, "←");
         compare(findItem(window, "brandLabel").visible, false);
@@ -2237,8 +2293,8 @@ TestCase {
             compare(b.height, 48, b.tabKey);
             compare(b.icon.width, 24, b.tabKey);
             compare(b.icon.height, 24, b.tabKey);
-            verify(b.icon.name !== "", "ícone de " + b.tabKey);
-            compare(b.mapToItem(null, 0, 0).x, 13, b.tabKey);
+            verify(String(b.icon.source).endsWith(".svg"), "ícone de " + b.tabKey);
+            compare(b.mapToItem(null, 0, 0).x, 14, b.tabKey);
         });
         const ys = buttons.map(b => b.mapToItem(null, 0, 0).y);
         compare(ys[1] - ys[0], 52);
@@ -2248,7 +2304,7 @@ TestCase {
         const rail = visibleByName(window, "tabRail")[0];
         const bottom = buttons[3].mapToItem(rail, 0, 48).y;
         verify(bottom <= rail.height && bottom >= rail.height - 8, bottom + " de " + rail.height);
-        compare(new Set(buttons.map(b => b.icon.name)).size, 4);
+        compare(new Set(buttons.map(b => String(b.icon.source))).size, 4);
     }
 
     function test_railSelectedButtonIsPrimaryWithWhiteIconAndOthersAreDim() {
@@ -2260,28 +2316,31 @@ TestCase {
         const other = buttons.find(t => !t.selected);
         compare(selected.tabKey, "lighting");
         verify(selected !== undefined && other !== undefined);
+        // CSS computado §5.2: o ícone é sempre branco; quem muda é a opacidade do item.
         verify(Qt.colorEqual(selected.icon.color, Theme.foreground), String(selected.icon.color));
-        verify(Qt.colorEqual(other.icon.color, Theme.foregroundMedium), String(other.icon.color));
+        verify(Qt.colorEqual(other.icon.color, Theme.foreground), String(other.icon.color));
+        compare(selected.opacity, 1);
+        compare(other.opacity, 0.6);
         const fill = descendants(selected).find(i => i.objectName === "selectedFill");
         verify(fill !== undefined, "selectedFill");
         compare(fill.radius, Theme.cardRadius);
         verify(Qt.colorEqual(fill.color, Theme.primary), String(fill.color));
         compare(fill.opacity, 1);
         compare(descendants(other).find(i => i.objectName === "selectedFill").opacity, 0);
-        // Hover e clique seguem os overlays de estado da parte 2 (R15).
-        const selectedOverlay = stateOverlayOf(selected);
-        const overlay = stateOverlayOf(other);
-        compare(overlay.opacity, 0);
+        // Hover escurece (0,4), clique 0,2; o ativo vai a 0,9 no hover e 0,8 no clique.
         mouseMove(other, 20, 10);
-        tryCompare(overlay, "opacity", Theme.hoverOpacity);
+        tryCompare(other, "opacity", 0.4);
         mousePress(other, 20, 10);
-        tryCompare(overlay, "opacity", Theme.pressOpacity);
+        tryCompare(other, "opacity", 0.2);
         mouseRelease(other, 20, 10);
         // Soltar o clique abriu a aba Informações; o botão selecionado agora é outro.
         tryVerify(() => other.selected);
-        mouseMove(selected, -100, 10);
-        tryCompare(overlay, "opacity", 0);
-        compare(selectedOverlay.opacity, 0);
+        mouseMove(other, 20, 10);
+        tryCompare(other, "opacity", 0.9);
+        mousePress(other, 20, 10);
+        tryCompare(other, "opacity", 0.8);
+        mouseRelease(other, 20, 10);
+        mouseMove(other, -100, 10);
     }
 
     // ---- INC-014 parte 3 (R22/R25): painel lateral de 310 px e área principal ----
@@ -2297,9 +2356,9 @@ TestCase {
         compare(panel.radius, Theme.cardRadius);
         verify(Qt.colorEqual(panel.color, Theme.surface), String(panel.color));
         const origin = panel.mapToItem(null, 0, 0);
-        compare(origin.x, 75);
+        compare(origin.x, 76);
         compare(origin.y, 96);
-        compare(origin.y + panel.height, window.height - 5);
+        compare(origin.y + panel.height, window.height - 20);
         const title = descendants(panel).find(i => i.objectName === "panelTitle");
         compare(title.text, "Headset");
         compare(title.font.pixelSize, 24);
@@ -2478,13 +2537,13 @@ TestCase {
         compare(box.indicator.color.a, 0);
     }
 
-    function test_buttonsAreFlat32pxSurfaceWithUppercaseBoldText() {
+    function test_buttonsAre32pxSurfaceWithRadius4AndUppercaseBoldText() {
         const window = createMain(createFake([]), sampleInventory());
         showMinimum(window);
         const check = (name) => {
             const button = findItem(window, name);
             compare(button.height, 32, name);
-            compare(button.background.radius, 0, name);
+            compare(button.background.radius, Theme.radiusSmall, name);
             verify(Qt.colorEqual(button.background.color, button.enabled ? Theme.buttonSurface : Theme.buttonDisabledSurface),
                    name + " " + button.background.color);
             compare(button.contentItem.font.bold, true, name);
@@ -2521,7 +2580,7 @@ TestCase {
         const arrow = back.mapToItem(null, back.width / 2, back.height / 2);
         verify(Math.abs(arrow.x - 35.5) <= 3, "seta em x≈25..46: " + arrow.x);
         verify(Math.abs(arrow.y - 56) <= 3, "seta em y≈56: " + arrow.y);
-        compare(findItem(window, "deviceTitle").mapToItem(null, 0, 0).x, 81);
+        compare(findItem(window, "deviceTitle").mapToItem(null, 0, 0).x, 82);
         // Nas páginas Perfis e Configurações as abas e a engrenagem continuam.
         clickButton(window, "backButton");
         clickButton(window, "profilesPageButton");
@@ -2645,7 +2704,7 @@ TestCase {
         compare(slider.showValue, true);
         compare(slider.showExtremes, true);
         const toggle = findItem(window, "cameraControlSwitch");
-        compare(toggle.width, 54);
+        compare(toggle.width, 48);
         compare(toggle.height, 24);
         verify(toggle.toggleRequested !== undefined, "GHubSwitch");
         const combo = findItem(window, "cameraControlCombo");
@@ -2849,7 +2908,7 @@ TestCase {
         const underline = descendants(field).find(i => i.objectName === "fieldUnderline");
         compare(underline.height, 1);
         const toggle = findItem(window, "profilesAutoSwitch");
-        compare(toggle.width, 54);
+        compare(toggle.width, 48);
         verify(toggle.toggleRequested !== undefined, "GHubSwitch");
     }
 
@@ -2910,6 +2969,7 @@ TestCase {
         const root = window.contentItem.parent;
         const capture = name => {
             waitForRendering(root);
+            tryCompare(findItem(window, "pageStack"), "opacity", 1);
             const image = grabImage(root);
             compare(image.width, 1024, name);
             compare(image.height, 768, name);
@@ -3065,5 +3125,183 @@ TestCase {
         tryVerify(() => visibleByName(window, "identityTruncationLabel").length === 1);
         compare(visibleByName(window, "identityTruncationLabel")[0].text,
                 "o dispositivo tem mais features do que as 64 lidas");
+    }
+
+    // INC-014 parte 5: ícones próprios em SVG empacotados com o QML; não dependem do tema do sistema.
+    function test_ownSvgIconsLoadWithoutTheSystemTheme() {
+        const names = ["gear", "sun", "speedometer", "refresh", "headset", "equalizer", "microphone", "camera",
+                       "video", "grid", "list"];
+        for (const name of names) {
+            const image = Qt.createQmlObject("import QtQuick; Image { asynchronous: false }", testCase);
+            image.source = Qt.resolvedUrl("../../src/ui/qml/icons/" + name + ".svg");
+            compare(image.status, Image.Ready, name);
+            verify(image.implicitWidth > 0, name);
+            image.destroy();
+        }
+    }
+
+    function test_everyDeviceTabUsesAnOwnSvgIcon() {
+        const window = createMain(createFake([]), sampleInventory());
+        for (const device of ["G915", "G703", "G733", "Brio 100"]) {
+            openDevice(window, device);
+            for (const b of railButtons(window)) {
+                verify(String(b.icon.source).indexOf("/icons/") >= 0, device + " " + b.tabKey);
+                compare(b.icon.name, "", device + " " + b.tabKey);
+            }
+            clickButton(window, "backButton");
+        }
+    }
+
+    function test_dialogOpensAndClosesWithPrimaryAndSecondaryButtons() {
+        const component = Qt.createComponent(Qt.resolvedUrl("../../src/ui/qml/GHubDialog.qml"));
+        compare(component.status, Component.Ready, component.errorString());
+        const window = createMain(createFake([]), sampleInventory());
+        window.show();
+        waitForRendering(window.contentItem);
+        const dialog = component.createObject(window.contentItem, {title: "Título", message: "Mensagem",
+                                                     primaryText: "Entendi", secondaryText: "Cancelar"});
+        let accepted = 0, rejected = 0;
+        dialog.accepted.connect(() => accepted++);
+        dialog.rejected.connect(() => rejected++);
+        compare(dialog.opened, false);
+        dialog.open();
+        tryCompare(dialog, "opened", true);
+        compare(dialog.modal, true);
+        dialog.primaryButton.clicked();
+        tryCompare(dialog, "opened", false);
+        compare(accepted, 1);
+        dialog.open();
+        tryCompare(dialog, "opened", true);
+        dialog.secondaryButton.clicked();
+        tryCompare(dialog, "opened", false);
+        compare(rejected, 1);
+    }
+
+    function test_loadingIndicatorSpinsOnlyWhileVisible() {
+        const component = Qt.createComponent(Qt.resolvedUrl("../../src/ui/qml/GHubBusyRing.qml"));
+        compare(component.status, Component.Ready, component.errorString());
+        const window = createMain(createFake([]), sampleInventory());
+        window.show();
+        waitForRendering(window.contentItem);
+        const ring = component.createObject(window.contentItem, {running: true});
+        compare(ring.width, 30);
+        tryVerify(() => ring.rotationValue !== 0);
+        ring.running = false;
+        compare(ring.visible, false);
+    }
+
+    function test_cardShowsLoadingStateWithRingAndDimTexts() {
+        const window = createMain(createFake([]), sampleInventory());
+        const card = deviceCards(window)[1];
+        compare(descendants(card).find(i => i.objectName === "cardBusyRing").visible, false);
+        card.loading = true;
+        compare(descendants(card).find(i => i.objectName === "cardBusyRing").visible, true);
+        tryVerify(() => Qt.colorEqual(card.color, "#37383b"));
+    }
+
+    function test_homeShowsNoDeviceMessageWhenNothingIsDetected() {
+        const none = createFake([{name: "G915", summary: "não detectado"}, {name: "G703", summary: "não detectado"},
+                                 {name: "G733", summary: "não detectado"}, {name: "Brio 100", summary: "não detectado"}]);
+        const window = createMain(createFake([]), none);
+        window.show();
+        waitForRendering(window.contentItem);
+        const message = findItem(window, "noDeviceMessage");
+        compare(message.visible, true);
+        compare(message.text, "Conecte seu equipamento Logitech");
+        const detected = createMain(createFake([]), sampleInventory());
+        detected.show();
+        compare(findItem(detected, "noDeviceMessage").visible, false);
+    }
+
+    function test_switchIs48x24WithA16pxKnobAndPrimaryTrackWhenOn() {
+        const component = Qt.createComponent(Qt.resolvedUrl("../../src/ui/qml/GHubSwitch.qml"));
+        compare(component.status, Component.Ready, component.errorString());
+        const window = createMain(createFake([]), sampleInventory());
+        window.show();
+        const toggle = component.createObject(window.contentItem, {checked: false});
+        compare(toggle.width, 48);
+        compare(toggle.height, 24);
+        const track = descendants(toggle).find(i => i.objectName === "switchTrack");
+        const knob = descendants(toggle).find(i => i.objectName === "switchKnob");
+        compare(knob.width, 16);
+        compare(knob.height, 16);
+        tryCompare(knob, "x", 4);
+        verify(Qt.colorEqual(track.color, Theme.switchOff), String(track.color));
+        toggle.checked = true;
+        tryCompare(knob, "x", 28);
+        tryVerify(() => Qt.colorEqual(track.color, Theme.primary));
+    }
+
+    function test_panelButtonHoverTurnsTextGrayAndPressDims() {
+        const component = Qt.createComponent(Qt.resolvedUrl("../../src/ui/qml/GHubButton.qml"));
+        compare(component.status, Component.Ready, component.errorString());
+        const window = createMain(createFake([]), sampleInventory());
+        window.show();
+        const button = component.createObject(window.contentItem, {text: "Teste", x: 20, y: 20});
+        verify(Qt.colorEqual(button.contentItem.color, Theme.foreground));
+        mouseMove(button, 10, 10);
+        tryVerify(() => Qt.colorEqual(button.contentItem.color, Theme.sectionHeader));
+        mousePress(button, 10, 10);
+        tryCompare(button, "opacity", 0.7);
+        mouseRelease(button, 10, 10);
+        const square = component.createObject(window.contentItem, {text: "Reto", square: true});
+        compare(square.background.radius, 0);
+    }
+
+    function test_innerTabsDimWhenInactiveAndHoverBrightensWithGrayText() {
+        const window = createMain(createFake([]), sampleInventory());
+        showMinimum(window);
+        openDevice(window, "G915");
+        const tabs = descendants(findItem(window, "lightingTabs")).filter(i => i.objectName === "innerTab");
+        const inactive = tabs[1];
+        const label = i => descendants(i).find(x => x.objectName === "innerTabLabel");
+        compare(tabs[0].opacity, 1);
+        compare(inactive.opacity, 0.6);
+        compare(label(inactive).font.weight, Font.Thin);
+        verify(Qt.colorEqual(label(inactive).color, Theme.foreground), String(label(inactive).color));
+        mouseMove(inactive, 5, 5);
+        tryCompare(inactive, "opacity", 1);
+        tryVerify(() => Qt.colorEqual(label(inactive).color, Theme.sectionHeader));
+        mouseMove(inactive, -200, -200);
+    }
+
+    function test_sliderValueRowKeepsTrackAt65PercentOfTheWidth() {
+        const component = Qt.createComponent(Qt.resolvedUrl("../../src/ui/qml/GHubSlider.qml"));
+        compare(component.status, Component.Ready, component.errorString());
+        const window = createMain(createFake([]), sampleInventory());
+        window.show();
+        const slider = component.createObject(window.contentItem, {width: 278, showValue: true, from: 0, to: 100, value: 50});
+        const track = descendants(slider).find(i => i.objectName === "sliderTrack");
+        verify(Math.abs(track.width - 278 * 0.65) <= 1, String(track.width));
+    }
+
+    function test_comboPopupHasRadius4MinWidth240OpensOverTheFieldAndDimsItems() {
+        const component = Qt.createComponent(Qt.resolvedUrl("../../src/ui/qml/GHubComboBox.qml"));
+        compare(component.status, Component.Ready, component.errorString());
+        const window = createMain(createFake([]), sampleInventory());
+        window.show();
+        waitForRendering(window.contentItem);
+        const combo = component.createObject(window.contentItem, {model: ["A", "B", "C"], x: 100, y: 100, width: 120});
+        compare(combo.popup.background.radius, Theme.radiusSmall);
+        verify(combo.popup.width >= 240, String(combo.popup.width));
+        combo.popup.open();
+        tryCompare(combo.popup, "opened", true);
+        compare(combo.popup.x, -8);
+        compare(combo.popup.y, -8);
+        const list = combo.popup.contentItem;
+        tryVerify(() => list.itemAtIndex(2) !== null);
+        compare(list.itemAtIndex(0).opacity, 1, "item escolhido");
+        compare(list.itemAtIndex(2).opacity, 0.4, "item comum a 0,4");
+        combo.popup.close();
+    }
+
+    function test_pageChangeFadesInOverTheNewPage() {
+        const window = createMain(createFake([]), sampleInventory());
+        showMinimum(window);
+        const stack = findItem(window, "pageStack");
+        compare(stack.opacity, 1);
+        window.openPage(window.profilesPage);
+        verify(stack.opacity < 1, "começa a esmaecer: " + stack.opacity);
+        tryCompare(stack, "opacity", 1);
     }
 }

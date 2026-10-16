@@ -7,6 +7,7 @@ target_include_directories(ghub_test_fakes INTERFACE "${CMAKE_CURRENT_SOURCE_DIR
 target_link_libraries(ghub_test_fakes INTERFACE ghub_shared_kernel)
 
 add_subdirectory(architecture)
+add_subdirectory(tools)
 add_subdirectory(shared_kernel)
 add_subdirectory(device_access)
 add_subdirectory(device_inventory)

@@ -3,7 +3,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 
 // Cartão de um dispositivo na tela inicial (INC-014 parte 3, R20): 296×450 (616×450 para o teclado), preenchimento
-// de 25 px, título de 24 px, linha de bateria, desenho próprio do dispositivo e a conexão no pé. Só apresenta os
+// de 24 px e borda de 1 px (CSS computado §4), título de 24 px, linha de bateria, desenho próprio do dispositivo e a conexão no pé. Só apresenta os
 // textos recebidos e emite `clicked`; nenhuma regra de negócio nem acesso a dispositivo.
 Rectangle {
     id: card
@@ -20,18 +20,21 @@ Rectangle {
     property bool wide: false
     // Dispositivo não detectado fica esmaecido, mas continua clicável.
     property bool detected: true
+    // Carregando (como "Baixando recursos…" no G HUB): fundo mais claro, textos esmaecidos e anel de progresso.
+    property bool loading: false
 
     signal clicked()
 
-    readonly property bool highlighted: pointer.containsMouse || card.activeFocus
+    // Desabilitado (não detectado ou baixando recursos): camada de 10 %, texto #6a6a6a, imagem a 0,6, sem hover.
+    readonly property bool dimmed: loading || !detected
+    readonly property bool highlighted: !dimmed && (pointer.containsMouse || card.activeFocus)
 
     width: wide ? 616 : 296
     height: 450
     radius: Theme.cardRadius
-    color: highlighted ? Theme.cardHover : Theme.surface
-    border.width: highlighted ? 1 : 0
-    border.color: Theme.foreground
-    opacity: detected ? 1.0 : 0.5
+    color: dimmed ? Theme.cardLoading : (highlighted ? Theme.cardHover : Theme.surface)
+    border.width: 1
+    border.color: highlighted ? Theme.foreground : "transparent"
     activeFocusOnTab: true
 
     Accessible.role: Accessible.Button
@@ -51,11 +54,11 @@ Rectangle {
     Item {
         objectName: "cardContent"
         anchors.fill: parent
-        anchors.margins: 25
+        anchors.margins: 24
 
         Label {
             objectName: "cardTitle"
-            color: Theme.foreground
+            color: card.dimmed ? Theme.foregroundDisabled : Theme.foreground
             width: parent.width
             elide: Text.ElideRight
             text: card.deviceName
@@ -76,7 +79,7 @@ Rectangle {
                 text: card.batteryText
                 font.pixelSize: 14
                 font.bold: true
-                color: Theme.foregroundMedium
+                color: card.dimmed ? Theme.foregroundDisabled : Theme.foregroundMedium
             }
 
             BatteryIcon {
@@ -95,10 +98,17 @@ Rectangle {
 
             DeviceDrawing {
                 kind: card.deviceKind
+                opacity: card.dimmed ? 0.6 : 1
                 anchors.centerIn: parent
                 boxWidth: parent.width
                 boxHeight: parent.height
             }
+        }
+
+        GHubBusyRing {
+            objectName: "cardBusyRing"
+            anchors.centerIn: parent
+            running: card.loading
         }
 
         Label {
@@ -110,7 +120,7 @@ Rectangle {
             elide: Text.ElideRight
             text: card.connectionText
             font.pixelSize: 13
-            color: Theme.foregroundMedium
+            color: card.dimmed ? Theme.foregroundDisabled : Theme.foregroundMedium
         }
     }
 

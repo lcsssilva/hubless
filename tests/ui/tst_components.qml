@@ -53,9 +53,9 @@ TestCase {
 
     // ---- GHubSwitch (item 6) ----
 
-    function test_switch_isAPill54x24WithOffTrackAndKnobOnTheLeft() {
+    function test_switch_isAPill48x24WithOffTrackAndKnobOnTheLeft() {
         const control = make("GHubSwitch");
-        compare(control.width, 54);
+        compare(control.width, 48);
         compare(control.height, 24);
         const track = named(control, "switchTrack");
         const knob = named(control, "switchKnob");
@@ -135,15 +135,15 @@ TestCase {
         tryVerify(() => comboItems(combo).every(i => i !== null && i !== undefined));
         const popup = combo.popup;
         compare(popup.width, 240);
-        compare(popup.background.radius, 0);
+        compare(popup.background.radius, 4);
         verify(Qt.colorEqual(popup.background.color, "#393939"), String(popup.background.color));
         const items = comboItems(combo);
         compare(items[1].y - items[0].y, 24);
         compare(items[2].y - items[1].y, 24);
         mouseMove(items[1], 10, 10);
-        tryVerify(() => Qt.colorEqual(items[1].contentItem.color, "#ffffff"));
-        verify(Qt.colorEqual(items[0].contentItem.color, "#888888"), String(items[0].contentItem.color));
-        verify(Qt.colorEqual(items[2].contentItem.color, "#888888"), String(items[2].contentItem.color));
+        // CSS computado §5.3: itens brancos a 0,4 de opacidade; o sob o cursor vai a 1,0.
+        tryCompare(items[1], "opacity", 1);
+        compare(items[2].opacity, 0.4);
     }
 
     function test_combo_choosingAnItemEmitsItsIndexAndClosesTheList() {
@@ -170,7 +170,7 @@ TestCase {
         compare(text.horizontalAlignment, Text.AlignHCenter);
         const underline = named(spin, "spinUnderline");
         compare(underline.height, 1);
-        verify(Qt.colorEqual(underline.color, "#595b5e"), String(underline.color));
+        verify(Qt.colorEqual(underline.color, "#afb1b4"), String(underline.color));
         compare(named(spin, "spinMinus").width, 24);
         compare(named(spin, "spinPlus").width, 24);
         verify(spin.background === null || spin.background.color.a === 0, "sem caixa");
@@ -222,7 +222,7 @@ TestCase {
         const field = make("GHubTextField", "placeholderText: \"Nome do perfil\"; width: 200");
         const underline = named(field, "fieldUnderline");
         compare(underline.height, 1);
-        verify(Qt.colorEqual(underline.color, "#595b5e"), String(underline.color));
+        verify(Qt.colorEqual(underline.color, "#afb1b4"), String(underline.color));
         compare(underline.y + underline.height, field.height);
         compare(underline.width, field.width);
         verify(Qt.colorEqual(field.placeholderTextColor, Qt.rgba(1, 1, 1, 0.6)), String(field.placeholderTextColor));
@@ -282,7 +282,8 @@ TestCase {
             compare(l.font.capitalization, Font.AllUppercase);
         });
         verify(Qt.colorEqual(labels[0].color, "#ffffff"), String(labels[0].color));
-        verify(Qt.colorEqual(labels[1].color, "#9d9e9f"), String(labels[1].color));
+        verify(Qt.colorEqual(labels[1].color, "#ffffff"), String(labels[1].color));
+        compare(buttons[1].opacity, 0.6);
         compare(buttons[1].x - (buttons[0].x + buttons[0].width), 16);
         const underline = named(buttons[0], "innerTabUnderline");
         compare(underline.visible, true);
@@ -559,7 +560,7 @@ TestCase {
         const help = named(row, "theHelp");
         compare(label.text, "Modo ao vivo");
         compare(label.font.bold, true);
-        compare(toggle.width, 54);
+        compare(toggle.width, 48);
         compare(toggle.checked, true);
         compare(toggle.mapToItem(row, toggle.width, 0).x, row.width);
         verify(label.mapToItem(row, 0, 0).x < help.mapToItem(row, 0, 0).x);

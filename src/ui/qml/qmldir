@@ -25,3 +25,5 @@ EqualizerView 1.0 EqualizerView.qml
 InfoPage 1.0 InfoPage.qml
 SwitchRow 1.0 SwitchRow.qml
 HeadsetLightingSection 1.0 HeadsetLightingSection.qml
+GHubDialog 1.0 GHubDialog.qml
+GHubBusyRing 1.0 GHubBusyRing.qml
