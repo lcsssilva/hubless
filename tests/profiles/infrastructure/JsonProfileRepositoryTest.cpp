@@ -131,7 +131,7 @@ TEST_F(JsonProfileRepositoryTest, SavedDocumentHasDocumentedShape)
     ASSERT_TRUE(repository.save(sampleLibrary()).has_value());
     const QByteArray text = readFile();
     EXPECT_TRUE(text.contains("\"format\": \"ghub-linux-profiles\""));
-    EXPECT_TRUE(text.contains("\"version\": 2"));
+    EXPECT_TRUE(text.contains("\"version\": 3"));
     EXPECT_TRUE(text.contains("\"automaticSwitching\": false"));
     EXPECT_TRUE(text.contains("\"equalizer\""));
 }
@@ -187,8 +187,8 @@ TEST_F(JsonProfileRepositoryTest, RejectsRootThatIsNotObject)
 
 TEST_F(JsonProfileRepositoryTest, RejectsFutureAndZeroVersions)
 {
-    expectMalformed(validV2("[]", "false", "3"));
     expectMalformed(validV2("[]", "false", "4"));
+    expectMalformed(validV2("[]", "false", "5"));
     expectMalformed(validDocument("[]", "0"));
 }
 
@@ -266,7 +266,7 @@ TEST_F(JsonProfileRepositoryTest, RejectsUnknownKeysInsteadOfDroppingThemSilentl
 
 TEST_F(JsonProfileRepositoryTest, SaveRefusedAfterFailedLoadLeavesFileByteForByteEqual)
 {
-    const QByteArray original = validV2("[]", "false", "3"); // versão futura que o app não entende
+    const QByteArray original = validV2("[]", "false", "4"); // versão futura que o app não entende
     writeFile(original);
     JsonProfileRepository repository(path);
     ASSERT_FALSE(repository.load().has_value());
@@ -277,7 +277,7 @@ TEST_F(JsonProfileRepositoryTest, SaveRefusedAfterFailedLoadLeavesFileByteForByt
 
 TEST_F(JsonProfileRepositoryTest, SaveWorksAgainAfterSuccessfulReload)
 {
-    writeFile(validV2("[]", "false", "3"));
+    writeFile(validV2("[]", "false", "4"));
     JsonProfileRepository repository(path);
     ASSERT_FALSE(repository.load().has_value());
     writeFile(validDocument());
@@ -407,23 +407,23 @@ TEST_F(JsonProfileRepositoryTest, RealV1FileMigratesWithoutRulesAndIsNotRewritte
     EXPECT_EQ(readFile(), kRealV1);
 }
 
-TEST_F(JsonProfileRepositoryTest, SavingAfterV1MigrationWritesV2KeepingTheProfile)
+TEST_F(JsonProfileRepositoryTest, SavingAfterV1MigrationWritesV3KeepingTheProfile)
 {
     writeFile(kRealV1);
     JsonProfileRepository repository(path);
     auto loaded = repository.load();
     ASSERT_TRUE(loaded.has_value());
     ASSERT_TRUE(repository.save(*loaded).has_value());
-    EXPECT_TRUE(readFile().contains("\"version\": 2"));
+    EXPECT_TRUE(readFile().contains("\"version\": 3"));
     JsonProfileRepository reader(path);
     const auto again = reader.load();
     ASSERT_TRUE(again.has_value());
     EXPECT_EQ(again->profiles(), loaded->profiles());
 }
 
-TEST_F(JsonProfileRepositoryTest, VersionThreeIsRefusedAndFileStaysByteForByteIntact)
+TEST_F(JsonProfileRepositoryTest, VersionFourIsRefusedAndFileStaysByteForByteIntact)
 {
-    const QByteArray original = validV2("[]", "false", "3");
+    const QByteArray original = validV2("[]", "false", "4");
     writeFile(original);
     JsonProfileRepository repository(path);
     const auto loaded = repository.load();
@@ -431,4 +431,77 @@ TEST_F(JsonProfileRepositoryTest, VersionThreeIsRefusedAndFileStaysByteForByteIn
     EXPECT_EQ(loaded.error().code, ErrorCode::MalformedData);
     EXPECT_FALSE(repository.save(ProfileLibrary{}).has_value());
     EXPECT_EQ(readFile(), original);
+}
+
+// ---- INC-017: versão 3 (perfil padrão e seções persistentes) ----
+
+namespace {
+QByteArray validV3(const QByteArray& profiles, const QByteArray& extraRootKeys = {})
+{
+    return "{\"format\":\"ghub-linux-profiles\",\"version\":3,\"automaticSwitching\":false," + extraRootKeys +
+           "\"profiles\":" + profiles + "}";
+}
+const QByteArray kOneProfile = "[{\"name\":\"A\",\"camera\":[{\"id\":1,\"name\":\"x\",\"value\":1}]}]";
+} // namespace
+
+TEST_F(JsonProfileRepositoryTest, RoundTripKeepsDefaultProfileAndPersistentSections)
+{
+    auto library = sampleLibrary();
+    ASSERT_TRUE(library.setDefaultProfile(nameOf("Só EQ")).has_value());
+    library.setPersistent(ghub::profiles::ProfileSection::Equalizer, true);
+    JsonProfileRepository repository(path);
+    ASSERT_TRUE(repository.save(library).has_value());
+    const QByteArray text = readFile();
+    EXPECT_TRUE(text.contains("\"defaultProfile\": \"Só EQ\""));
+    EXPECT_TRUE(text.contains("\"persistentSections\""));
+    JsonProfileRepository reader(path);
+    const auto loaded = reader.load();
+    ASSERT_TRUE(loaded.has_value()) << loaded.error().detail;
+    EXPECT_EQ(loaded->defaultProfile()->value(), "Só EQ");
+    EXPECT_TRUE(loaded->isPersistent(ghub::profiles::ProfileSection::Equalizer));
+    EXPECT_FALSE(loaded->isPersistent(ghub::profiles::ProfileSection::Camera));
+}
+
+TEST_F(JsonProfileRepositoryTest, DefaultKeysAreOmittedWhenUnused)
+{
+    JsonProfileRepository repository(path);
+    ASSERT_TRUE(repository.save(sampleLibrary()).has_value());
+    const QByteArray text = readFile();
+    EXPECT_FALSE(text.contains("defaultProfile"));
+    EXPECT_FALSE(text.contains("persistentSections"));
+}
+
+TEST_F(JsonProfileRepositoryTest, ReadsV3WithoutOptionalKeys)
+{
+    writeFile(validV3(kOneProfile));
+    JsonProfileRepository repository(path);
+    const auto loaded = repository.load();
+    ASSERT_TRUE(loaded.has_value()) << loaded.error().detail;
+    EXPECT_FALSE(loaded->defaultProfile().has_value());
+}
+
+TEST_F(JsonProfileRepositoryTest, RejectsBadDefaultProfileAndPersistentSections)
+{
+    expectMalformed(validV3(kOneProfile, "\"defaultProfile\":\"B\","));                       // inexistente
+    expectMalformed(validV3(kOneProfile, "\"defaultProfile\":7,"));                           // tipo errado
+    expectMalformed(validV3(kOneProfile, "\"persistentSections\":[\"sidetone\"],"));          // seção desconhecida
+    expectMalformed(validV3(kOneProfile, "\"persistentSections\":\"camera\","));              // tipo errado
+    expectMalformed(validV3(kOneProfile, "\"persistentSections\":[\"camera\",\"camera\"],")); // repetida
+}
+
+TEST_F(JsonProfileRepositoryTest, V2StillRefusesV3OnlyKeys)
+{
+    expectMalformed("{\"format\":\"ghub-linux-profiles\",\"version\":2,\"automaticSwitching\":false,"
+                    "\"defaultProfile\":\"A\",\"profiles\":" +
+                    kOneProfile + "}");
+}
+
+TEST_F(JsonProfileRepositoryTest, V2FileIsMigratedWithoutDefaultAndSavedAsV3)
+{
+    writeFile(validV2(kOneProfile));
+    JsonProfileRepository repository(path);
+    const auto loaded = repository.load();
+    ASSERT_TRUE(loaded.has_value()) << loaded.error().detail;
+    ASSERT_TRUE(repository.save(*loaded).has_value());
+    EXPECT_TRUE(readFile().contains("\"version\": 3"));
 }

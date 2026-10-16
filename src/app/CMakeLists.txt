@@ -4,9 +4,13 @@ qt_standard_project_setup(REQUIRES 6.12)
 # Apoio do composition root (sinal de encerramento, autostart, controlador de desktop), separado do
 # main para ser testado em tests/app. Sem Qt Widgets: isso fica no adaptador ghub_app_tray.
 qt_add_library(ghub_app_support STATIC TerminationSignals.cpp TerminationSignals.hpp AutostartEntry.cpp
-    AutostartEntry.hpp AutostartManager.cpp AutostartManager.hpp DesktopController.cpp DesktopController.hpp)
+    AutostartEntry.hpp AutostartManager.cpp AutostartManager.hpp DesktopController.cpp DesktopController.hpp
+    AppSettings.cpp AppSettings.hpp LowBatteryNotifier.cpp LowBatteryNotifier.hpp TrayMenuModel.cpp TrayMenuModel.hpp
+    ConfigBackup.cpp ConfigBackup.hpp)
 target_include_directories(ghub_app_support PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
-target_link_libraries(ghub_app_support PUBLIC Qt6::Core ghub_shared_kernel)
+# Configurações do app (INC-017): validam com os objetos de valor dos módulos (battery e device_inventory).
+target_link_libraries(ghub_app_support PUBLIC Qt6::Core ghub_shared_kernel ghub_battery_domain
+    ghub_device_inventory_api)
 ghub_set_warnings(ghub_app_support)
 
 # Bandeja do sistema: único alvo de src/app que usa Qt Widgets (QSystemTrayIcon + QMenu), separado para

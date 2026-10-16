@@ -251,3 +251,78 @@ TEST(ProfileLibrary, PutReplacingSameProfileMayKeepItsOwnApplications)
     ASSERT_TRUE(library.put(profileWith("a", {appOf("firefox"), appOf("chrome")}), true).has_value());
     EXPECT_EQ(library.find(nameOf("a"))->applications().size(), 2U);
 }
+
+// ---- INC-017: duplicar, perfil padrão e seções persistentes ----
+
+using ghub::profiles::ProfileSection;
+
+TEST(ProfileLibraryInc017, DuplicateCopiesSectionsWithoutApplications)
+{
+    ProfileLibrary library;
+    const auto app = *ghub::profiles::ApplicationId::create("firefox");
+    ASSERT_TRUE(library.put(*Profile::create(nameOf("a"), {{1, "c", 7}}, std::nullopt, {app}), false).has_value());
+    ASSERT_TRUE(library.duplicate(nameOf("a"), nameOf("a2")).has_value());
+    ASSERT_EQ(library.profiles().size(), 2U);
+    const Profile* copy = library.find(nameOf("a2"));
+    ASSERT_NE(copy, nullptr);
+    EXPECT_EQ(copy->camera()[0].value, 7);
+    EXPECT_TRUE(copy->applications().empty());
+    EXPECT_EQ(library.profileFor(app)->name().value(), "a");
+}
+
+TEST(ProfileLibraryInc017, DuplicateRejectsMissingSourceExistingNameAndLimit)
+{
+    ProfileLibrary library;
+    ASSERT_TRUE(library.put(profileOf("a"), false).has_value());
+    EXPECT_EQ(library.duplicate(nameOf("x"), nameOf("y")).error().code, ErrorCode::InvalidArgument);
+    EXPECT_EQ(library.duplicate(nameOf("a"), nameOf("a")).error().code, ErrorCode::InvalidArgument);
+    for (int i = 1; i < 50; ++i) {
+        ASSERT_TRUE(library.put(profileOf("p" + std::to_string(i)), false).has_value());
+    }
+    EXPECT_EQ(library.duplicate(nameOf("a"), nameOf("novo")).error().code, ErrorCode::InvalidArgument);
+    EXPECT_EQ(library.profiles().size(), 50U);
+}
+
+TEST(ProfileLibraryInc017, DefaultProfileStartsEmptyMustExistAndFollowsRemoval)
+{
+    ProfileLibrary library;
+    EXPECT_FALSE(library.defaultProfile().has_value());
+    ASSERT_TRUE(library.put(profileOf("a"), false).has_value());
+    EXPECT_EQ(library.setDefaultProfile(nameOf("zz")).error().code, ErrorCode::InvalidArgument);
+    ASSERT_TRUE(library.setDefaultProfile(nameOf("a")).has_value());
+    EXPECT_EQ(library.defaultProfile()->value(), "a");
+    ASSERT_TRUE(library.remove(nameOf("a")).has_value());
+    EXPECT_FALSE(library.defaultProfile().has_value());
+    ASSERT_TRUE(library.put(profileOf("b"), false).has_value());
+    ASSERT_TRUE(library.setDefaultProfile(nameOf("b")).has_value());
+    ASSERT_TRUE(library.setDefaultProfile(std::nullopt).has_value());
+    EXPECT_FALSE(library.defaultProfile().has_value());
+}
+
+TEST(ProfileLibraryInc017, PersistentSectionsStartOffAndPropagateFromTheSavedProfile)
+{
+    ProfileLibrary library;
+    EXPECT_FALSE(library.isPersistent(ProfileSection::Camera));
+    const auto gainsA = *ghub::profiles::EqualizerGains::create({1, 1, 1, 1, 1, 1, 1, 1, 1, 1});
+    const auto gainsB = *ghub::profiles::EqualizerGains::create({2, 2, 2, 2, 2, 2, 2, 2, 2, 2});
+    ASSERT_TRUE(library.put(*Profile::create(nameOf("a"), {{1, "c", 1}}, gainsA), false).has_value());
+    ASSERT_TRUE(library.put(*Profile::create(nameOf("b"), {{1, "c", 2}}, gainsA), false).has_value());
+    library.setPersistent(ProfileSection::Equalizer, true);
+    EXPECT_TRUE(library.isPersistent(ProfileSection::Equalizer));
+    // Salvar "a" com nova curva: a curva vale em todos; a câmera (não persistente) só em "a".
+    ASSERT_TRUE(library.put(*Profile::create(nameOf("a"), {{1, "c", 9}}, gainsB), true).has_value());
+    library.propagatePersistent(*library.find(nameOf("a")));
+    EXPECT_EQ(library.find(nameOf("b"))->equalizer()->values()[0], 2);
+    EXPECT_EQ(library.find(nameOf("b"))->camera()[0].value, 2);
+}
+
+TEST(ProfileLibraryInc017, PropagationSkipsAnEmptySourceSection)
+{
+    ProfileLibrary library;
+    const auto gains = *ghub::profiles::EqualizerGains::create({1, 1, 1, 1, 1, 1, 1, 1, 1, 1});
+    ASSERT_TRUE(library.put(*Profile::create(nameOf("a"), {}, gains), false).has_value());
+    ASSERT_TRUE(library.put(profileOf("b", 5), false).has_value());
+    library.setPersistent(ProfileSection::Camera, true);
+    library.propagatePersistent(*library.find(nameOf("a")));
+    EXPECT_EQ(library.find(nameOf("b"))->camera()[0].value, 5);
+}

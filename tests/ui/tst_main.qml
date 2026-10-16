@@ -194,6 +194,20 @@ TestCase {
             property var switchingCalls: []
             property var assignCalls: []
             property var unassignCalls: []
+            property string defaultProfile: ""
+            property bool persistentCamera: false
+            property bool persistentEqualizer: false
+            property var duplicateCalls: []
+            property var exportCalls: []
+            property var importCalls: []
+            property var defaultCalls: []
+            property var persistentCalls: []
+            signal importNeedsReplace(string name, string path)
+            function duplicate(source, copyName) { duplicateCalls = duplicateCalls.concat([[source, copyName]]) }
+            function exportProfile(name, path) { exportCalls = exportCalls.concat([[name, path]]) }
+            function importProfile(path, replace) { importCalls = importCalls.concat([[path, replace]]) }
+            function setDefaultProfile(name) { defaultCalls = defaultCalls.concat([name]) }
+            function setPersistent(section, persistent) { persistentCalls = persistentCalls.concat([[section, persistent]]) }
             function setAutomaticSwitching(enabled) { switchingCalls = switchingCalls.concat([enabled]) }
             function assignLastApplication(name) { assignCalls = assignCalls.concat([name]) }
             function unassignApplication(application) { unassignCalls = unassignCalls.concat([application]) }
@@ -201,6 +215,52 @@ TestCase {
             function saveCurrent(name, replace) { saveCalls = saveCalls.concat([[name, replace]]) }
             function apply(name) { applyCalls = applyCalls.concat([name]) }
             function remove(name) { removeCalls = removeCalls.concat([name]) }
+        }
+    }
+
+    // Configurações do app falsas (INC-017): registram os pedidos; nada é gravado. Apelidos refletem na hora.
+    Component {
+        id: fakeAppSettingsComponent
+        QtObject {
+            property bool lowBatteryAlertEnabled: false
+            property int lowBatteryThreshold: 15
+            property var nicknames: ({})
+            property string status: ""
+            property var enabledCalls: []
+            property var thresholdCalls: []
+            property var nicknameCalls: []
+            property var clearCalls: []
+            function displayName(name) { return nicknames[name] ? nicknames[name] : name }
+            function setLowBatteryAlertEnabled(enabled) { enabledCalls = enabledCalls.concat([enabled]); return true }
+            function setLowBatteryThreshold(percent) { thresholdCalls = thresholdCalls.concat([percent]); return true }
+            function setNickname(name, text) {
+                nicknameCalls = nicknameCalls.concat([[name, text]])
+                const copy = Object.assign({}, nicknames)
+                copy[name] = text
+                nicknames = copy
+                return true
+            }
+            function clearNickname(name) {
+                clearCalls = clearCalls.concat([name])
+                const copy = Object.assign({}, nicknames)
+                delete copy[name]
+                nicknames = copy
+                return true
+            }
+        }
+    }
+
+    // Cópia local falsa (INC-017 R8): registra os pedidos; nada é lido nem gravado.
+    Component {
+        id: fakeBackupComponent
+        QtObject {
+            property var backups: []
+            property string status: ""
+            property int makeCalls: 0
+            property var restoreCalls: []
+            function makeBackup() { makeCalls++; return true }
+            function restore(name) { restoreCalls = restoreCalls.concat([name]); return true }
+            function refresh() {}
         }
     }
 
@@ -306,7 +366,7 @@ TestCase {
     function createMain(fake, inventoryFake, cameraFake, previewFake, editorFake, pointerFake, lightingFake,
                         headsetFake, equalizerFake, onboardFake, noiseFake, desktopFake, diagnosticsFake,
                         profilesFake, identityFake, keyboardStatusFake, pointerStatusFake, headsetStatusFake,
-                        lightingColorFake, animationFake) {
+                        lightingColorFake, animationFake, appSettingsFake, backupFake) {
         const component = Qt.createComponent(Qt.resolvedUrl("../../src/ui/qml/Main.qml"));
         compare(component.status, Component.Ready, component.errorString());
         const window = component.createObject(null, {batteryViewModel: fake,
@@ -328,7 +388,9 @@ TestCase {
                                                      deviceIdentityViewModel: identityFake || createIdentityFake(),
                                                      keyboardStatusViewModel: keyboardStatusFake || createStatusFake(),
                                                      pointerStatusViewModel: pointerStatusFake || createStatusFake(),
-                                                     headsetStatusViewModel: headsetStatusFake || createStatusFake()});
+                                                     headsetStatusViewModel: headsetStatusFake || createStatusFake(),
+                                                     appSettings: appSettingsFake || createAppSettingsFake(),
+                                                     configBackup: backupFake || createBackupFake()});
         verify(window !== null, "Main.qml deve instanciar");
         windows.push(window);
         return window;
@@ -430,6 +492,23 @@ TestCase {
         const fake = fakeProfilesComponent.createObject(null, props || {});
         fakes.push(fake);
         return fake;
+    }
+
+    function createAppSettingsFake(props) {
+        const fake = fakeAppSettingsComponent.createObject(null, props || {});
+        fakes.push(fake);
+        return fake;
+    }
+
+    function createBackupFake(props) {
+        const fake = fakeBackupComponent.createObject(null, props || {});
+        fakes.push(fake);
+        return fake;
+    }
+
+    function createMainWithAppSettings(settings, backup, inventory) {
+        return createMain(createFake([]), inventory || null, null, null, null, null, null, null, null, null, null,
+                          null, null, null, null, null, null, null, null, null, settings, backup);
     }
 
     function createMainWithProfiles(profiles) {
@@ -568,6 +647,19 @@ TestCase {
                               options: [{value: 0, label: "Disabled"}, {value: 1, label: "50 Hz"},
                                         {value: 2, label: "60 Hz"}],
                               editable: true}, overrides || {});
+    }
+
+    // Todos os itens visuais abaixo de `root` (inclusive ele), em largura.
+    function itemsUnder(root) {
+        const items = [];
+        const pending = [root];
+        while (pending.length > 0) {
+            const item = pending.shift();
+            items.push(item);
+            for (let i = 0; i < item.children.length; ++i)
+                pending.push(item.children[i]);
+        }
+        return items;
     }
 
     function findItem(window, objectName) {
@@ -801,12 +893,14 @@ TestCase {
         // Desde a parte 3 do INC-014 os botões do painel são GHubButton (o estilo reto do G HUB).
         const buttons = items.filter(item => /^(GHubButton|Button|QQuickButton)(_QMLTYPE_\d+)?\(/.test(item.toString()));
         compare(buttons.map(b => b.objectName).sort().join(","),
-                "animationStartButton,animationStopButton,cameraControlDefault,cameraControlDefault,"
+                "animationStartButton,animationStopButton,backupMakeButton,cameraControlDefault,cameraControlDefault,"
                 + "cameraPreviewToggle,diagnosticsExportButton,"
                 + "diagnosticsRefreshButton,eqFlatButton,headsetLightingApplyButton,headsetLightsOffButton,"
                 + "headsetLightsOnButton,headsetSidetoneApplyButton,"
+                + "nicknameResetButton,nicknameResetButton,nicknameResetButton,nicknameResetButton,"
+                + "nicknameSaveButton,nicknameSaveButton,nicknameSaveButton,nicknameSaveButton,"
                 + "onboardAddStageButton,onboardReadButton,onboardRemoveStageButton,"
-                + "onboardRestoreButton,onboardWriteButton,pointerReadButton,profileSaveButton,"
+                + "onboardRestoreButton,onboardWriteButton,pointerReadButton,profileSaveButton,profilesImportButton,"
                 + "readIdentityButton,readIdentityButton,readIdentityButton,"
                 + "readStatusButton,readStatusButton,readStatusButton,"
                 + "toggleFeatureIdsButton,toggleFeatureIdsButton,toggleFeatureIdsButton"); // amostras: delegates de tipo próprio, testadas à parte
@@ -3453,5 +3547,193 @@ TestCase {
     function test_animationsLiveSwitchIsDisabledWhileAnAnimationRuns() {
         const window = createAnimationMain(createAnimationFake({running: true}));
         compare(findItem(window, "lightingLiveSwitch").enabled, false);
+    }
+
+    // ---- INC-017: perfis (duplicar, exportar, importar, padrão, persistente) ----
+
+    function test_profilesDuplicateAsksForTheNewNameAndCallsDuplicate() {
+        const profiles = createProfilesFake({profileNames: ["A", "B"]});
+        const window = createMainWithProfiles(profiles);
+        clickButton(window, "profilesPageButton");
+        const buttons = allItems(window).filter(item => item.objectName === "profileDuplicateButton");
+        compare(buttons.length, 2);
+        buttons[1].clicked();
+        const dialog = findDialog(window, "profileDuplicateDialog");
+        tryCompare(dialog, "visible", true);
+        compare(profiles.duplicateCalls.length, 0);
+        const field = itemsUnder(dialog.contentItem).find(item => item.objectName === "profileDuplicateField");
+        verify(field !== undefined, "campo do diálogo");
+        compare(field.text, "B (cópia)");
+        field.text = "B2";
+        dialog.accept();
+        compare(profiles.duplicateCalls, [["B", "B2"]]);
+    }
+
+    function test_profilesExportAndImportGoThroughTheFileHandlers() {
+        const profiles = createProfilesFake({profileNames: ["A"]});
+        const window = createMainWithProfiles(profiles);
+        clickButton(window, "profilesPageButton");
+        allItems(window).filter(item => item.objectName === "profileExportButton")[0].clicked();
+        compare(window.profilePendingExport, "A");
+        window.finishExport("file:///tmp/a.json");
+        compare(profiles.exportCalls, [["A", "file:///tmp/a.json"]]);
+        window.finishImport("file:///tmp/in.json");
+        compare(profiles.importCalls, [["file:///tmp/in.json", false]]);
+        compare(profiles.applyCalls.length, 0);
+    }
+
+    function test_profilesImportButtonExistsAndOnlyOpensAFileDialog() {
+        const profiles = createProfilesFake({});
+        const window = createMainWithProfiles(profiles);
+        clickButton(window, "profilesPageButton");
+        verify(findItem(window, "profilesImportButton") !== null);
+        compare(profiles.importCalls.length, 0);
+    }
+
+    function test_profilesImportConflictAsksBeforeReplacing() {
+        const profiles = createProfilesFake({profileNames: ["A"]});
+        const window = createMainWithProfiles(profiles);
+        profiles.importNeedsReplace("A", "file:///tmp/in.json");
+        const dialog = findDialog(window, "profileImportReplaceDialog");
+        tryCompare(dialog, "visible", true);
+        compare(profiles.importCalls.length, 0);
+        dialog.accept();
+        compare(profiles.importCalls, [["file:///tmp/in.json", true]]);
+    }
+
+    function test_profilesImportConflictRejectedImportsNothing() {
+        const profiles = createProfilesFake({profileNames: ["A"]});
+        const window = createMainWithProfiles(profiles);
+        profiles.importNeedsReplace("A", "file:///tmp/in.json");
+        const dialog = findDialog(window, "profileImportReplaceDialog");
+        tryCompare(dialog, "visible", true);
+        dialog.reject();
+        compare(profiles.importCalls.length, 0);
+    }
+
+    function test_profilesDefaultButtonSetsAndClearsTheDefaultProfile() {
+        const profiles = createProfilesFake({profileNames: ["A", "B"], defaultProfile: "B"});
+        const window = createMainWithProfiles(profiles);
+        clickButton(window, "profilesPageButton");
+        compare(findItem(window, "profilesDefaultLabel").text, "Perfil padrão: B");
+        const buttons = allItems(window).filter(item => item.objectName === "profileDefaultButton");
+        compare(buttons.length, 2);
+        buttons[0].clicked();
+        buttons[1].clicked();
+        compare(profiles.defaultCalls, ["A", ""]);
+        profiles.defaultProfile = "";
+        tryCompare(findItem(window, "profilesDefaultLabel"), "text", "Perfil padrão: nenhum");
+    }
+
+    function test_profilesPersistentSwitchesReflectAndRequestTheSection() {
+        const profiles = createProfilesFake({profileNames: ["A"], persistentEqualizer: true});
+        const window = createMainWithProfiles(profiles);
+        clickButton(window, "profilesPageButton");
+        const camera = findItem(window, "profilesPersistentCamera");
+        const equalizer = findItem(window, "profilesPersistentEqualizer");
+        compare(camera.checked, false);
+        compare(equalizer.checked, true);
+        camera.toggleRequested(true);
+        equalizer.toggleRequested(false);
+        compare(profiles.persistentCalls, [["camera", true], ["equalizer", false]]);
+    }
+
+    // ---- INC-017: configurações (aviso de bateria, apelidos, cópia local) ----
+
+    function test_settingsLowBatteryAlertIsOffByDefaultAndTogglesThroughTheSettings() {
+        const settings = createAppSettingsFake();
+        const window = createMainWithAppSettings(settings, null);
+        clickButton(window, "settingsPageButton");
+        const toggle = findItem(window, "lowBatterySwitch");
+        compare(toggle.checked, false);
+        compare(settings.enabledCalls.length, 0);
+        toggle.toggleRequested(true);
+        compare(settings.enabledCalls, [true]);
+        settings.lowBatteryAlertEnabled = true;
+        tryCompare(findItem(window, "lowBatterySwitch"), "checked", true);
+    }
+
+    function test_settingsLowBatteryThresholdSpinShowsAndSendsTheValue() {
+        const settings = createAppSettingsFake({lowBatteryThreshold: 25});
+        const window = createMainWithAppSettings(settings, null);
+        clickButton(window, "settingsPageButton");
+        const spin = findItem(window, "lowBatteryThresholdSpin");
+        compare(spin.from, 5);
+        compare(spin.to, 50);
+        compare(spin.value, 25);
+        spin.value = 40;
+        spin.valueModified();
+        compare(settings.thresholdCalls, [40]);
+    }
+
+    function test_settingsNicknameSaveAndRestore() {
+        const settings = createAppSettingsFake({nicknames: {"G703": "Mouse da mesa"}});
+        const window = createMainWithAppSettings(settings, null);
+        clickButton(window, "settingsPageButton");
+        const fields = allItems(window).filter(item => item.objectName === "nicknameField");
+        compare(fields.length, 4);
+        compare(fields[1].text, "Mouse da mesa");
+        compare(fields[0].text, "");
+        fields[0].text = "Teclado";
+        allItems(window).filter(item => item.objectName === "nicknameSaveButton")[0].clicked();
+        compare(settings.nicknameCalls, [["G915", "Teclado"]]);
+        allItems(window).filter(item => item.objectName === "nicknameResetButton")[1].clicked();
+        compare(settings.clearCalls, ["G703"]);
+    }
+
+    function test_nicknameShowsOnTheCardAndInTheDeviceHeader() {
+        const settings = createAppSettingsFake({nicknames: {"G915": "Teclado da mesa"}});
+        const window = createMainWithAppSettings(settings, null, sampleInventory());
+        window.show();
+        const card = deviceCards(window).find(c => c.deviceName === "G915");
+        verify(card !== undefined);
+        const title = itemsUnder(card).find(item => item.objectName === "cardTitle");
+        compare(title.text, "Teclado da mesa");
+        compare(deviceCards(window).find(c => c.deviceName === "G703").displayName, "G703");
+        openDevice(window, "G915");
+        compare(findItem(window, "deviceTitle").text, "Teclado da mesa");
+        settings.nicknames = {};
+        tryCompare(findItem(window, "deviceTitle"), "text", "G915");
+    }
+
+    function test_settingsBackupMakeAndRestoreAskForConfirmation() {
+        const backup = createBackupFake({backups: ["config-20260301-100000.json", "config-20260101-100000.json"],
+                                         status: "Cópia feita: x"});
+        const window = createMainWithAppSettings(null, backup);
+        clickButton(window, "settingsPageButton");
+        findItem(window, "backupMakeButton").clicked();
+        compare(backup.makeCalls, 1);
+        compare(findItem(window, "backupStatusLabel").text, "Cópia feita: x");
+        const restores = allItems(window).filter(item => item.objectName === "backupRestoreButton");
+        compare(restores.length, 2);
+        restores[1].clicked();
+        const dialog = findDialog(window, "backupRestoreDialog");
+        tryCompare(dialog, "visible", true);
+        compare(backup.restoreCalls.length, 0);
+        dialog.accept();
+        compare(backup.restoreCalls, ["config-20260101-100000.json"]);
+    }
+
+    function test_settingsBackupRestoreRejectedRestoresNothing() {
+        const backup = createBackupFake({backups: ["config-20260301-100000.json"]});
+        const window = createMainWithAppSettings(null, backup);
+        clickButton(window, "settingsPageButton");
+        allItems(window).filter(item => item.objectName === "backupRestoreButton")[0].clicked();
+        const dialog = findDialog(window, "backupRestoreDialog");
+        tryCompare(dialog, "visible", true);
+        dialog.reject();
+        compare(backup.restoreCalls.length, 0);
+        compare(backup.makeCalls, 0);
+    }
+
+    function test_openingTheWindowNeverWritesSettingsOrBackups() {
+        const settings = createAppSettingsFake();
+        const backup = createBackupFake();
+        const window = createMainWithAppSettings(settings, backup);
+        clickButton(window, "settingsPageButton");
+        compare(settings.enabledCalls.length + settings.thresholdCalls.length + settings.nicknameCalls.length
+                + settings.clearCalls.length, 0);
+        compare(backup.makeCalls, 0);
+        compare(backup.restoreCalls.length, 0);
     }
 }

@@ -130,7 +130,8 @@ struct Fixture {
     ghub::test::FakeProfileRepository repository;
     ghub::test::FakeCameraSettingsPort camera;
     ghub::test::FakeEqualizerSettingsPort equalizer;
-    ProfileBook book{repository, camera};
+    ghub::test::FakeProfileTransfer transfer;
+    ProfileBook book{repository, camera, &transfer};
     ApplyProfile applyProfile{camera, equalizer};
     ghub::test::FakeActiveApplicationSource source;
     ProfilesController controller;
@@ -707,6 +708,161 @@ private slots:
         fixture->source.emitStatus(std::nullopt);
         fixture->drainQueue();
         QCOMPARE(fixture->controller.switchingStatus(), QStringLiteral("ativa"));
+    }
+
+    // ---- INC-017: duplicar, exportar, importar, padrão e persistente ----
+
+    void duplicate_CreatesACopyAndPublishesIt()
+    {
+        fixture->loadLibrary(libraryOf({makeProfile("A", {{brightnessId, "Brightness", 1}}, false)}));
+
+        fixture->controller.duplicate("A", "A cópia");
+        QTRY_VERIFY_WITH_TIMEOUT(!fixture->controller.busy(), 5000);
+
+        QCOMPARE(fixture->controller.profileNames(), (QStringList{"A", "A cópia"}));
+        QCOMPARE(fixture->repository.saveCalls, 1);
+        QVERIFY2(fixture->controller.status().contains("A cópia"), qPrintable(fixture->controller.status()));
+        QVERIFY(fixture->camera.applied.empty());
+    }
+
+    void duplicate_ExistingName_ReportsFailure()
+    {
+        fixture->loadLibrary(libraryOf({makeProfile("A", {{brightnessId, "Brightness", 1}}, false)}));
+
+        fixture->controller.duplicate("A", "A");
+        QTRY_VERIFY_WITH_TIMEOUT(!fixture->controller.busy(), 5000);
+
+        QVERIFY2(fixture->controller.status().startsWith("Falha"), qPrintable(fixture->controller.status()));
+        QCOMPARE(fixture->repository.saveCalls, 0);
+    }
+
+    void exportProfile_SendsThePathToTheTransferAndAcceptsFileUrls()
+    {
+        fixture->loadLibrary(libraryOf({makeProfile("A", {{brightnessId, "Brightness", 1}}, false)}));
+
+        fixture->controller.exportProfile("A", "file:///tmp/perfil%20a.json");
+        QTRY_VERIFY_WITH_TIMEOUT(!fixture->controller.busy(), 5000);
+
+        QCOMPARE(fixture->transfer.exportedPaths.size(), size_t{1});
+        QCOMPARE(QString::fromStdString(fixture->transfer.exportedPaths.front()), QStringLiteral("/tmp/perfil a.json"));
+        QCOMPARE(fixture->repository.saveCalls, 0);
+        QVERIFY2(fixture->controller.status().contains("exportado"), qPrintable(fixture->controller.status()));
+    }
+
+    void importProfile_AddsTheProfileListsIgnoredFieldsAndAppliesNothing()
+    {
+        fixture->loadLibrary(libraryOf({makeProfile("A", {{brightnessId, "Brightness", 1}}, false)}));
+        fixture->transfer.importResult = ghub::profiles::ImportedProfile{
+            makeProfile("Novo", {{contrastId, "Contrast", 5}}, true), {"extra", "camera[].zzz"}};
+
+        fixture->controller.importProfile("/tmp/in.json", false);
+        QTRY_VERIFY_WITH_TIMEOUT(!fixture->controller.busy(), 5000);
+
+        QCOMPARE(fixture->controller.profileNames(), (QStringList{"A", "Novo"}));
+        QVERIFY2(fixture->controller.status().contains("importado"), qPrintable(fixture->controller.status()));
+        QVERIFY(fixture->controller.report().join("\n").contains("extra, camera[].zzz"));
+        QVERIFY(fixture->camera.applied.empty());
+        QVERIFY(fixture->equalizer.requested.empty());
+    }
+
+    void importProfile_ExistingName_AsksBeforeReplacing()
+    {
+        fixture->loadLibrary(libraryOf({makeProfile("A", {{brightnessId, "Brightness", 1}}, false)}));
+        fixture->transfer.importResult =
+            ghub::profiles::ImportedProfile{makeProfile("A", {{brightnessId, "Brightness", 77}}, false), {}};
+        QSignalSpy needsReplace{&fixture->controller, &ProfilesController::importNeedsReplace};
+
+        fixture->controller.importProfile("/tmp/in.json", false);
+        QTRY_VERIFY_WITH_TIMEOUT(!fixture->controller.busy(), 5000);
+
+        QCOMPARE(needsReplace.count(), 1);
+        QCOMPARE(needsReplace.front().at(0).toString(), QStringLiteral("A"));
+        QCOMPARE(needsReplace.front().at(1).toString(), QStringLiteral("/tmp/in.json"));
+        QCOMPARE(fixture->repository.saveCalls, 0);
+
+        fixture->controller.importProfile("/tmp/in.json", true);
+        QTRY_VERIFY_WITH_TIMEOUT(!fixture->controller.busy(), 5000);
+        QCOMPARE(fixture->repository.lastSaved.profiles().front().camera().front().value, 77);
+        QCOMPARE(needsReplace.count(), 1);
+    }
+
+    void importProfile_Malformed_ReportsFailureWithoutSignal()
+    {
+        fixture->transfer.importResult = fail(ErrorCode::MalformedData, "arquivo maior que 64 KiB");
+        QSignalSpy needsReplace{&fixture->controller, &ProfilesController::importNeedsReplace};
+
+        fixture->controller.importProfile("/tmp/in.json", false);
+        QTRY_VERIFY_WITH_TIMEOUT(!fixture->controller.busy(), 5000);
+
+        QVERIFY2(fixture->controller.status().contains("64 KiB"), qPrintable(fixture->controller.status()));
+        QCOMPARE(needsReplace.count(), 0);
+        QCOMPARE(fixture->repository.saveCalls, 0);
+    }
+
+    void setDefaultProfile_PublishesAndClears()
+    {
+        fixture->loadLibrary(libraryOf({makeProfile("A", {{brightnessId, "Brightness", 1}}, false)}));
+        QVERIFY(fixture->controller.defaultProfile().isEmpty());
+
+        fixture->controller.setDefaultProfile("A");
+        QTRY_VERIFY_WITH_TIMEOUT(!fixture->controller.busy(), 5000);
+        QCOMPARE(fixture->controller.defaultProfile(), QStringLiteral("A"));
+
+        fixture->controller.setDefaultProfile(QString());
+        QTRY_VERIFY_WITH_TIMEOUT(!fixture->controller.busy(), 5000);
+        QVERIFY(fixture->controller.defaultProfile().isEmpty());
+        QVERIFY(fixture->camera.applied.empty());
+    }
+
+    void defaultProfile_IsAppliedWhenTheFocusedApplicationHasNoRule()
+    {
+        auto library = switchingLibrary(
+            {makeProfileFor("PA", brightnessId, 1, {"app-a"}), makeProfileFor("Padrao", contrastId, 9, {})});
+        QVERIFY(library.setDefaultProfile(ProfileName::create("Padrao").value()).has_value());
+        fixture->startSwitching(std::move(library));
+        QSignalSpy cameraApplied{&fixture->controller, &ProfilesController::cameraApplied};
+
+        fixture->source.emitActivated("dolphin");
+        QTRY_COMPARE_WITH_TIMEOUT(cameraApplied.count(), 1, 5000);
+        fixture->settle();
+
+        QCOMPARE(fixture->camera.applied.size(), size_t{1});
+        QCOMPARE(fixture->camera.applied.front().first, contrastId);
+    }
+
+    void setPersistent_PublishesAndPersistentSectionsAreNotAppliedWithAProfile()
+    {
+        fixture->loadLibrary(libraryOf({makeProfile("A", {{brightnessId, "Brightness", 1}}, true)}));
+
+        fixture->controller.setPersistent("camera", true);
+        QTRY_VERIFY_WITH_TIMEOUT(!fixture->controller.busy(), 5000);
+        QVERIFY(fixture->controller.persistentCamera());
+        QVERIFY(!fixture->controller.persistentEqualizer());
+
+        QSignalSpy cameraApplied{&fixture->controller, &ProfilesController::cameraApplied};
+        fixture->controller.apply("A");
+        QTRY_VERIFY_WITH_TIMEOUT(!fixture->controller.busy(), 5000);
+
+        QVERIFY(fixture->camera.applied.empty());
+        QCOMPARE(cameraApplied.count(), 0);
+        QCOMPARE(fixture->equalizer.requested.size(), size_t{1});
+        QVERIFY(fixture->controller.report().join("\n").contains("Câmera: igual em todos os perfis"));
+
+        fixture->controller.setPersistent("equalizer", true);
+        QTRY_VERIFY_WITH_TIMEOUT(!fixture->controller.busy(), 5000);
+        fixture->controller.apply("A");
+        QTRY_VERIFY_WITH_TIMEOUT(!fixture->controller.busy(), 5000);
+        QCOMPARE(fixture->equalizer.requested.size(), size_t{1}); // EQ também persistente: nada novo
+    }
+
+    void setPersistent_UnknownSection_IsRefused()
+    {
+        fixture->loadLibrary(libraryOf({makeProfile("A", {{brightnessId, "Brightness", 1}}, true)}));
+
+        fixture->controller.setPersistent("sidetone", true);
+
+        QVERIFY2(fixture->controller.status().startsWith("Falha"), qPrintable(fixture->controller.status()));
+        QCOMPARE(fixture->repository.saveCalls, 0);
     }
 
 private:

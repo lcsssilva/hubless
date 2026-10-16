@@ -11,7 +11,7 @@
 namespace ghub::battery {
 
 // Expõe ao QML o estado de bateria de cada dispositivo suportado e relê periodicamente
-// (ADR-0004 §4). Cada item de `devices` é um mapa com `name` e `summary`.
+// (ADR-0004 §4). Cada item de `devices` é um mapa com `name`, `summary`, `percent` (-1 sem nível) e `charging`.
 // O caso de uso informado precisa sobreviver ao ViewModel.
 class BatteryViewModel final : public QObject {
     Q_OBJECT

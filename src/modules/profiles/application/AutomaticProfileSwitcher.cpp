@@ -9,10 +9,14 @@ std::optional<ProfileName> AutomaticProfileSwitcher::decide(const ProfileLibrary
         return std::nullopt;
     }
     const Profile* target = library.profileFor(application);
-    if (target == nullptr || (current_ && *current_ == target->name())) {
+    // Sem regra para o aplicativo: vale o perfil padrão, se houver (INC-017 R6).
+    const ProfileName* wanted = target != nullptr                      ? &target->name()
+                                : library.defaultProfile().has_value() ? &*library.defaultProfile()
+                                                                       : nullptr;
+    if (wanted == nullptr || (current_ && *current_ == *wanted)) {
         return std::nullopt;
     }
-    return target->name();
+    return *wanted;
 }
 
 void AutomaticProfileSwitcher::noteApplied(const ProfileName& name)

@@ -2,6 +2,7 @@
 
 #include <QDebug>
 #include <QPointer>
+#include <QUrl>
 #include <QtConcurrent>
 
 #include <string>
@@ -14,6 +15,13 @@ namespace {
 QString fromStd(const std::string& text)
 {
     return QString::fromStdString(text);
+}
+
+// Caminho local a partir do que o diálogo de arquivo entrega (caminho ou URL file://).
+std::string localPath(const QString& path)
+{
+    const QUrl url{path};
+    return (url.isLocalFile() ? url.toLocalFile() : path).toStdString();
 }
 
 QString controlLabel(const ApplyProfile::CameraItemResult& item)
@@ -83,7 +91,11 @@ void ProfilesController::load()
     }
     ProfileBook& book = *book_;
     start(QtConcurrent::run([&book]() -> Outcome {
-        Outcome outcome{.kind = Kind::Load, .error = std::nullopt, .saved = std::nullopt, .cameraItems = {}};
+        Outcome outcome{.kind = Kind::Load,
+                        .error = std::nullopt,
+                        .saved = std::nullopt,
+                        .cameraItems = {},
+                        .imported = std::nullopt};
         if (auto loaded = book.load(); !loaded) {
             outcome.error = loaded.error();
         }
@@ -108,7 +120,11 @@ void ProfilesController::saveCurrent(const QString& name, bool replace)
     ProfileBook& book = *book_;
     const std::string rawName = name.toStdString();
     start(QtConcurrent::run([&book, rawName, gains, replace]() -> Outcome {
-        Outcome outcome{.kind = Kind::Save, .error = std::nullopt, .saved = std::nullopt, .cameraItems = {}};
+        Outcome outcome{.kind = Kind::Save,
+                        .error = std::nullopt,
+                        .saved = std::nullopt,
+                        .cameraItems = {},
+                        .imported = std::nullopt};
         auto saved = book.saveCurrent(rawName, gains, replace);
         if (saved) {
             outcome.saved = *saved;
@@ -143,11 +159,16 @@ void ProfilesController::startApply(const Profile& profile, const QString& viaAp
     operationName_ = fromStd(profile.name().value());
     operationApplication_ = viaApplication;
     const ApplyProfile& useCase = *applyProfile_;
-    start(QtConcurrent::run([&useCase, profile]() -> Outcome {
+    skipCamera_ = book_->library().isPersistent(ProfileSection::Camera);
+    skipEqualizer_ = book_->library().isPersistent(ProfileSection::Equalizer);
+    const bool skipCamera = skipCamera_;
+    start(QtConcurrent::run([&useCase, profile, skipCamera]() -> Outcome {
         return Outcome{.kind = Kind::Apply,
                        .error = std::nullopt,
                        .saved = std::nullopt,
-                       .cameraItems = useCase.applyCamera(profile)};
+                       .cameraItems =
+                           skipCamera ? std::vector<ApplyProfile::CameraItemResult>{} : useCase.applyCamera(profile),
+                       .imported = std::nullopt};
     }));
 }
 
@@ -165,7 +186,8 @@ void ProfilesController::startPersistence(Kind kind, std::function<shared_kernel
 {
     ProfileBook& book = *book_;
     start(QtConcurrent::run([&book, kind, work = std::move(work)]() -> Outcome {
-        Outcome outcome{.kind = kind, .error = std::nullopt, .saved = std::nullopt, .cameraItems = {}};
+        Outcome outcome{
+            .kind = kind, .error = std::nullopt, .saved = std::nullopt, .cameraItems = {}, .imported = std::nullopt};
         if (auto done = work(book); !done) {
             outcome.error = done.error();
         }
@@ -210,6 +232,84 @@ void ProfilesController::unassignApplication(const QString& application)
     startPersistence(Kind::Unassign, [raw](ProfileBook& book) { return book.unassignApplication(raw); });
 }
 
+void ProfilesController::duplicate(const QString& source, const QString& copyName)
+{
+    if (refuseIfBusy()) {
+        return;
+    }
+    operationName_ = copyName.trimmed();
+    const std::string from = source.toStdString();
+    const std::string to = copyName.toStdString();
+    startPersistence(Kind::Duplicate, [from, to](ProfileBook& book) { return book.duplicate(from, to); });
+}
+
+void ProfilesController::exportProfile(const QString& name, const QString& path)
+{
+    if (refuseIfBusy()) {
+        return;
+    }
+    operationName_ = name.trimmed();
+    const std::string raw = name.toStdString();
+    const std::string file = localPath(path);
+    startPersistence(Kind::Export, [raw, file](ProfileBook& book) { return book.exportProfile(raw, file); });
+}
+
+void ProfilesController::importProfile(const QString& path, bool replace)
+{
+    if (refuseIfBusy()) {
+        return;
+    }
+    const std::string file = localPath(path);
+    operationPath_ = path;
+    ProfileBook& book = *book_;
+    start(QtConcurrent::run([&book, file, replace]() -> Outcome {
+        Outcome outcome{.kind = Kind::Import,
+                        .error = std::nullopt,
+                        .saved = std::nullopt,
+                        .cameraItems = {},
+                        .imported = std::nullopt};
+        auto imported = book.importProfile(file, replace);
+        if (imported) {
+            outcome.imported = std::move(*imported);
+        } else {
+            outcome.error = imported.error();
+        }
+        return outcome;
+    }));
+}
+
+void ProfilesController::setDefaultProfile(const QString& name)
+{
+    if (refuseIfBusy()) {
+        return;
+    }
+    operationName_ = name.trimmed();
+    const std::string raw = name.toStdString();
+    const bool clear = name.trimmed().isEmpty();
+    startPersistence(Kind::Default, [raw, clear](ProfileBook& book) {
+        return book.setDefaultProfile(clear ? std::nullopt : std::optional<std::string_view>{raw});
+    });
+}
+
+void ProfilesController::setPersistent(const QString& section, bool persistent)
+{
+    if (refuseIfBusy()) {
+        return;
+    }
+    ProfileSection parsed = ProfileSection::Camera;
+    if (section == QLatin1String("equalizer")) {
+        parsed = ProfileSection::Equalizer;
+    } else if (section != QLatin1String("camera")) {
+        status_ = tr("Falha: seção desconhecida: %1").arg(section);
+        emit profilesChanged();
+        return;
+    }
+    operationName_ = section;
+    operationPersistent_ = persistent;
+    startPersistence(Kind::Persistent,
+                     [parsed, persistent](ProfileBook& book) { return book.setPersistent(parsed, persistent); });
+}
+
 void ProfilesController::refreshFromBook()
 {
     // Só chamado com o worker parado: ler o livro aqui é seguro.
@@ -219,6 +319,10 @@ void ProfilesController::refreshFromBook()
     }
     loadFailed_ = book_->loadError().has_value();
     automaticSwitching_ = book_->library().automaticSwitching();
+    defaultProfile_ =
+        book_->library().defaultProfile().has_value() ? fromStd(book_->library().defaultProfile()->value()) : QString();
+    persistentCamera_ = book_->library().isPersistent(ProfileSection::Camera);
+    persistentEqualizer_ = book_->library().isPersistent(ProfileSection::Equalizer);
     profileApplications_.clear();
     for (const auto& profile : book_->library().profiles()) {
         QStringList applications;
@@ -246,6 +350,15 @@ void ProfilesController::handleFinished()
     running_ = false;
     refreshFromBook();
 
+    if (outcome.kind == Kind::Import && outcome.error.has_value() &&
+        outcome.error->code == shared_kernel::ErrorCode::InvalidArgument &&
+        outcome.error->detail.starts_with(ProfileBook::alreadyExistsPrefix)) {
+        const QString existing = fromStd(outcome.error->detail.substr(ProfileBook::alreadyExistsPrefix.size()));
+        status_ = tr("Já existe um perfil com o nome %1").arg(existing);
+        emit profilesChanged();
+        emit importNeedsReplace(existing, operationPath_);
+        return;
+    }
     if (outcome.error.has_value() && outcome.kind != Kind::Apply) {
         qWarning("profiles: operação falhou (código %d): %s", static_cast<int>(outcome.error->code),
                  outcome.error->detail.c_str());
@@ -281,6 +394,23 @@ void ProfilesController::handleFinished()
     case Kind::Unassign:
         status_ = tr("Aplicativo %1 desassociado").arg(operationApplication_);
         break;
+    case Kind::Duplicate:
+        status_ = tr("Perfil duplicado: %1").arg(operationName_);
+        break;
+    case Kind::Export:
+        status_ = tr("Perfil exportado: %1").arg(operationName_);
+        break;
+    case Kind::Import:
+        finishImport(outcome);
+        break;
+    case Kind::Default:
+        status_ =
+            defaultProfile_.isEmpty() ? tr("Perfil padrão removido") : tr("Perfil padrão: %1").arg(defaultProfile_);
+        break;
+    case Kind::Persistent:
+        status_ = operationPersistent_ ? tr("Seção %1: igual em todos os perfis").arg(operationName_)
+                                       : tr("Seção %1: deixou de ser igual em todos os perfis").arg(operationName_);
+        break;
     case Kind::Apply:
         finishApply(outcome);
         return; // finishApply emite os sinais
@@ -308,6 +438,21 @@ void ProfilesController::finishSave(const Outcome& outcome)
     status_ = tr("Perfil salvo: %1").arg(operationName_);
 }
 
+void ProfilesController::finishImport(const Outcome& outcome)
+{
+    report_.clear();
+    const ProfileBook::ImportReport& imported = *outcome.imported;
+    status_ = imported.replaced ? tr("Perfil importado (substituído): %1").arg(fromStd(imported.name))
+                                : tr("Perfil importado: %1").arg(fromStd(imported.name));
+    if (!imported.ignoredFields.empty()) {
+        QStringList fields;
+        for (const std::string& field : imported.ignoredFields) {
+            fields.push_back(fromStd(field));
+        }
+        report_.push_back(tr("Campos ignorados: %1").arg(fields.join(QStringLiteral(", "))));
+    }
+}
+
 void ProfilesController::finishApply(const Outcome& outcome)
 {
     report_.clear();
@@ -320,8 +465,16 @@ void ProfilesController::finishApply(const Outcome& outcome)
             report_.push_back(tr("%1: falhou — %2").arg(controlLabel(item), fromStd(item.outcome.error().detail)));
         }
     }
+    if (skipCamera_ && !applying_->camera().empty()) {
+        report_.push_back(tr("Câmera: igual em todos os perfis (não alterada)"));
+    }
+    if (skipEqualizer_ && applying_->equalizer().has_value()) {
+        report_.push_back(tr("EQ: igual em todos os perfis (não alterado)"));
+    }
     // O EQ só é tocado aqui, na thread dona.
-    if (const auto equalizerResult = applyProfile_->applyEqualizer(*applying_); equalizerResult.has_value()) {
+    const auto equalizerResult =
+        skipEqualizer_ ? std::optional<shared_kernel::Result<void>>{} : applyProfile_->applyEqualizer(*applying_);
+    if (equalizerResult.has_value()) {
         if (equalizerResult->has_value()) {
             report_.push_back(tr("EQ: curva definida (vale com o EQ ligado)"));
         } else {
@@ -329,7 +482,7 @@ void ProfilesController::finishApply(const Outcome& outcome)
             report_.push_back(tr("EQ: falhou — %1").arg(fromStd(equalizerResult->error().detail)));
         }
     }
-    const bool hadCamera = !applying_->camera().empty();
+    const bool hadCamera = !applying_->camera().empty() && !skipCamera_;
     applying_.reset();
     if (operationApplication_.isEmpty()) {
         status_ = allOk ? tr("Perfil aplicado: %1").arg(operationName_)

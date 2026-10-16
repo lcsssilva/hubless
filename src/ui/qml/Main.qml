@@ -76,6 +76,19 @@ ApplicationWindow {
     required property QtObject pointerStatusViewModel
     required property QtObject headsetStatusViewModel
 
+    // AppSettings (src/app), fornecido pelo composition root: aviso de bateria fraca e apelidos de dispositivo
+    // (INC-017). ConfigBackup: cópia local das configurações; só grava por clique.
+    required property QtObject appSettings
+    required property QtObject configBackup
+
+    // Estado de UI apenas: perfil à espera do nome da cópia, do arquivo de exportação ou da confirmação de
+    // importação por cima; cópia local à espera da confirmação de restauração.
+    property string profilePendingDuplicate: ""
+    property string profilePendingExport: ""
+    property string importPendingPath: ""
+    property string importPendingName: ""
+    property string backupPendingRestore: ""
+
     // Nome do perfil à espera da confirmação de remoção; estado de UI apenas.
     property string profilePendingRemoval: ""
     // Nome do perfil à espera da confirmação de atualização; estado de UI apenas.
@@ -131,6 +144,21 @@ ApplicationWindow {
                 return list[i]
         }
         return null
+    }
+
+    // Nome mostrado de um dispositivo: o apelido (só no Hubless) ou o nome do catálogo (INC-017 R9).
+    function displayNameOf(name) {
+        const nickname = window.appSettings.nicknames[name]
+        return nickname ? nickname : name
+    }
+
+    // Exportar/importar perfil: o diálogo de arquivo entrega a URL; o controlador cuida do resto.
+    function finishExport(fileUrl) {
+        window.profilesController.exportProfile(window.profilePendingExport, String(fileUrl))
+    }
+
+    function finishImport(fileUrl) {
+        window.profilesController.importProfile(String(fileUrl), false)
     }
 
     // Resumo e nível da bateria de um dispositivo para a área principal da página; sem item = sem bateria.
@@ -269,7 +297,7 @@ ApplicationWindow {
                 visible: window.deviceOpen
                 x: 82
                 y: 36
-                text: window.deviceNames[window.currentPage] ?? ""
+                text: window.displayNameOf(window.deviceNames[window.currentPage] ?? "")
                 font.pixelSize: 34
                 font.bold: true
             }
@@ -414,6 +442,7 @@ ApplicationWindow {
                         readonly property var batteryEntry: window.entryFor(window.batteryViewModel.devices, modelData.name)
 
                         deviceName: modelData.name
+                        displayName: window.displayNameOf(modelData.name)
                         deviceKind: modelData.kind
                         wide: modelData.wide
                         detected: window.isDetected(inventoryEntry)
@@ -1281,6 +1310,52 @@ ApplicationWindow {
                               ? window.profilesController.lastApplication : qsTr("nenhum"))
                 }
 
+                SectionTitle { text: qsTr("Perfil padrão") }
+
+                BodyLabel {
+                    objectName: "profilesDefaultNotice"
+                    text: qsTr("Com a troca automática ligada, o perfil padrão é aplicado quando o aplicativo em foco não tem perfil associado. Nada é aplicado ao escolhê-lo.")
+                }
+
+                BodyLabel {
+                    objectName: "profilesDefaultLabel"
+                    text: qsTr("Perfil padrão: %1").arg(
+                              window.profilesController.defaultProfile !== ""
+                              ? window.profilesController.defaultProfile : qsTr("nenhum"))
+                }
+
+                SectionTitle { text: qsTr("Igual em todos os perfis") }
+
+                BodyLabel {
+                    objectName: "profilesPersistentNotice"
+                    text: qsTr("Uma seção marcada não muda ao aplicar outro perfil e é gravada, a partir do estado atual, em todos os perfis ao salvar.")
+                }
+
+                SwitchRow {
+                    text: qsTr("Câmera")
+                    switchObjectName: "profilesPersistentCamera"
+                    checked: window.profilesController.persistentCamera
+                    switchEnabled: !window.profilesController.busy
+                    onToggleRequested: wanted => window.profilesController.setPersistent("camera", wanted)
+                }
+
+                SwitchRow {
+                    text: qsTr("EQ")
+                    switchObjectName: "profilesPersistentEqualizer"
+                    checked: window.profilesController.persistentEqualizer
+                    switchEnabled: !window.profilesController.busy
+                    onToggleRequested: wanted => window.profilesController.setPersistent("equalizer", wanted)
+                }
+
+                SectionTitle { text: qsTr("Perfis") }
+
+                GHubButton {
+                    objectName: "profilesImportButton"
+                    text: qsTr("Importar perfil…")
+                    enabled: !window.profilesController.busy
+                    onClicked: profileImportDialog.open()
+                }
+
                 RowLayout {
                     Layout.fillWidth: true
                     spacing: 12
@@ -1357,6 +1432,37 @@ ApplicationWindow {
                             }
 
                             GHubButton {
+                                objectName: "profileDuplicateButton"
+                                text: qsTr("Duplicar")
+                                enabled: !window.profilesController.busy
+                                onClicked: {
+                                    window.profilePendingDuplicate = profileRow.modelData
+                                    profileDuplicateField.text = qsTr("%1 (cópia)").arg(profileRow.modelData)
+                                    profileDuplicateDialog.open()
+                                }
+                            }
+
+                            GHubButton {
+                                objectName: "profileExportButton"
+                                text: qsTr("Exportar")
+                                enabled: !window.profilesController.busy
+                                onClicked: {
+                                    window.profilePendingExport = profileRow.modelData
+                                    profileExportDialog.open()
+                                }
+                            }
+
+                            GHubButton {
+                                objectName: "profileDefaultButton"
+                                text: window.profilesController.defaultProfile === profileRow.modelData
+                                      ? qsTr("Tirar o padrão") : qsTr("Usar como padrão")
+                                enabled: !window.profilesController.busy
+                                onClicked: window.profilesController.setDefaultProfile(
+                                               window.profilesController.defaultProfile === profileRow.modelData
+                                               ? "" : profileRow.modelData)
+                            }
+
+                            GHubButton {
                                 objectName: "profileAssignButton"
                                 text: qsTr("Associar o último aplicativo")
                                 enabled: !window.profilesController.busy
@@ -1419,6 +1525,138 @@ ApplicationWindow {
 
             TabPage {
                 objectName: "settingsScrollView"
+                SectionTitle { text: qsTr("Aviso de bateria fraca") }
+                BodyLabel {
+                    objectName: "lowBatteryNotice"
+                    text: qsTr("Desligado por padrão. Avisa uma vez por descarga, pelo ícone da bandeja, quando um dispositivo chega ao limiar; avisa de novo depois que carregar ou subir 5 pontos acima do limiar.")
+                }
+
+                SwitchRow {
+                    text: qsTr("Avisar bateria fraca")
+                    switchObjectName: "lowBatterySwitch"
+                    checked: window.appSettings.lowBatteryAlertEnabled
+                    onToggleRequested: wanted => window.appSettings.setLowBatteryAlertEnabled(wanted)
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 12
+
+                    BodyLabel {
+                        text: qsTr("Limiar (%)")
+                        font.bold: true
+                    }
+
+                    GHubSpinBox {
+                        objectName: "lowBatteryThresholdSpin"
+                        from: 5
+                        to: 50
+                        stepSize: 5
+                        editable: true
+                        value: window.appSettings.lowBatteryThreshold
+                        onValueModified: window.appSettings.setLowBatteryThreshold(value)
+                    }
+                }
+
+                SectionTitle { text: qsTr("Nomes dos dispositivos") }
+                BodyLabel {
+                    objectName: "nicknameNotice"
+                    text: qsTr("O nome é só do Hubless (1 a 32 caracteres); nada é gravado no dispositivo.")
+                }
+
+                Repeater {
+                    model: window.deviceCatalog
+
+                    delegate: ColumnLayout {
+                        id: nicknameRow
+                        required property var modelData
+                        Layout.fillWidth: true
+                        spacing: 6
+
+                        BodyLabel {
+                            text: nicknameRow.modelData.name
+                            font.bold: true
+                        }
+
+                        GHubTextField {
+                            id: nicknameInput
+                            objectName: "nicknameField"
+                            Layout.fillWidth: true
+                            maximumLength: 32
+                            placeholderText: nicknameRow.modelData.name
+                            text: window.appSettings.nicknames[nicknameRow.modelData.name] ?? ""
+                            Accessible.name: qsTr("Nome de %1").arg(nicknameRow.modelData.name)
+                        }
+
+                        Flow {
+                            Layout.fillWidth: true
+                            spacing: 8
+
+                            GHubButton {
+                                objectName: "nicknameSaveButton"
+                                text: qsTr("Salvar nome")
+                                onClicked: window.appSettings.setNickname(nicknameRow.modelData.name, nicknameInput.text)
+                            }
+
+                            GHubButton {
+                                objectName: "nicknameResetButton"
+                                text: qsTr("Restaurar nome")
+                                onClicked: window.appSettings.clearNickname(nicknameRow.modelData.name)
+                            }
+                        }
+                    }
+                }
+
+                BodyLabel {
+                    objectName: "appSettingsStatusLabel"
+                    text: window.appSettings.status
+                }
+
+                SectionTitle { text: qsTr("Cópia local das configurações") }
+                BodyLabel {
+                    objectName: "backupNotice"
+                    text: qsTr("Grava os perfis e as configurações do app em ~/.local/share/ghub-linux/backup (só você lê). Nada vai para a rede. Restaurar substitui os perfis e as configurações atuais.")
+                }
+
+                GHubButton {
+                    objectName: "backupMakeButton"
+                    text: qsTr("Fazer cópia")
+                    onClicked: window.configBackup.makeBackup()
+                }
+
+                Repeater {
+                    model: window.configBackup.backups
+
+                    delegate: RowLayout {
+                        id: backupRow
+                        required property string modelData
+                        Layout.fillWidth: true
+                        spacing: 12
+
+                        BodyLabel {
+                            objectName: "backupNameLabel"
+                            elide: Text.ElideRight
+                            wrapMode: Text.NoWrap
+                            text: backupRow.modelData
+                        }
+
+                        GHubButton {
+                            objectName: "backupRestoreButton"
+                            Layout.fillWidth: false
+                            text: qsTr("Restaurar")
+                            onClicked: {
+                                window.backupPendingRestore = backupRow.modelData
+                                backupRestoreDialog.open()
+                            }
+                        }
+                    }
+                }
+
+                BodyLabel {
+                    objectName: "backupStatusLabel"
+                    text: window.configBackup.status
+                }
+
                 SectionTitle { text: qsTr("Inicialização automática") }
                 BodyLabel {
                     objectName: "autostartNoticeLabel"
@@ -1547,6 +1785,98 @@ ApplicationWindow {
             wrapMode: Text.WordWrap
             text: qsTr("Remover o perfil “%1”?").arg(window.profilePendingRemoval)
         }
+    }
+
+    Dialog {
+        id: profileDuplicateDialog
+        objectName: "profileDuplicateDialog"
+        anchors.centerIn: Overlay.overlay
+        width: 400
+        modal: true
+        title: qsTr("Duplicar perfil")
+        standardButtons: Dialog.Ok | Dialog.Cancel
+        onAccepted: window.profilesController.duplicate(window.profilePendingDuplicate, profileDuplicateField.text)
+
+        ColumnLayout {
+            width: parent.width
+            spacing: 8
+
+            Label {
+                Layout.fillWidth: true
+                wrapMode: Text.WordWrap
+                text: qsTr("Nome da cópia de “%1”:").arg(window.profilePendingDuplicate)
+            }
+
+            GHubTextField {
+                id: profileDuplicateField
+                objectName: "profileDuplicateField"
+                Layout.fillWidth: true
+                Accessible.name: qsTr("Nome da cópia")
+            }
+        }
+    }
+
+    Dialog {
+        id: profileImportReplaceDialog
+        objectName: "profileImportReplaceDialog"
+        anchors.centerIn: Overlay.overlay
+        width: 400
+        modal: true
+        title: qsTr("Substituir?")
+        standardButtons: Dialog.Yes | Dialog.No
+        onAccepted: window.profilesController.importProfile(window.importPendingPath, true)
+
+        Label {
+            width: parent.width
+            wrapMode: Text.WordWrap
+            text: qsTr("Já existe um perfil “%1”. Substituir pelo perfil do arquivo? Nada é aplicado ao importar.").arg(window.importPendingName)
+        }
+    }
+
+    Connections {
+        target: window.profilesController
+
+        function onImportNeedsReplace(name, path) {
+            window.importPendingName = name
+            window.importPendingPath = path
+            profileImportReplaceDialog.open()
+        }
+    }
+
+    Dialog {
+        id: backupRestoreDialog
+        objectName: "backupRestoreDialog"
+        anchors.centerIn: Overlay.overlay
+        width: 400
+        modal: true
+        title: qsTr("Restaurar cópia?")
+        standardButtons: Dialog.Yes | Dialog.No
+        onAccepted: window.configBackup.restore(window.backupPendingRestore)
+
+        Label {
+            width: parent.width
+            wrapMode: Text.WordWrap
+            text: qsTr("Restaurar “%1”? Os perfis e as configurações atuais serão substituídos.").arg(window.backupPendingRestore)
+        }
+    }
+
+    FileDialog {
+        id: profileImportDialog
+        objectName: "profileImportDialog"
+        title: qsTr("Importar perfil")
+        fileMode: FileDialog.OpenFile
+        nameFilters: [qsTr("Perfil do Hubless (*.json)")]
+        onAccepted: window.finishImport(selectedFile)
+    }
+
+    FileDialog {
+        id: profileExportDialog
+        objectName: "profileExportDialog"
+        title: qsTr("Exportar perfil")
+        fileMode: FileDialog.SaveFile
+        defaultSuffix: "json"
+        nameFilters: [qsTr("Perfil do Hubless (*.json)")]
+        onAccepted: window.finishExport(selectedFile)
     }
 
     ColorDialog {

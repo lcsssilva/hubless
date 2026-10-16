@@ -26,6 +26,10 @@ if(GHUB_BUILD_APP)
         infrastructure/CameraSettingsAdapter.hpp
         infrastructure/CameraSettingsAdapter.cpp
         infrastructure/EqualizerSettingsAdapter.hpp
+        infrastructure/JsonProfileFormat.hpp
+        infrastructure/JsonProfileFormat.cpp
+        infrastructure/JsonProfileTransfer.hpp
+        infrastructure/JsonProfileTransfer.cpp
         infrastructure/JsonProfileRepository.hpp
         infrastructure/JsonProfileRepository.cpp
         infrastructure/KWinActiveApplicationSource.hpp

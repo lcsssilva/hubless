@@ -19,7 +19,8 @@ gtest_discover_tests(ghub_profiles_application_tests TEST_PREFIX "profiles.")
 
 if(GHUB_BUILD_APP)
     find_package(Qt6 6.12 REQUIRED COMPONENTS Core)
-    add_executable(ghub_profiles_infrastructure_tests infrastructure/JsonProfileRepositoryTest.cpp)
+    add_executable(ghub_profiles_infrastructure_tests infrastructure/JsonProfileRepositoryTest.cpp
+        infrastructure/JsonProfileTransferTest.cpp)
     target_link_libraries(ghub_profiles_infrastructure_tests PRIVATE
         ghub_profiles_infrastructure Qt6::Core GTest::gtest_main)
     ghub_set_warnings(ghub_profiles_infrastructure_tests)

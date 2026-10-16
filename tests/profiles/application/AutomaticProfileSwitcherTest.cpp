@@ -84,3 +84,34 @@ TEST(AutomaticProfileSwitcher, ManualApplicationCountsAsCurrent)
     EXPECT_TRUE(switcher.decide(sampleLibrary(), appOf("firefox")).has_value());
     EXPECT_FALSE(switcher.decide(sampleLibrary(), appOf("konsole")).has_value());
 }
+
+// ---- INC-017 R6: perfil padrão ----
+
+TEST(AutomaticProfileSwitcherDefault, UnmatchedApplicationFallsBackToTheDefaultProfile)
+{
+    auto library = sampleLibrary();
+    ASSERT_TRUE(library.setDefaultProfile(nameOf("b")).has_value());
+    AutomaticProfileSwitcher switcher;
+    const auto decision = switcher.decide(library, appOf("dolphin"));
+    ASSERT_TRUE(decision.has_value());
+    EXPECT_EQ(decision->value(), "b");
+    switcher.noteApplied(*decision);
+    EXPECT_FALSE(switcher.decide(library, appOf("kate")).has_value()); // já é o atual
+}
+
+TEST(AutomaticProfileSwitcherDefault, RuleWinsOverDefaultAndOwnApplicationAndSwitchOffIgnoreIt)
+{
+    auto library = sampleLibrary();
+    ASSERT_TRUE(library.setDefaultProfile(nameOf("b")).has_value());
+    const AutomaticProfileSwitcher switcher;
+    EXPECT_EQ(switcher.decide(library, appOf("firefox"))->value(), "a");
+    EXPECT_FALSE(switcher.decide(library, ApplicationId::ownApplication()).has_value());
+    library.setAutomaticSwitching(false);
+    EXPECT_FALSE(switcher.decide(library, appOf("dolphin")).has_value());
+}
+
+TEST(AutomaticProfileSwitcherDefault, WithoutDefaultNothingHappensForUnmatchedApplication)
+{
+    const AutomaticProfileSwitcher switcher;
+    EXPECT_FALSE(switcher.decide(sampleLibrary(), appOf("dolphin")).has_value());
+}

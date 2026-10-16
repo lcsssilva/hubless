@@ -3,7 +3,8 @@ add_executable(ghub_device_inventory_domain_tests
     domain/HidDeviceNameTest.cpp
     domain/FirmwareVersionTest.cpp
     domain/DeviceTypeTest.cpp
-    domain/DeviceIdentityTest.cpp)
+    domain/DeviceIdentityTest.cpp
+    domain/DeviceNicknameTest.cpp)
 target_link_libraries(ghub_device_inventory_domain_tests PRIVATE ghub_device_inventory_domain GTest::gtest_main)
 ghub_set_warnings(ghub_device_inventory_domain_tests)
 gtest_discover_tests(ghub_device_inventory_domain_tests TEST_PREFIX "device_inventory.")

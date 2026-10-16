@@ -3,7 +3,8 @@ add_library(ghub_battery_domain STATIC)
 target_sources(ghub_battery_domain PRIVATE
     domain/BatteryLevel.cpp
     domain/BatteryReading.cpp
-    domain/AdcMeasurement.cpp)
+    domain/AdcMeasurement.cpp
+    domain/LowBatteryAlert.cpp)
 target_link_libraries(ghub_battery_domain PUBLIC ghub_shared_kernel)
 ghub_set_warnings(ghub_battery_domain)
 

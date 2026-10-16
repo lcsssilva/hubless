@@ -56,6 +56,21 @@ private slots:
         QCOMPARE(item(viewModel, 2).value("summary").toString(), QStringLiteral("60% · descarregando"));
     }
 
+    void exposesChargingFlag_ForTheLowBatteryAlert()
+    {
+        source.setResult(std::vector{
+            reading(g915, ChargeState::Discharging, 44),
+            reading(g703, ChargeState::Charging, 95),
+            reading(g733, ChargeState::Full, 100),
+        });
+
+        const BatteryViewModel viewModel{getBatteryStatus, 1h};
+
+        QCOMPARE(item(viewModel, 0).value("charging").toBool(), false);
+        QCOMPARE(item(viewModel, 1).value("charging").toBool(), true);
+        QCOMPARE(item(viewModel, 2).value("charging").toBool(), true); // carga completa rearma o aviso
+    }
+
     void summarizesNotDetected_WhenDeviceAbsent()
     {
         source.setResult(std::vector{reading(g915, ChargeState::Discharging, 44)});

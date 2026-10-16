@@ -21,9 +21,13 @@
 // test e com uma bandeja disponível; fechar a janela esconde para a bandeja (o processo continua) e só "Sair" encerra.
 // O autostart é opt-in na janela: nada é gravado sem ação explícita; `--autostart` inicia escondido. O diagnóstico vive
 // só em memória e nada é gravado até o usuário exportar o relatório.
+#include "AppSettings.hpp"
+#include "ConfigBackup.hpp"
 #include "DesktopController.hpp"
+#include "LowBatteryNotifier.hpp"
 #include "SystemTrayIcon.hpp"
 #include "TerminationSignals.hpp"
+#include "TrayMenuModel.hpp"
 #include "modules/audio_processing/application/HostEqualizer.hpp"
 #include "modules/audio_processing/application/HostNoiseSuppression.hpp"
 #include "modules/audio_processing/infrastructure/PipeWireAudioGraph.hpp"
@@ -100,6 +104,7 @@
 #include "modules/profiles/infrastructure/EqualizerSettingsAdapter.hpp"
 #include "modules/profiles/infrastructure/InactiveApplicationSource.hpp"
 #include "modules/profiles/infrastructure/JsonProfileRepository.hpp"
+#include "modules/profiles/infrastructure/JsonProfileTransfer.hpp"
 #include "modules/profiles/infrastructure/KWinActiveApplicationSource.hpp"
 #include "modules/profiles/presentation/ProfilesController.hpp"
 #include "platform/hidpp/HidppNodeLocator.hpp"
@@ -199,6 +204,14 @@ int main(int argc, char* argv[])
     ghub::app::DesktopController desktopController{trayAvailable, parser.isSet(autostart)};
     QObject::connect(&desktopController, &ghub::app::DesktopController::quitRequested, &app,
                      [] { QCoreApplication::quit(); });
+
+    // Configurações do app (INC-017, ADR-0028): aviso de bateria fraca (desligado por padrão) e apelidos de
+    // dispositivo. `load()` só lê o arquivo; nada é gravado até o usuário mudar uma opção. Declaradas antes de quem as
+    // usa.
+    ghub::app::AppSettings appSettings{ghub::app::AppSettings::defaultFilePath()};
+    appSettings.load();
+    // Bandeja (criada mais abaixo, fora do smoke test): declarada cedo porque o aviso de bateria a usa.
+    std::unique_ptr<ghub::app::SystemTrayIcon> systemTray;
 
     using namespace std::chrono_literals;
     // Registro de leases (DEVICE_ACCESS_POLICY §2), compartilhado por todos os módulos que escrevem ou consultam
@@ -366,7 +379,8 @@ int main(int argc, char* argv[])
     ghub::profiles::CameraSettingsAdapter profilesCameraAdapter{cameraSettings};
     ghub::profiles::EqualizerSettingsAdapter profilesEqualizerAdapter{hostEqualizerController};
     ghub::profiles::JsonProfileRepository profileRepository{ghub::profiles::JsonProfileRepository::defaultFilePath()};
-    ghub::profiles::ProfileBook profileBook{profileRepository, profilesCameraAdapter};
+    ghub::profiles::JsonProfileTransfer profileTransfer;
+    ghub::profiles::ProfileBook profileBook{profileRepository, profilesCameraAdapter, &profileTransfer};
     const ghub::profiles::ApplyProfile applyProfile{profilesCameraAdapter, profilesEqualizerAdapter};
     // Troca automática por aplicativo (ADR-0022): a fonte só é iniciada com a opção ligada pelo usuário (e persistida);
     // declarada ANTES do controlador, que a para no destrutor. No smoke test a fonte é inerte (nunca toca no KWin
@@ -381,6 +395,28 @@ int main(int argc, char* argv[])
     // Depois de aplicar um perfil com câmera, a janela relê a câmera.
     QObject::connect(&profilesController, &ghub::profiles::ProfilesController::cameraApplied, &cameraReader,
                      &ghub::camera::BackgroundCameraReader::refresh);
+    // Cópia local das configurações (INC-017 R8): lista o diretório ao construir; só grava por clique. Restaurar
+    // regrava profiles.json e settings.json (validados antes) e a janela relê os perfis.
+    ghub::app::ConfigBackup configBackup{
+        ghub::app::ConfigBackup::defaultDirectory(), ghub::profiles::JsonProfileRepository::defaultFilePath(),
+        appSettings, [](const QByteArray& document) -> QString {
+            const auto library = ghub::profiles::JsonProfileRepository::parseDocument(document);
+            return library ? QString() : QString::fromStdString(library.error().detail);
+        }};
+    QObject::connect(&configBackup, &ghub::app::ConfigBackup::restored, &profilesController,
+                     &ghub::profiles::ProfilesController::load);
+    // Aviso de bateria fraca (INC-017 R1/R2): a regra pura vem do domínio do battery; a notificação sai pelo
+    // QSystemTrayIcon::showMessage (sem bandeja, o aviso vai só para o diagnóstico).
+    ghub::app::LowBatteryNotifier lowBatteryNotifier{
+        appSettings,
+        [&systemTray](const QString& title, const QString& message) {
+            return systemTray != nullptr && systemTray->showMessage(title, message);
+        },
+        [](const QString& message) { qWarning("battery: %s", qPrintable(message)); }};
+    QObject::connect(
+        &batteryViewModel, &ghub::battery::BatteryViewModel::devicesChanged, &lowBatteryNotifier,
+        [&batteryViewModel, &lowBatteryNotifier] { lowBatteryNotifier.onDevicesChanged(batteryViewModel.devices()); });
+    lowBatteryNotifier.onDevicesChanged(batteryViewModel.devices());
     qmlRegisterType<ghub::camera::CameraPreviewItem>("GHub.Camera", 1, 0, "CameraPreviewItem");
     // Uevent do kernel antecipa a releitura; sem ele vale só o polling de 30 s (ADR-0005 §4).
     std::unique_ptr<ghub::battery::UeventBatteryMonitor> batteryMonitor;
@@ -451,6 +487,8 @@ int main(int argc, char* argv[])
         {QStringLiteral("noiseSuppressionController"), QVariant::fromValue(&noiseSuppressionController)},
         {QStringLiteral("profilesController"), QVariant::fromValue(&profilesController)},
         {QStringLiteral("desktopController"), QVariant::fromValue(&desktopController)},
+        {QStringLiteral("appSettings"), QVariant::fromValue(&appSettings)},
+        {QStringLiteral("configBackup"), QVariant::fromValue(&configBackup)},
         {QStringLiteral("diagnosticsViewModel"), QVariant::fromValue(&diagnosticsViewModel)},
     });
     profilesController.load(); // só lê o arquivo de perfis; nada é aplicado
@@ -470,9 +508,19 @@ int main(int argc, char* argv[])
     }
     // Bandeja do sistema (INC-013 R2): criada só fora do smoke test e com bandeja disponível; sem ela, nenhum
     // ícone e o app segue como antes, com um aviso. O adaptador é destruído ao sair (esconde o ícone).
-    std::unique_ptr<ghub::app::SystemTrayIcon> systemTray;
     if (desktopController.trayAvailable()) {
-        systemTray = std::make_unique<ghub::app::SystemTrayIcon>(desktopController);
+        // Menu (INC-017 R3): bateria dos dispositivos, perfis (clicar aplica, como o botão Aplicar), Abrir e Sair.
+        systemTray = std::make_unique<ghub::app::SystemTrayIcon>(
+            desktopController,
+            [&] {
+                return ghub::app::TrayMenuModel::build(batteryViewModel.devices(), appSettings,
+                                                       profilesController.profileNames());
+            },
+            [&profilesController](const QString& profile) { profilesController.apply(profile); });
+        const auto rebuild = [&systemTray] { systemTray->rebuildMenu(); };
+        QObject::connect(&batteryViewModel, &ghub::battery::BatteryViewModel::devicesChanged, &app, rebuild);
+        QObject::connect(&profilesController, &ghub::profiles::ProfilesController::profilesChanged, &app, rebuild);
+        QObject::connect(&appSettings, &ghub::app::AppSettings::changed, &app, rebuild);
     } else {
         qWarning("app: bandeja do sistema indisponível; fechar a janela encerra o aplicativo");
     }
